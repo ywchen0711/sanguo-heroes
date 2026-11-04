@@ -73,7 +73,7 @@ export const SCENARIOS = [
     rel: [['liubei', 'sun', -80], ['sun', 'cao', 30], ['liubei', 'cao', -80]], truce: [['sun', 'cao']] },
 
   { id: 'heroes', year: 190, name: ['英雄集結（假想）', 'Gathering of Heroes (what-if)'],
-    desc: ['假想劇本：五百名武將不分時代同時登場——曹操、諸葛亮、司馬懿、陸遜、姜維、鄧艾同台爭霸，各自的壽命重新計算。', 'What if: all five hundred generals are alive at once. Cao Cao, Zhuge Liang, Sima Yi, Lu Xun, Jiang Wei and Deng Ai all compete in the same age, with new lifespans.'],
+    desc: ['假想劇本：一千兩百名武將不分時代同時登場——曹操、諸葛亮、司馬懿、陸遜、姜維、鄧艾同台爭霸，各自的壽命重新計算。', 'What if: all twelve hundred generals are alive at once. Cao Cao, Zhuge Liang, Sima Yi, Lu Xun, Jiang Wei and Deng Ai all compete in the same age, with new lifespans.'],
     factions: FACTIONS_190, dong: true, allStars: true,
     rel: [['liubei', 'gongsun', 60], ['sun', 'yuanshu', 60], ['cao', 'yuanshao', 40]] },
 ];

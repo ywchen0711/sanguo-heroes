@@ -4,7 +4,7 @@ import { SCENARIOS } from './data/scenarios.js';
 import { newGame, citiesOf, gensOf, power } from './sim/engine.js';
 import { fmt, dateStr, itemName } from './sim/text.js';
 import { CITY_POS, W, H, T } from './world.js';
-import { personSheet, frameCanvas, lookFor } from './sprites.js';
+import { personSheet, frameCanvas, lookFor, assignLooks } from './sprites.js';
 import { RANKS, rankOf, solMax, spMax, bstats, EQUIP, score, expNeed, tacticsOf, TACTICS, STAT_N, eqName, armsOf, TROOPS } from './hero.js';
 import { biography, rewritten, knownAs, titleName } from './deeds.js';
 import { isSworn, bondOf } from './bonds.js';
@@ -47,6 +47,7 @@ export class Screens {
     if (!years) return this.setup();
     // the generals alive and of age when the scenario starts
     const seed = Date.now() & 0x7fffffff, G = newGame({ seed, scenario: sc });
+    assignLooks(G.gens);
     const pool = G.gens.filter((g) => (g.status === 'serving' || g.status === 'free') && !g.hidden);
     for (;;) {
       const how = await this.ui.choose([{ k: 'rand', n: '隨機武將' }, { k: 'famous', n: '從名將中挑選' }, { k: 'faction', n: '依勢力挑選' }, { k: 'search', n: '搜尋名字' }, { k: null, n: '← 返回' }], { title: '扮演哪一位武將？' });

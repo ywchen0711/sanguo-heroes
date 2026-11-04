@@ -5,7 +5,7 @@
 import { View, THREE, personSheet } from './render.js';
 import { buildWorld, T, WALK, ENC, CITY_POS, regionAt, W as WW } from './world.js';
 import { buildTown, buildVillage, buildCave } from './town.js';
-import { lookFor, LOOKS, soldierSheet, beastSheet } from './sprites.js';
+import { lookFor, LOOKS, soldierSheet, beastSheet, assignLooks } from './sprites.js';
 import { newGame, step, rng, citiesOf, gensOf, busy, pickGovernor } from './sim/engine.js';
 import { fmt, dateStr } from './sim/text.js';
 import { newRec, solMax, spMax, bstats, gainExp, rankOf, RANKS, score } from './hero.js';
@@ -62,7 +62,7 @@ class Game {
     this.H = d.H; this.load2();
     if (d.pos.place != null) this.enterPlace(this.world.places[d.pos.place], true, d.pos); else if (d.pos.town != null) this.enterTown(d.pos.town, true, d.pos); else this.enterWorld(d.pos.x, d.pos.z, d.pos.dir);
   }
-  load2() { this.world ||= buildWorld(); this.mode = 'world'; document.body.classList.add('playing'); }
+  load2() { this.world ||= buildWorld(); this.mode = 'world'; document.body.classList.add('playing'); assignLooks(this.G.gens); }
   get me() { return this.G.gens[this.H.pid]; }
   // the party as [{ g, rec, look, solMax, spMax }]
   partyList() { return [this.H.pid, ...this.H.party].map((id) => { const g = this.G.gens[id], rec = this.H.rec[id]; return { g, rec, look: this.lookOf(g), solMax: solMax(g, rec), spMax: spMax(g, rec) }; }); }

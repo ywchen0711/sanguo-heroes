@@ -30,6 +30,7 @@ function outline(cv, col = '#1a1410') {
   return c;
 }
 
+import { LADIES } from './data/ladies.js';
 // ---------------------------------------------------------------- how a general looks
 // the famous ones by name; everyone else from their stats and a hash of their name
 const FAMOUS = {
@@ -58,16 +59,49 @@ const FAMOUS = {
   于吉: { skin: '#f0c8a0', beard: 'long', beardC: '#f0f0f0', hat: 'taoist', hatC: '#3a3a3a', body: '#e8e8e0', trim: '#5a5a5a', cape: null, wpn: 'staff', robe: true },
 };
 const HAIRS = ['#1a1410', '#2a1a10', '#3a2a1a', '#141018'], SKINS = ['#f0c8a0', '#e8b890', '#f4d0a8', '#d8a078', '#e8c098'];
+const HAIR_ALL = ['#1a1410', '#2a1a10', '#3a2a1a', '#141018', '#4a3020', '#5a4a3a', '#8a8a8a', '#c8c8c8'];
+const SKIN_ALL = ['#f0c8a0', '#e8b890', '#f4d0a8', '#d8a078', '#e8c098', '#c89068', '#f8dcc0', '#b88058'];
+const TRIMS = ['#e8c860', '#d8d8e0', '#c8a060', '#3a3a3a', '#a83a2a', '#3a6ab8', '#5a8a4a', '#8a5ab8'];
+const SCHOLAR_BODY = ['#e8e8e0', '#8a9ab8', '#5a6a8a', '#c8b898', '#7a8a6a', '#9a7a5a', '#4a5a5a', '#b8a8c8'];
+const LADY_BODY = ['#e85a8a', '#f0a0c0', '#c86ab8', '#8ac8e8', '#e8d8a0', '#a8e0c0', '#f8c8a0', '#c8a8e8', '#e8e8f0', '#d84a5a'];
+// the parts of a face and figure that tell one general from another (colours of the warlord come on top)
+function traitsFor(g, salt) {
+  const r = rnd(hash(g.name + '#' + salt)), pick = (a) => a[Math.floor(r() * a.length)], lady = LADIES.has(g.name);
+  const scholar = !lady && g.int > g.war + 15 && g.war < 65, brute = !lady && g.war >= 85 && g.int < 50, old = (g.born || 170) < 160;
+  const T = { lady, scholar, brute };
+  T.skin = pick(SKIN_ALL); T.hair = old && r() < 0.5 ? pick(['#8a8a8a', '#c8c8c8']) : pick(HAIR_ALL.slice(0, 6));
+  T.hairStyle = lady ? pick(['bun', 'long', 'long', 'bun', 'tail']) : pick(['short', 'short', 'long', 'bun', 'tail', 'bald']);
+  T.brow = lady ? pick(['none', 'thin', 'sad']) : pick(['straight', 'angry', 'sad', 'thick', 'none']);
+  T.eyes = pick(['dot', 'big', 'narrow', 'dot']);
+  T.beard = lady ? null : r() < (old ? 0.85 : 0.5) ? pick(['short', 'goatee', 'long', 'spiky', 'thin', 'mustache', 'sideburns', 'full']) : null;
+  T.beardC = old && r() < 0.6 ? '#c8c8c8' : pick(HAIR_ALL.slice(0, 6));
+  T.hat = lady ? pick(['lady', 'lady', null, 'band']) : scholar ? pick(['scholar', 'scholar', 'band', 'taoist', null, 'hood']) : brute ? pick(['band', null, 'helmet', 'fur']) : pick(['helmet', 'helmet', 'band', 'hood', 'topknot', 'crown2', 'fur', null]);
+  T.hatTone = pick([0.55, 0.7, 0.85, 1.05]);
+  T.wpn = lady ? pick([null, 'fan', 'sword', 'twin', 'bow']) : scholar ? pick(['fan', 'sword', null, 'staff', 'fan']) : pick(['spear', 'glaive', 'sword', 'halberd', 'bow', 'hammer', 'twin', 'twinaxe', 'staff']);
+  T.trim = pick(TRIMS); T.cape = !lady && r() < 0.65; T.capeTone = pick([0.5, 0.62, 0.75]);
+  T.armor = scholar || lady ? 'robe' : pick(['plain', 'scale', 'stripe', 'plain']);
+  T.build = brute && r() < 0.5 ? 'fat' : r() < 0.18 ? 'thin' : 'normal';
+  T.mark = pick([null, null, null, 'scar', 'mole', 'earring', lady ? 'blush' : 'tattoo']);
+  T.robe = pick(lady ? LADY_BODY : SCHOLAR_BODY); T.pin = pick(['#e8c860', '#e85a8a', '#8ae0ff', '#ffffff']);
+  return T;
+}
+// only what can be seen: a robe's colour only on a robe, a beard's colour only with a beard, a helmet's tone only on a helmet
+const sigOf = (T) => [T.skin, T.hair, T.hat && T.hairStyle === 'bald' ? 'short' : T.hairStyle, T.brow, T.eyes, T.beard, T.beard ? T.beardC : '', T.hat, T.hat && !T.lady && !T.scholar ? T.hatTone : '', T.wpn, T.trim, T.cape, T.armor, T.armor === 'robe' ? T.robe : '', T.build, T.mark, T.lady ? T.pin : ''].join('|');
+// every general gets traits no one else has: rolled again until they differ (in the order of the roster, so it is
+// the same in every game)
+const TRAITS = new Map();
+export function assignLooks(gens) {
+  if (TRAITS.size) return; const taken = new Set();
+  for (const g of gens) { if (FAMOUS[g.name]) continue; let k = 0, T = traitsFor(g, 0); while (taken.has(sigOf(T)) && k < 50) T = traitsFor(g, ++k); taken.add(sigOf(T)); TRAITS.set(g.name, T); }
+}
+export const lookSig = (name) => (TRAITS.has(name) ? sigOf(TRAITS.get(name)) : null);
 // a look for any general: g = { name, war, int, lead, cha }, color = their warlord's colour
 export function lookFor(g, color = '#7a7a8a') {
   const F = FAMOUS[g.name]; if (F) return { ...F, hair: F.beardC || '#1a1410', key: g.name };
-  const r = rnd(hash(g.name)), scholar = g.int > g.war + 15 && g.war < 65, brute = g.war >= 85 && g.int < 50;
-  const hats = scholar ? ['scholar', 'scholar', 'band', 'taoist'] : brute ? ['band', null, 'helmet'] : ['helmet', 'helmet', 'band', 'hood', 'topknot'];
-  const wpns = scholar ? ['fan', 'sword', null, 'staff'] : ['spear', 'glaive', 'sword', 'halberd', 'bow', 'hammer'];
-  const pick = (a) => a[Math.floor(r() * a.length)];
-  const body = scholar ? pick(['#e8e8e0', '#8a9ab8', '#5a6a8a', '#c8b898']) : color;
-  return { skin: pick(SKINS), hair: pick(HAIRS), beard: r() < 0.45 ? pick(['short', 'goatee', 'long', 'spiky']) : null, beardC: pick(HAIRS), hat: pick(hats), hatC: scholar ? '#2a2a3a' : shade(color, 0.75),
-    body, trim: pick(['#e8c860', '#d8d8e0', '#c8a060', '#3a3a3a']), cape: r() < 0.7 ? shade(color, 0.6) : null, wpn: pick(wpns), robe: scholar, fat: brute && r() < 0.4, key: g.name + color };
+  const T = TRAITS.get(g.name) || traitsFor(g, 0), robeLike = T.armor === 'robe';
+  return { skin: T.skin, hair: T.hair, hairStyle: T.hairStyle, brow: T.brow, eyes: T.eyes, beard: T.beard, beardC: T.beardC, hat: T.hat,
+    hatC: T.lady ? T.pin : T.scholar ? shade(T.robe, 0.45) : shade(color, T.hatTone), body: robeLike ? T.robe : color, trim: T.trim,
+    cape: T.cape ? shade(color, T.capeTone) : null, wpn: T.wpn, robe: robeLike, armor: T.armor, fat: T.build === 'fat', thin: T.build === 'thin', mark: T.mark, lady: T.lady, pin: T.pin, key: g.name + color };
 }
 // soldiers, bandits and the like
 export const LOOKS = {
@@ -97,7 +131,7 @@ export function personSheet(L) {
 function drawPerson(cv, ox, oy, dir, frame, L) {
   const { P, R } = cv, p = (i, j, c) => P(ox + i, oy + j, c), r = (i, j, a, b, c) => R(ox + i, oy + j, a, b, c);
   const skin = L.skin, skinD = shade(skin, 0.82), body = L.body, bodyD = shade(body, 0.72), bodyL = shade(body, 1.18), trim = L.trim, hair = L.hair || '#1a1410';
-  const step = frame === 1 ? 0 : frame === 0 ? -1 : 1, bob = frame === 1 ? 0 : 1, fat = L.fat ? 1 : 0;
+  const step = frame === 1 ? 0 : frame === 0 ? -1 : 1, bob = frame === 1 ? 0 : 1, fat = L.fat ? 1 : L.thin ? -1 : 0;
   const side = dir === 1 || dir === 2, flip = dir === 2, back = dir === 3;
   const X = (i) => flip ? FW - 1 - i : i; // mirror for facing right
   const q = (i, j, c) => p(X(i), j, c), qr = (i, j, a, b, c) => { for (let u = 0; u < a; u++) for (let v = 0; v < b; v++) q(i + u, j + v, c); };
@@ -110,9 +144,11 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
   else { qr(8, legY + (step < 0 ? -1 : 0), 3, 5, bodyD); qr(13, legY + (step > 0 ? -1 : 0), 3, 5, bodyD); qr(8, legY + 4 + (step < 0 ? -1 : 0), 3, 2, '#2a2018'); qr(13, legY + 4 + (step > 0 ? -1 : 0), 3, 2, '#2a2018'); }
   // the body: armour or a robe
   const bw = 12 + fat * 2, bx = 6 - fat;
-  if (L.robe) { qr(bx, y0 + 15, bw, 12, body); qr(bx, y0 + 15, 2, 12, bodyD); qr(bx + bw - 2, y0 + 15, 2, 12, bodyD); if (!back) { qr(11, y0 + 15, 2, 12, trim); } qr(bx, y0 + 21, bw, 1, trim); }
+  if (L.robe) { qr(bx, y0 + 15, bw, 12, body); qr(bx, y0 + 15, 2, 12, bodyD); qr(bx + bw - 2, y0 + 15, 2, 12, bodyD); if (!back) { qr(11, y0 + 15, 2, 12, trim); if (L.lady) { qr(bx + 2, y0 + 20, bw - 4, 2, L.pin || trim); qr(bx + 1, y0 + 26, bw - 2, 1, shade(body, 1.2)); } } qr(bx, y0 + 21, bw, 1, trim); }
   else {
     qr(bx, y0 + 15, bw, 10, body); qr(bx, y0 + 15, bw, 1, bodyL); qr(bx, y0 + 24, bw, 1, bodyD);
+    if (L.armor === 'scale') for (let j = 0; j < 6; j++) for (let i = 0; i < bw; i += 2) q(bx + i + (j % 2), y0 + 16 + j, shade(body, 0.8));
+    if (L.armor === 'stripe' && !back) for (let i = 1; i < bw; i += 3) qr(bx + i, y0 + 16, 1, 6, shade(body, 0.78));
     if (!back) { qr(bx + 2, y0 + 17, bw - 4, 1, trim); qr(bx + 2, y0 + 19, bw - 4, 1, shade(body, 0.85)); qr(11, y0 + 16, 2, 5, shade(trim, 0.9)); }
     qr(bx, y0 + 22, bw, 2, trim); // the belt
     qr(bx - 1, y0 + 15, 3, 3, shade(body, 1.1)); qr(bx + bw - 2, y0 + 15, 3, 3, shade(body, 1.1)); // shoulder plates
@@ -126,14 +162,36 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
   qr(6, hy + 1, 12, 11, skin); qr(7, hy, 10, 1, skin); qr(7, hy + 12, 10, 1, skinD);
   qr(6, hy + 9, 12, 3, skinD); qr(7, hy + 9, 10, 2, skin);
   // hair behind and on top
-  if (back) { qr(6, hy, 12, 12, hair); qr(9, hy - 2, 6, 3, hair); }
+  const hs = L.hairStyle;
+  if (back) { qr(6, hy, 12, 12, hair); qr(9, hy - 2, 6, 3, hair); if (hs === 'long') qr(6, hy + 12, 12, 5, hair); if (hs === 'tail') qr(11, hy + 10, 2, 7, hair); }
   else {
     qr(6, hy, 12, 4, hair); qr(6, hy, 2, 8, hair); qr(16, hy, 2, 8, hair);
-    if (side) { qr(13, hy, 5, 9, hair); }
+    if (side) { qr(13, hy, 5, 9, hair); if (hs === 'long') qr(14, hy + 8, 4, 7, hair); if (hs === 'tail') { qr(17, hy + 3, 2, 9, hair); } }
+    else if (hs === 'long') { qr(5, hy + 3, 2, 10, hair); qr(17, hy + 3, 2, 10, hair); }
+    if (hs === 'bald' && !L.hat) { qr(7, hy, 10, 3, skin); qr(7, hy, 10, 1, shade(skin, 1.12)); }
     // the face
     const ey = hy + 6;
-    if (side) { q(8, ey, '#1a1410'); q(8, ey + 1, '#1a1410'); q(7, ey + 4, shade(skin, 0.7)); }
-    else { p(8, ey, '#1a1410'); p(8, ey + 1, '#1a1410'); p(15, ey, '#1a1410'); p(15, ey + 1, '#1a1410'); p(9, ey, '#fff'); p(14, ey, '#fff'); p(11, ey + 4, shade(skin, 0.7)); p(12, ey + 4, shade(skin, 0.7)); p(7, ey + 2, shade(skin, 0.92)); p(16, ey + 2, shade(skin, 0.92)); }
+    const E = L.eyes || 'dot', dk = '#1a1410', bc0 = L.beardC && L.hair === '#c8c8c8' ? '#c8c8c8' : hair;
+    if (side) { if (E === 'narrow') { q(8, ey + 1, dk); q(9, ey + 1, dk); } else { q(8, ey, dk); q(8, ey + 1, dk); if (E === 'big') { q(9, ey, dk); q(9, ey + 1, dk); q(9, ey, '#fff'); } } q(7, ey + 4, shade(skin, 0.7)); }
+    else {
+      if (E === 'narrow') { p(7, ey + 1, dk); p(8, ey + 1, dk); p(15, ey + 1, dk); p(16, ey + 1, dk); }
+      else if (E === 'big') { for (const x of [7, 15]) { p(x, ey, dk); p(x + 1, ey, dk); p(x, ey + 1, dk); p(x + 1, ey + 1, dk); p(x, ey, '#fff'); } }
+      else { p(8, ey, dk); p(8, ey + 1, dk); p(15, ey, dk); p(15, ey + 1, dk); p(9, ey, '#fff'); p(14, ey, '#fff'); }
+      p(11, ey + 4, shade(skin, 0.7)); p(12, ey + 4, shade(skin, 0.7)); p(7, ey + 2, shade(skin, 0.92)); p(16, ey + 2, shade(skin, 0.92));
+    }
+    // brows
+    const B = L.brow;
+    if (B && B !== 'none') {
+      if (side) { const by = ey - 2; q(7, by + (B === 'sad' ? 0 : 0), bc0); q(8, by + (B === 'angry' ? 1 : 0), bc0); q(9, by + (B === 'sad' ? 1 : 0), bc0); if (B === 'thick') { q(7, by - 1, bc0); q(8, by - 1, bc0); } }
+      else { const by = ey - 2, L1 = [[7, 0], [8, 0], [9, 0]], tilt = B === 'angry' ? [0, 0, 1] : B === 'sad' ? [1, 0, 0] : [0, 0, 0];
+        L1.forEach(([x], k) => { p(x, by + tilt[k], bc0); p(23 - x, by + tilt[k], bc0); }); if (B === 'thick') { p(7, by - 1, bc0); p(8, by - 1, bc0); p(15, by - 1, bc0); p(16, by - 1, bc0); } if (B === 'thin') { p(9, by, null); } }
+    }
+    // marks: a scar, a mole, an earring, tattoos, blushing cheeks
+    if (L.mark === 'scar') { if (side) { q(9, ey + 2, shade(skin, 0.62)); q(10, ey + 3, shade(skin, 0.62)); q(11, ey + 4, shade(skin, 0.62)); } else { p(14, ey + 2, shade(skin, 0.62)); p(15, ey + 3, shade(skin, 0.62)); p(16, ey + 4, shade(skin, 0.62)); } }
+    if (L.mark === 'mole') { if (side) q(9, ey + 3, '#3a2418'); else p(14, ey + 3, '#3a2418'); }
+    if (L.mark === 'earring') { if (side) { q(13, ey + 3, '#e8c860'); q(13, ey + 4, '#e8c860'); } else { p(5, ey + 3, '#e8c860'); p(18, ey + 3, '#e8c860'); } }
+    if (L.mark === 'tattoo') { const tc = '#3a5a8a'; if (side) { q(10, ey + 2, tc); q(11, ey + 2, tc); } else { p(7, ey + 3, tc); p(7, ey + 4, tc); p(16, ey + 3, tc); p(16, ey + 4, tc); } }
+    if (L.mark === 'blush' || L.lady) { if (!side) { p(7, ey + 3, '#f0909a'); p(16, ey + 3, '#f0909a'); } else q(8, ey + 3, '#f0909a'); }
     if (L.patch) { if (side) qr(7, ey - 1, 3, 3, '#1a1a1a'); else qr(14, ey - 1, 3, 3, '#1a1a1a'); }
     // beards
     const bc = L.beardC || '#1a1410';
@@ -142,6 +200,9 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
     if (L.beard === 'short') { if (side) qr(7, ey + 4, 4, 2, bc); else qr(9, ey + 4, 6, 2, bc); }
     if (L.beard === 'goatee') { if (side) qr(7, ey + 5, 2, 3, bc); else qr(11, ey + 5, 2, 3, bc); }
     if (L.beard === 'thin') { if (side) qr(7, ey + 5, 2, 4, bc); else { qr(11, ey + 5, 2, 5, bc); p(9, ey + 4, bc); p(14, ey + 4, bc); } }
+    if (L.beard === 'mustache') { if (side) qr(6, ey + 3, 3, 1, bc); else { qr(9, ey + 3, 6, 1, bc); p(8, ey + 4, bc); p(15, ey + 4, bc); } }
+    if (L.beard === 'sideburns') { if (side) qr(11, ey, 2, 5, bc); else { qr(6, ey, 1, 5, bc); qr(17, ey, 1, 5, bc); qr(7, ey + 4, 1, 2, bc); qr(16, ey + 4, 1, 2, bc); } }
+    if (L.beard === 'full') { if (side) { qr(6, ey + 2, 6, 6, bc); qr(7, ey + 8, 4, 2, bc); } else { qr(6, ey + 2, 2, 4, bc); qr(16, ey + 2, 2, 4, bc); qr(7, ey + 4, 10, 4, bc); qr(9, ey + 8, 6, 2, bc); p(11, ey + 4, skin); p(12, ey + 4, skin); } }
   }
   // headgear
   const hc = L.hatC, hcD = hc && shade(hc, 0.7), hcL = hc && shade(hc, 1.25);
@@ -159,9 +220,11 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
     case 'taoist': qr(9, hy - 4, 6, 4, hc); qr(8, hy - 1, 8, 1, '#c8a060'); break;
     case 'feather': qr(6, hy, 12, 2, '#c8a040'); for (let k = 0; k < 5; k++) { qr(6 + k * 3, hy - 5, 2, 5, k % 2 ? hc : '#e8e8e8'); } break;
     case 'fur': qr(5, hy - 2, 14, 5, hc); qr(5, hy - 2, 14, 1, shade(hc, 1.3)); qr(5, hy + 3, 14, 1, '#d8c8a8'); break;
-    case 'lady': qr(6, hy - 3, 12, 5, hair); qr(9, hy - 5, 6, 3, hair); p(16, hy - 3, '#e8c860'); p(17, hy - 4, '#e85a8a'); break;
+    case 'lady': qr(6, hy - 3, 12, 5, hair); qr(9, hy - 5, 6, 3, hair); p(16, hy - 3, '#e8c860'); p(17, hy - 4, L.pin || '#e85a8a'); p(7, hy - 3, L.pin || '#e85a8a'); break;
+    case 'crown2': qr(8, hy - 2, 8, 3, hc); qr(8, hy - 2, 8, 1, hcL); qr(11, hy - 4, 2, 2, hc); p(11, hy - 1, '#e83a2a'); p(12, hy - 1, '#e83a2a'); break;
     case 'straw': qr(3, hy - 1, 18, 2, '#d8b860'); qr(7, hy - 3, 10, 2, '#c8a850'); break;
   }
+  if (!L.hat && (L.hairStyle === 'bun' || L.hairStyle === 'tail') && !back) { qr(10, hy - 3, 4, 3, hair); qr(9, hy - 1, 6, 1, L.pin || '#c8a060'); }
   // the weapon (not seen from the back except the top of a polearm)
   const w = L.wpn, hand = side ? [11 + armSwing, y0 + 23] : [bx + bw + 1, y0 + 23];
   const wq = side ? q : p, wood = '#8a5a2a', steel = '#d8dce8', steelD = '#8a90a0';

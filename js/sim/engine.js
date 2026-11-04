@@ -58,7 +58,7 @@ export function newGame(o = {}) {
   for (const [a, b] of S.ally || []) G.factions[a].allies[b] = G.factions[b].allies[a] = 36;
   for (const [a, b] of S.truce || []) G.factions[a].truce[b] = G.factions[b].truce[a] = 12;
   // generals
-  G.gens = GENERALS_RAW.trim().split('\n').map((line, id) => {
+  G.gens = GENERALS_RAW.trim().split('\n').filter((l) => l && !l.startsWith('//')).map((line, id) => {
     const [name, born, died, lead, war, int, pol, cha, fac, city, kin] = line.split(',');
     let b = +born, deathYear = +died + (G.opts.lifespan === 'long' ? 8 + Math.floor(r() * 10) : 0);
     if (S.allStars) { b = start - 20 - Math.floor(r() * 25); deathYear = start + 25 + Math.floor(r() * 30); }     // what-if: everyone is alive at once
