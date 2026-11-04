@@ -14,13 +14,15 @@ import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { Actions } from './actions.js';
 import { Screens } from './screens.js';
+import { Events } from './events.js';
+import { Story } from './story.js';
 
 const SAVE = 'sanguo-heroes-save-v1';
 const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 3] };
 
 class Game {
   constructor() {
-    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this);
+    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
@@ -116,7 +118,15 @@ class Game {
     this.camTo(sx, sz, true); this.view.season(this.G.month);
     this.audio.music('town');
     this.hud();
-    if (!snap) this.ui.toast(`<b>${C.name}</b>　${f ? f.name + '軍' : '無主之城'}　兵 ${C.troops}`);
+    if (!snap) { this.ui.toast(`<b>${C.name}</b>　${f ? f.name + '軍' : '無主之城'}　兵 ${C.troops}`); setTimeout(() => this.happen('town'), 500); }
+  }
+  // stories first, then the random events of the place
+  async happen(where) {
+    if (this.ui.busy || this.locked || !this.G || (this.mode !== 'town' && this.mode !== 'world')) return;
+    if (where === 'town') { if (await this.story.check('town')) return; await this.events.maybe('w', 0.3); }
+    if (where === 'walk') await this.events.maybe('w', 0.15);
+    if (where === 'field') await this.events.maybe('f', 0.1);
+    if (where === 'month') await this.story.check('month');
   }
   townNPCs() {
     const M = this.town, C = this.G.cities[M.city]; this.npcs = [];
@@ -168,6 +178,7 @@ class Game {
     const P = this.pos;
     if (this.mode === 'town') {
       if (P.z >= this.town.H - 1) { this.leaveTown(); return; }
+      this.townSteps = (this.townSteps || 0) + 1; if (this.townSteps % 20 === 0) this.happen('walk');
       const door = this.town.doors.find((d) => d.x === P.x && d.z === P.z); if (door) { this.act.building(door); return; }
       return;
     }
@@ -177,7 +188,8 @@ class Game {
     if (this.H.walk % 10 === 0) { this.H.days++; if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; } }
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
-    if (this.steps > 5 && Math.random() < (ENC[k] || 0)) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); }
+    if (this.steps > 5 && Math.random() < (ENC[k] || 0)) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); return; }
+    if (this.H.walk % 10 === 0) this.happen('field');
     if (this.H.walk % 10 === 0) this.hud();
   }
   bump(x, z) {
@@ -231,6 +243,7 @@ class Game {
     // the end: the years are up, the realm is one, or the player's general has died
     if (G.over || G.year >= this.H.endYear || g.status === 'dead') { this.screens.ending(); return; }
     if (G.month === 1) this.ui.toast(`<b>${G.year}年</b>　距離結束還有 ${this.H.endYear - G.year} 年`, 3000);
+    setTimeout(() => this.happen('month'), 300);
   }
   march(from, to, color, win) {
     if (this.mode !== 'world') return;

@@ -75,9 +75,10 @@ export class Actions {
   }
   // ---------------------------------------------------------------- talking
   async talk(n) {
-    if (n.gen == null) { n.a.dir = this.faceTo(n.a); this.g.view.placeActor(n.a); await this.ui.say(n.guard ? '守城士兵' : '百姓', n.line, n.look); return; }
+    if (n.gen == null) { n.a.dir = this.faceTo(n.a); this.g.view.placeActor(n.a); if (await this.g.events.maybe('t', n.guard ? 0.25 : 0.4, n)) return; await this.ui.say(n.guard ? '守城士兵' : '百姓', n.line, n.look); return; }
     const G = this.G, x = G.gens[n.gen], f = x.status === 'serving' && G.factions[x.fac], me = this.me, mine = this.g.myFaction();
     n.a.dir = this.faceTo(n.a); this.g.view.placeActor(n.a);
+    if (await this.g.events.maybe('t', 0.15, n)) return;
     const sameSide = f && mine === x.fac, look = this.g.lookOf(x), age = G.year - x.born;
     const info = `${x.name}（${age}歲）${f ? `　${f.name}軍${G.factions[x.fac].lord === x.id ? '・君主' : ''}` : '　在野'}\n統率 ${x.lead}　武力 ${x.war}　智力 ${x.int}　政治 ${x.pol}　魅力 ${x.cha}${G.items.some((it) => it.holder === x.id) ? `\n寶物：${G.items.filter((it) => it.holder === x.id).map((it) => itemName(it.key)).join('、')}` : ''}`;
     const opts = [{ k: 'talk', n: '交談' }];
