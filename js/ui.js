@@ -11,6 +11,7 @@ export class UI {
       const k = e.key; const map = { ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right', Enter: 'ok', z: 'ok', Z: 'ok', ' ': 'ok', Escape: 'back', x: 'back', X: 'back', Backspace: 'back' };
       if (map[k]) { e.preventDefault(); e.stopImmediatePropagation(); top(map[k]); }
     }, true);
+    addEventListener('mousemove', (e) => { const m = UI.mouse; if (!m || Math.abs(m.x - e.screenX) + Math.abs(m.y - e.screenY) > 2) UI.moved = true; UI.mouse = { x: e.screenX, y: e.screenY }; }, true);
   }
   get busy() { return this.stack.length > 0; }
   push(fn) { this.stack.push(fn); }
@@ -23,15 +24,28 @@ export class UI {
     return new Promise((res) => {
       const host = o.host || this.layer, box = document.createElement('div'); box.className = 'menu ' + (o.cls || '');
       let sel = Math.max(0, opts.findIndex((x, i) => !x.off && i >= (o.start || 0)));
+      // the list is built once; moving the selection only changes classes and the description, so the menu never jumps
+      const list = () => `${o.title ? `<div class="m-title">${o.title}</div>` : ''}<div class="m-list">${opts.map((x, i) => `<div class="m-it${x.off ? ' off' : ''}" data-i="${i}"><span>${x.n}</span>${x.sub != null ? `<small>${x.sub}</small>` : ''}</div>`).join('')}</div>${opts.some((x) => x.d) || o.info ? '<div class="m-desc"></div>' : ''}`;
       const draw = () => {
-        box.innerHTML = `${o.title ? `<div class="m-title">${o.title}</div>` : ''}<div class="m-list">${opts.map((x, i) => `<div class="m-it${i === sel ? ' sel' : ''}${x.off ? ' off' : ''}" data-i="${i}"><span>${x.n}</span>${x.sub != null ? `<small>${x.sub}</small>` : ''}</div>`).join('')}</div>${opts[sel]?.d ? `<div class="m-desc">${opts[sel].d}</div>` : o.info ? `<div class="m-desc">${o.info(sel) || ''}</div>` : ''}`;
-        box.querySelectorAll('.m-it').forEach((el) => { el.onclick = () => { const i = +el.dataset.i; if (opts[i].off) return; if (sel === i || !o.info) done(opts[i].k); else { sel = i; draw(); o.hover?.(sel); } }; el.onmouseenter = () => { const i = +el.dataset.i; if (i !== sel && !('ontouchstart' in window)) { sel = i; draw(); o.hover?.(sel); } }; });
+        box.querySelectorAll('.m-it').forEach((el) => el.classList.toggle('sel', +el.dataset.i === sel));
+        const de = box.querySelector('.m-desc'); if (de) de.innerHTML = opts[sel]?.d || (o.info ? o.info(sel) || '' : '');
         box.querySelector('.m-it.sel')?.scrollIntoView({ block: 'nearest' });
+        // the menu only grows, never shrinks, and stays where it opened: an item cannot slide under a resting cursor
+        const hgt = box.offsetHeight; if (hgt > (box._h || 0)) { box._h = hgt; box.style.minHeight = hgt + 'px'; }
+        if (box.isConnected && getComputedStyle(box).position === 'fixed') { const r = box.getBoundingClientRect(); box.style.transform = 'none'; box.style.bottom = 'auto'; box.style.top = Math.max(4, Math.min(r.top, innerHeight - r.height - 4)) + 'px'; if (getComputedStyle(box).right === 'auto' || box.classList.contains('yn')) { box.style.left = r.left + 'px'; box.style.right = 'auto'; } }
       };
-      const move = (d) => { if (!opts.length) return; let i = sel; for (let n = 0; n < opts.length; n++) { i = (i + d + opts.length) % opts.length; if (!opts[i].off) break; } sel = i; draw(); o.hover?.(sel); this.game.audio?.sfx('move'); };
+      const pick = (i) => { if (i === sel || opts[i].off) return; sel = i; draw(); o.hover?.(sel); };
+      box.innerHTML = list();
+      box.querySelectorAll('.m-it').forEach((el) => {
+        const i = +el.dataset.i;
+        el.onclick = () => { if (opts[i].off) return; if (sel === i || !o.info) done(opts[i].k); else pick(i); };
+        // only a mouse that really moved picks: not one the list scrolled or the keyboard moved under it
+        el.onmousemove = () => { if (UI.moved && !('ontouchstart' in window)) pick(i); };
+      });
+      const move = (d) => { if (!opts.length) return; let i = sel; for (let n = 0; n < opts.length; n++) { i = (i + d + opts.length) % opts.length; if (!opts[i].off) break; } sel = i; UI.moved = false; draw(); o.hover?.(sel); this.game.audio?.sfx('move'); };
       const done = (v) => { this.pop(h); box.remove(); this.game.audio?.sfx(v == null ? 'cancel' : 'ok'); res(v); };
       const h = (k) => { if (k === 'up') move(-1); if (k === 'down') move(1); if (k === 'left' && o.lr) o.lr(-1, sel, done); if (k === 'right' && o.lr) o.lr(1, sel, done); if (k === 'ok' && opts[sel] && !opts[sel].off) done(opts[sel].k); if (k === 'back' && !o.noBack) done(null); };
-      this.push(h); host.appendChild(box); draw(); o.hover?.(sel);
+      UI.moved = false; this.push(h); host.appendChild(box); draw(); o.hover?.(sel);
       if (o.onOpen) o.onOpen(box, done);
     });
   }
