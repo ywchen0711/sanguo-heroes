@@ -73,7 +73,8 @@ export class UI {
       this.layer.appendChild(box);
       const body = box.querySelector('.p-body');
       const close = () => { this.pop(h); box.remove(); res(); };
-      const h = (k) => { if (k === 'back' || (k === 'ok' && !o.keepOk)) close(); if (k === 'up') body.scrollTop -= 60; if (k === 'down') body.scrollTop += 60; if (o.onKey) o.onKey(k, box); };
+      // a panel with its own keys (onKey) moves its own cursor instead of scrolling; onBack can keep it open
+      const h = (k) => { if (k === 'back') { if (o.onBack && o.onBack(box)) return; close(); return; } if (k === 'ok' && !o.keepOk) { close(); return; } if (o.onKey) { o.onKey(k, box); return; } if (k === 'up') body.scrollTop -= 60; if (k === 'down') body.scrollTop += 60; };
       box.querySelector('.p-x').onclick = close; this.push(h); o.onOpen?.(box, close);
     });
   }

@@ -8,6 +8,8 @@ import { serve, die, record, pickGovernor, destroy, give, hostile, allied, citie
 import { itemName, spellName } from './sim/text.js';
 import { EQUIP, WEAPONS, ARMORS, HORSES, ITEMS, RANKS, rankOf, newRec, solMax, spMax, bstats, gainExp, startLv, STAT_N, expNeed, shopItems, usable, FORGE, forgeOf, eqName, TROOPS, hasHorse } from './hero.js';
 import { deed, bump, hasT, checkTitles, knownAs, TITLES } from './deeds.js';
+import { itemOf, isRelic, relicFx, partyFx, rollRelic, giveRelic, relicExp, powerLines as powerLinesOf, RELICS, PRICE, GRADE_N, GRADE_C, SLOT_N } from './relics.js';
+import { equipScreen } from './equip.js';
 import { addBond, offerOaths, versus, drink, isSworn, isRival, bondOf, bondsHTML } from './bonds.js';
 import { mark, dexScreen } from './dex.js';
 import { meetSage, sageOpts, sageGen, sageRumor } from './sages.js';
@@ -80,6 +82,7 @@ export class Actions {
       if (hid.length && Math.random() < (hasT(this.H, 'tanxian') ? 0.55 : 0.35)) { const it = pick(hid); give(this.G, it, this.me); this.H.fame += 40; record(this.G, 'item', 'itemFind', { g: this.me.name, c: q.name, it: it.key }, this.g.myFaction(), 2, { g: this.me.id }); await this.ui.say('', `寶箱裡竟然是傳說中的「${itemName(it.key)}」！\n${Object.entries(it.fx).map(([k, v]) => `${STAT_N[k]} +${v}`).join('　')}`); return; }
       const t = q.tier, opts = [`item:ore*${1 + rint(0, t)}`, `gold+${30 + t * 30} item:ore${t >= 3 ? ' item:ore2' : ''}`, `gold+${60 + t * 70 + rint(0, 60)}`, `gold+${40 + t * 40} item:med2`, `item:med*2 item:book`, `eq:w${Math.min(7, 2 + t + rint(0, 1))}`, `eq:a${Math.min(7, 2 + t + rint(0, 1))}`, `gold+${30 + t * 30} item:rice item:wine`];
       const notes = await this.g.events.effects(pick(opts).split(' '), c, {});
+      if (Math.random() < 0.4) { const id = rollRelic(this.avgLv(), Math.min(5, q.tier)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', '打開了寶箱！\n' + notes.join('　')); this.g.hud(); return;
     }
     const i = M.odd.indexOf(th); await this.caveOdd(th.kind, i, st, q, c);
@@ -119,6 +122,7 @@ export class Actions {
       bump(this.H, 'caves'); deed(this.g, `入${q.name}，誅${B.name}`); for (const id of this.H.party) addBond(this.g, id, 5); checkTitles(this.g);
       if (this.me.status === 'serving') { this.me.merit += 10 * t; this.promote(); }
       this.H.st.missions++;
+      { const id = rollRelic(this.avgLv() + 4, Math.min(5, q.tier + 1)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', `打倒了${q.name}的${B.name}！\n${notes.join('　')}`); this.g.hud(); return;
     }
     if (n.special === 'elder') {
@@ -143,9 +147,10 @@ export class Actions {
   // ---------------------------------------------------------------- the menu
   async menu() {
     if (this.ui.busy) return;
-    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'items', n: '道具' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'save', n: '存檔' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
+    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'save', n: '存檔' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
     if (k === 'status') await this.g.screens.status();
     if (k === 'party') await this.partyMenu();
+    if (k === 'equip') await equipScreen(this.g);
     if (k === 'items') await this.useItems();
     if (k === 'missions') await this.g.screens.missions();
     if (k === 'news') await this.g.screens.news();
@@ -167,8 +172,9 @@ export class Actions {
       const k = await this.ui.choose(list.map((p, i) => ({ k: i, n: `${p.g.name}　Lv${p.rec.lv}`, sub: `${TROOPS[this.troopOf(p)].n}　兵 ${p.rec.sol}/${p.solMax}`, d: `統${p.g.lead} 武${p.g.war} 智${p.g.int} 政${p.g.pol} 魅${p.g.cha}　策略 ${p.rec.sp}/${p.spMax}${i ? `　${isSworn(this.H, p.g.id) ? '結義兄弟' : `好感 ${bondOf(this.H, p.g.id)}`}` : ''}` })), { title: '隊伍' });
       if (k == null) return;
       const p = list[k];
-      const c = await this.ui.choose([{ k: 'info', n: '詳細' }, { k: 'troop', n: `兵種（${TROOPS[this.troopOf(p)].n}）` }, ...(k ? [{ k: 'leave', n: '離隊', off: isSworn(this.H, p.g.id), d: isSworn(this.H, p.g.id) ? '結義兄弟不會離開你' : '' }] : [])], { title: p.g.name, cls: 'small' });
+      const c = await this.ui.choose([{ k: 'info', n: '詳細' }, { k: 'equip', n: '裝備' }, { k: 'troop', n: `兵種（${TROOPS[this.troopOf(p)].n}）` }, ...(k ? [{ k: 'leave', n: '離隊', off: isSworn(this.H, p.g.id), d: isSworn(this.H, p.g.id) ? '結義兄弟不會離開你' : '' }] : [])], { title: p.g.name, cls: 'small' });
       if (c === 'info') await this.g.screens.status(k ? p.g.id : undefined);
+      if (c === 'equip') await equipScreen(this.g, k);
       if (c === 'troop') { const t = await this.ui.choose(Object.entries(TROOPS).map(([id, T]) => ({ k: id, n: T.n, d: T.d, off: id === 'cav' && !hasHorse(this.G, p.g, p.rec) })).concat([{ k: null, n: '返回' }]), { title: `${p.g.name}的兵種` }); if (t) { p.rec.troop = t; this.ui.toast(`${p.g.name}改率${TROOPS[t].n}`); } }
       if (c === 'leave' && await this.ui.yesno(`讓${p.g.name}離開隊伍？`)) { p.g.follow = null; this.H.party = this.H.party.filter((x) => x !== p.g.id); this.g.respawnParty(); this.g.hud(); }
     }
@@ -222,7 +228,7 @@ export class Actions {
   async recruit(x, npc) {
     const H = this.H, me = this.me, mine = this.g.myFaction();
     if (H.party.length >= 4) { await this.ui.say(x.name, '你的隊伍已經滿了。（最多五人同行）', this.g.lookOf(x)); return; }
-    let p = 0.18 + (me.cha - 50) / 110 + H.fame / 1600 - (x.refused || 0) * 0.08 + (x.prefer && x.prefer === mine ? 0.25 : 0);
+    let p = 0.18 + partyFx(this.g, 'recruit') + (me.cha - 50) / 110 + H.fame / 1600 - (x.refused || 0) * 0.08 + (x.prefer && x.prefer === mine ? 0.25 : 0);
     if (me.war + me.int + me.lead > x.war + x.int + x.lead + 30) p += 0.1;
     if (hasT(H, 'renyi')) p += 0.1; if (hasT(H, 'jianu')) p -= 0.15; if (hasT(H, 'canbao')) p -= 0.1; p += bondOf(H, x.id) / 200;
     if ((H.items.wine || 0) > 0 && await this.ui.yesno(`要送上美酒嗎？（剩 ${H.items.wine}）`)) { H.items.wine--; p += 0.25; }
@@ -242,7 +248,7 @@ export class Actions {
   async duelWith(x, kind, npc) {
     const G = this.G, me = this.me, f = x.status === 'serving' && G.factions[x.fac];
     if (kind === 'kill' && !await this.ui.yesno(`真的要向${x.name}挑戰生死決鬥嗎？\n${f ? `會與${f.name}軍結仇。` : ''}`)) return;
-    const rec = this.H.rec[me.id], a = { name: me.name, look: this.g.lookOf(me), lv: rec.lv, st: bstats(me, rec), isPlayer: true }, b = this.duelFoe(x);
+    const rec = this.H.rec[me.id], a = { name: me.name, look: this.g.lookOf(me), lv: rec.lv, st: bstats(me, rec), isPlayer: true, arms: relicFx(rec) }, b = this.duelFoe(x);
     this.g.mode = 'battle'; this.g.audio.music('battle');
     const r = await this.g.battle.soloDuel(a, b, { noFlee: kind === 'kill' });
     this.g.battle.close(); this.g.mode = 'town'; this.g.audio.music('town');
@@ -375,21 +381,51 @@ export class Actions {
   async shop(C) {
     const tierMax = C.size * 2, stock = [...WEAPONS, ...ARMORS, ...HORSES].filter((w) => w[4] <= tierMax), pm = priceMul(this.g, C.id >= 0 ? C.id : null), P = (n) => Math.round(n * pm);
     for (;;) {
-      const top = await this.ui.choose([{ k: 'buy', n: '買裝備' }, { k: 'forge', n: '鍛造強化', d: `鐵匠用礦石把武器、防具打得更好（鐵礦石 ${this.H.items.ore || 0}、玄鐵 ${this.H.items.ore2 || 0}）` }, { k: null, n: '離開' }], { title: `武具店　金 ${this.H.gold}${pm > 1.2 ? '　（饑荒，物價上漲）' : ''}` });
+      const top = await this.ui.choose([{ k: 'buy', n: '買裝備' }, { k: 'sell', n: '出售背包裡的東西', sub: (this.H.bag || []).length || '', off: !(this.H.bag || []).length }, { k: 'forge', n: '鍛造強化', d: `鐵匠用礦石把武器、防具打得更好（鐵礦石 ${this.H.items.ore || 0}、玄鐵 ${this.H.items.ore2 || 0}）` }, { k: null, n: '離開' }], { title: `武具店　金 ${this.H.gold}${pm > 1.2 ? '　（饑荒，物價上漲）' : ''}` });
       if (!top) return;
       if (top === 'forge') { await this.forge(); continue; }
+      if (top === 'sell') { await this.sellBag(); continue; }
       const k = await this.ui.choose(stock.map(([id, n, v, price0]) => { const price = P(price0); return { k: id, n, sub: `${price} 金`, d: `${{ w: '武器　攻擊', a: '防具　防禦', h: '坐騎　速度' }[EQUIP[id].kind]} +${v}${EQUIP[id].kind === 'h' ? `，兵力上限 +${v * 25}` : ''}`, off: this.H.gold < price }; }).concat([{ k: null, n: '返回' }]), { title: `武具店　金 ${this.H.gold}` });
       if (!k) continue;
       const E = EQUIP[k], list = this.g.partyList();
-      const who = await this.ui.choose(list.map((p, i) => { const cur = p.rec.eq[E.kind]; return { k: i, n: p.g.name, sub: cur ? `${EQUIP[cur].n}（+${EQUIP[cur].v}）` : '無' }; }).concat([{ k: null, n: '返回' }]), { title: `${E.n} 給誰？` });
+      const who = await this.ui.choose(list.map((p, i) => { const cur = itemOf(p.rec.eq[E.kind]); return { k: i, n: p.g.name, sub: cur ? `${cur.n}（+${cur.v}）` : '無' }; }).concat([{ k: null, n: '返回' }]), { title: `${E.n} 給誰？` });
       if (who == null) continue;
       const p = list[who], old = p.rec.eq[E.kind];
-      this.H.gold -= P(E.price); if (old) this.H.gold += Math.round(EQUIP[old].price / 2);
+      // a shop piece taken off is sold at half price; a treasure goes into the bag
+      this.H.gold -= P(E.price); const oldIt = itemOf(old);
+      if (old && oldIt.shop) this.H.gold += Math.round(oldIt.price / 2); else if (old) { this.H.bag ||= []; this.H.bag.push({ ...old, forge: p.rec.forge?.[E.kind] || 0 }); }
       p.rec.eq[E.kind] = k; if (p.rec.forge) p.rec.forge[E.kind] = 0; if (E.kind === 'h') p.rec.sol = Math.min(solMax(p.g, p.rec), p.rec.sol);
-      this.g.audio.sfx('coin'); this.ui.toast(`${p.g.name}裝備了${E.n}${old ? `（舊的${EQUIP[old].n}以半價賣出）` : ''}`);
+      this.g.audio.sfx('coin'); this.ui.toast(`${p.g.name}裝備了${E.n}${old ? oldIt.shop ? `（舊的${oldIt.n}以半價賣出）` : `（${oldIt.n}放進了背包）` : ''}`);
+    }
+  }
+  // the treasure merchant of a big city: four pieces, new every three months
+  merchantStock(C) {
+    const G = this.G, seed = (C.id + 1) * 7919 + Math.floor(G.t / 3) * 104729; let a = seed >>> 0 || 1; const r = () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; };
+    const ids = Object.keys(RELICS), maxG = Math.min(5, C.size + 1), out = [];
+    for (let i = 0; i < 40 && out.length < 4; i++) { const id = ids[Math.floor(r() * ids.length)]; if (RELICS[id].grade <= maxG && !out.includes(id)) out.push(id); }
+    return out.sort((x, y) => RELICS[x].grade - RELICS[y].grade);
+  }
+  async merchant(C) {
+    const H = this.H, pm = priceMul(this.g, C.id), P = (g) => Math.round(PRICE[g] * pm); H.bought ||= {};
+    for (;;) {
+      const key = `${C.id}:${Math.floor(this.G.t / 3)}`, stock = this.merchantStock(C).filter((id) => !(H.bought[key] || []).includes(id));
+      const k = await this.ui.choose(stock.map((id) => { const R = RELICS[id], e = { id, lv: 1 }; return { k: id, n: `<span style="color:${GRADE_C[R.grade]}">${R.n}</span>`, sub: `${GRADE_N[R.grade]}・${SLOT_N[R.slot]}　${P(R.grade)} 金`, d: `${R.d}<br>${powerLinesOf(e).map((l) => `【${l.n}】${l.d}`).join('<br>')}`, off: H.gold < P(R.grade) }; }).concat([{ k: null, n: stock.length ? '離開' : '（今天的貨賣完了）離開' }]), { title: `寶物商人　金 ${H.gold}`, cls: 'wide' });
+      if (!k) return;
+      H.gold -= P(RELICS[k].grade); (H.bought[key] ||= []).push(k); giveRelic(this.g, k); this.g.audio.sfx('coin'); this.g.hud();
+    }
+  }
+  async sellBag() {
+    const H = this.H;
+    for (;;) {
+      const bag = H.bag || []; if (!bag.length) return;
+      const k = await this.ui.choose(bag.map((e, i) => { const it = itemOf(e); return { k: i, n: it.shop ? it.n : `<span style="color:${it.color}">${it.n}</span>${it.lv > 1 ? ` Lv${it.lv}` : ''}`, sub: `${Math.round(it.price / 2)} 金`, d: it.shop ? `${SLOT_N[it.slot]}・商店貨` : `${GRADE_N[it.grade]}・${SLOT_N[it.slot]}　${powerLinesOf(e).map((l) => `【${l.n}】${l.d}`).join('　')}` }; }).concat([{ k: null, n: '返回' }]), { title: `出售　金 ${H.gold}`, cls: 'wide' });
+      if (k == null) return;
+      const e = bag[k], it = itemOf(e); if (!it.shop && it.grade >= 4 && !await this.ui.yesno(`真的要賣掉${GRADE_N[it.grade]}「${it.n}」嗎？`)) continue;
+      H.bag.splice(k, 1); H.gold += Math.round(it.price / 2); this.g.audio.sfx('coin');
     }
   }
   async goods(C) {
+    if (C.size >= 2 && C.id >= 0) { const w = await this.ui.choose([{ k: 'items', n: '道具' }, { k: 'relic', n: '寶物商人', d: '這座城的寶物商人，每三個月進一次新貨' }, { k: null, n: '離開' }], { title: `${C.name}・道具店` }); if (!w) return; if (w === 'relic') return this.merchant(C); }
     const pm = priceMul(this.g, C.id >= 0 ? C.id : null), P = (n) => Math.round(n * pm);
     for (;;) {
       const k = await this.ui.choose(shopItems().map(([id, I]) => ({ k: id, n: I.n, sub: `${P(I.price)} 金　持有 ${this.H.items[id] || 0}`, d: I.d, off: this.H.gold < P(I.price) })).concat([{ k: null, n: '離開' }]), { title: `道具店　金 ${this.H.gold}${pm > 1.2 ? '　（饑荒，物價上漲）' : ''}` });
@@ -493,6 +529,7 @@ export class Actions {
     const r = await this.fight(foes, { terrain: this.terrainAt(), title: `「${m.boss}」率領賊眾殺了過來！`, noFlee: false });
     if (r === 'win') {
       if (hasT(this.H, 'xiake')) { m.gold = Math.round(m.gold * 1.25); m.fame = Math.round(m.fame * 1.25); }
+      if (Math.random() < 0.35) { const id = rollRelic(m.lv, 2); giveRelic(this.g, id); }
       m.done = true; this.H.gold += m.gold; this.H.fame += m.fame; this.H.st.missions++; if (m.official && this.me.status === 'serving') { this.me.merit += m.merit; this.promote(); }
       await this.ui.say('', `討伐了「${m.boss}」！\n得到 ${m.gold} 金${m.official ? `、功績 ${m.merit}` : ''}、名聲 ${m.fame}。`);
       const p = this.g.view.M.props?.find((q) => q.kind === 'banner' && q.x === m.x && q.z === m.z); if (p) { this.g.view.mapGroup.remove(p.obj); const l = this.g.view.labels.find((l) => l.obj === p.obj); if (l) this.g.view.removeLabel(l); }
@@ -534,13 +571,18 @@ export class Actions {
     let msg = '', ups = [];
     if (out.result === 'win') {
       this.H.st.wins++;
-      const exp = Math.round(foes.reduce((s, x) => s + 10 + x.lv * 7 + x.solMax / 22, 0) * (o.drill ? 0.6 : 1) * (hasT(this.H, 'baizhan') ? 1.1 : 1)), gold = o.drill ? 0 : Math.round(foes.reduce((s, x) => s + x.lv * 6 + Math.random() * x.lv * 5, 0));
-      this.H.gold += gold; this.H.fame += o.drill ? 0 : foes.length;
+      const exp = Math.round(foes.reduce((s, x) => s + 10 + x.lv * 7 + x.solMax / 22, 0) * (o.drill ? 0.6 : 1) * (hasT(this.H, 'baizhan') ? 1.1 : 1) * (1 + partyFx(g, 'exp'))), gold = o.drill ? 0 : Math.round(foes.reduce((s, x) => s + x.lv * 6 + Math.random() * x.lv * 5, 0) * (1 + partyFx(g, 'gold')));
+      this.H.gold += gold; this.H.fame += o.drill ? 0 : Math.round(foes.length * (1 + partyFx(g, 'fame')));
       for (const p of party) for (const u of gainExp(G, p.g, p.rec, exp)) ups.push(`${p.g.name} 升到 Lv${u.lv}！${u.grow.map((k) => STAT_N[k] + '+1').join(' ')}`);
       msg = `勝利！\n經驗 +${exp}${gold ? `　金 +${gold}` : ''}${ups.length ? '\n' + ups.join('\n') : ''}`;
       if (ups.length) g.audio.sfx('level');
       // now and then the defeated leave something behind
       if (!o.drill && Math.random() < 0.15) { const it = pick(['med', 'med', 'rice', 'book', 'med2']); this.H.items[it] = (this.H.items[it] || 0) + 1; msg += `\n得到了${ITEMS[it].n}。`; }
+      // a treasure left on the field: likelier from a named general or a chief
+      const named = foes.some((x) => x.gid != null || x.boss), chance = (named ? 0.14 : 0.05) + partyFx(g, 'drop');
+      if (!o.drill && !o.noRelic && Math.random() < chance) { const id = rollRelic(this.avgLv(), named ? 2 : 1); giveRelic(g, id, true); msg += `\n得到寶物「<b style="color:${GRADE_C[RELICS[id].grade]}">${RELICS[id].n}</b>」！（${GRADE_N[RELICS[id].grade]}・${SLOT_N[RELICS[id].slot]}）`; }
+      const mend = partyFx(g, 'mend'); if (mend && !o.drill) { for (const p of party) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * mend)); msg += `\n救護兵醫治了傷兵（兵力 +${Math.round(mend * 100)}%）。`; }
+      if (!o.drill) { const ru = relicExp(g, 1 + foes.length); if (ru.length) msg += '\n' + ru.join('\n'); }
     }
     if (!o.drill) {
       for (const p of party) { if (p.g.id !== this.H.pid) { mark(g, p.g.id, 3); if (out.result === 'win') addBond(g, p.g.id, 2); } }

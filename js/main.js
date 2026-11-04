@@ -20,6 +20,7 @@ import { deed, histDeaths, checkTitles, hasT, knownAs } from './deeds.js';
 import { mourn } from './bonds.js';
 import { mark } from './dex.js';
 import { sagesHere, SAGES } from './sages.js';
+import { partyFx, rollRelic, giveRelic, RELICS } from './relics.js';
 import { noteDisasters, enterStricken, disasterAt, DIS_N } from './disaster.js';
 
 const SAVE = 'sanguo-heroes-save-v1';
@@ -44,7 +45,8 @@ class Game {
     const f = g.status === 'serving' ? G.factions[g.fac] : null, lord = f && f.lord === g.id;
     this.H = { pid: g.id, gold: lord ? 1500 : f ? 500 : 300, fame: Math.round((g.lead + g.war + g.int + g.pol + g.cha) / 4) + (lord ? 200 : 0), items: { med: 3, rice: 1 }, party: [], rec: { [g.id]: newRec(g) },
       st: { wins: 0, battles: 0, bandits: 0, duels: 0, kills: [], cities: [], missions: 0, bestRank: 0 }, endYear: G.year + o.years, years: o.years, days: 0, missions: [], seenLog: G.log.length, scenario: o.scenario, startYear: G.year, news: [] };
-    this.H.rec[g.id].eq = { w: 'w2', a: 'a2', h: null };
+    this.H.rec[g.id].eq = { w: 'w2', a: 'a2', h: null, x: null }; this.H.bag = [];
+    { const ids = Object.keys(RELICS).filter((id) => RELICS[id].grade === 1 && RELICS[id].slot === 'x'); this.H.bag.push({ id: ids[Math.floor(Math.random() * ids.length)], lv: 1, exp: 0 }); }
     this.H.hist = histDeaths(G); this.H.startFac = f ? f.name : null; this.H.st.lastFac = f ? f.id : null;
     for (const [n, d] of Object.entries(this.H.hist)) if (n === g.name) delete this.H.hist[n];
     // the companions history gave them: the sworn brothers, and a lord's best generals
@@ -258,7 +260,7 @@ class Game {
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
-    if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (hasT(this.H, 'canbao') ? 0.6 : 1)) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); return; }
+    if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (hasT(this.H, 'canbao') ? 0.6 : 1) * (1 - partyFx(this, 'encounter'))) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); return; }
     if (this.H.walk % 10 === 0) this.happen('field');
     if (this.H.walk % 10 === 0) this.hud();
   }

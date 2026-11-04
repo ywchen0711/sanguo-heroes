@@ -76,7 +76,7 @@ export class Screens {
         <div class="st-grid"><span>統率 <b>${g.lead}</b></span><span>武力 <b>${g.war}</b></span><span>智力 <b>${g.int}</b></span><span>政治 <b>${g.pol}</b></span><span>魅力 <b>${g.cha}</b></span></div>
         <div>兵力 ${r.sol}/${solMax(g, r)}　策略 ${r.sp}/${spMax(g, r)}　經驗 ${r.exp}/${expNeed(r.lv)}</div>
         <div>攻擊 ${Math.round(st.atk)}　防禦 ${Math.round(st.def)}　速度 ${Math.round(st.spd)}</div>
-        <div>裝備：${['w', 'a', 'h'].map((k) => eqName(r, k)).join('／')}　兵種：${TROOPS[this.g.act.troopOf({ g, rec: r, look })].n}</div>
+        <div>裝備：${['w', 'a', 'h', 'x'].map((k) => eqName(r, k)).join('／')}　兵種：${TROOPS[this.g.act.troopOf({ g, rec: r, look })].n}</div>
         ${armsOf(G, g).list.map((A) => `<div class="arms">✦ ${A.n}：${A.d}</div>`).join('')}
         ${items.length ? `<div>寶物：${items.join('、')}</div>` : ''}<div class="dim">策略：${tac.join('、') || '無'}</div>
         ${gid !== H.pid ? `<div>${isSworn(H, gid) ? '<b style="color:#ffd86a">結義兄弟</b>' : `好感 ${bondOf(H, gid)}／100`}</div>` : ''}

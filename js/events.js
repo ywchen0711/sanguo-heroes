@@ -30,6 +30,7 @@ import { citiesOf, power, busy } from './sim/engine.js';
 import { regionAt, CITY_POS } from './world.js';
 import { LOOKS } from './sprites.js';
 import { checkTitles } from './deeds.js';
+import { itemOf, rollRelic, giveRelic, RELICS } from './relics.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -149,7 +150,8 @@ export class Events {
       if ((m = /^sol([+-])(\d+)$/.exec(t))) { const f = +m[2] / 100 * (m[1] === '-' ? -1 : 1); let tot = 0; for (const p of party) { const d = Math.round(p.solMax * f); const before = p.rec.sol; p.rec.sol = clamp(p.rec.sol + d, 10, p.solMax); tot += p.rec.sol - before; } notes.push(`兵力 ${tot >= 0 ? '+' : ''}${tot}`); continue; }
       if (t === 'heal') { for (const p of party) { p.rec.sol = p.solMax; p.rec.sp = p.spMax; } notes.push('全隊完全回復'); continue; }
       if ((m = /^item:(\w+)(?:\*(\d+))?$/.exec(t))) { const n = +(m[2] || 1); H.items[m[1]] = (H.items[m[1]] || 0) + n; notes.push(`${ITEMS[m[1]]?.n || m[1]} +${n}`); continue; }
-      if ((m = /^eq:(\w+)$/.exec(t))) { const E = EQUIP[m[1]], r = H.rec[H.pid], old = r.eq[E.kind]; if (!old || EQUIP[old].v < E.v) { r.eq[E.kind] = m[1]; notes.push(`得到${E.n}，裝備上了`); } else { H.gold += Math.round(E.price / 2); notes.push(`得到${E.n}（比身上的差，賣了 ${Math.round(E.price / 2)} 金）`); } continue; }
+      if ((m = /^eq:(\w+)$/.exec(t))) { const E = EQUIP[m[1]], r = H.rec[H.pid], old = r.eq[E.kind], oi = itemOf(old); if (!old || (oi.shop && oi.v < E.v)) { r.eq[E.kind] = m[1]; if (r.forge) r.forge[E.kind] = 0; notes.push(`得到${E.n}，裝備上了`); } else if (!oi.shop) { (H.bag ||= []).push({ sid: m[1] }); notes.push(`得到${E.n}（放進了背包）`); } else { H.gold += Math.round(E.price / 2); notes.push(`得到${E.n}（比身上的差，賣了 ${Math.round(E.price / 2)} 金）`); } continue; }
+      if ((m = /^relic(?::(\d))?$/.exec(t))) { const lv = this.g.act.avgLv(), id = rollRelic(lv, +(m[1] || 1)); giveRelic(this.g, id, true); notes.push(`得到寶物「${RELICS[id].n}」`); continue; }
       if ((m = /^stat:(\w+)$/.exec(t))) { if (g.base[m[1]] < 100) { g.base[m[1]]++; g[m[1]]++; } notes.push(`${STAT_N[m[1]]} +1`); continue; }
       if (t.startsWith('hint:')) { notes.push(this.hint(t.slice(5))); continue; }
       if (t === 'recruit') { const x = vars._free || G.gens.find((y) => y.status === 'free' && !busy(y) && y.city === (c.town?.id ?? -1)); if (x && H.party.length < 4) { x.follow = H.pid; H.party.push(x.id); const { newRec } = await import('./hero.js'); H.rec[x.id] ||= newRec(x); if (this.g.myFaction()) { const { serve } = await import('./sim/engine.js'); serve(G, x, this.g.myFaction(), g.city, 85); } notes.push(`${x.name}加入了隊伍！`); this.g.respawnParty(); } continue; }

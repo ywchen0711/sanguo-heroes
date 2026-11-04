@@ -10,6 +10,7 @@ import { LOOKS, shade, soldierSheet } from './sprites.js';
 import { TACTICS, tacticsOf, bstats, ITEMS, usable, armsOf, hasHorse, TROOPS, troopMul, FORMS } from './hero.js';
 import { hasT, bump } from './deeds.js';
 import { battleMods } from './bonds.js';
+import { relicFx } from './relics.js';
 import { FX } from './fx.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -73,7 +74,9 @@ export class Battle {
     this.ensureView(); this.root.classList.add('on'); this.partyColor = o.color || '#3a6ad8';
     this.stage(o.terrain, o.siege); this.o = o; this.round = 0; this.log = [];
     const G = this.game.G, H = this.game.H, wounded = H?.wound > G?.t;
-    const mk = (p) => { const g = p.g, r = p.rec, st = bstats(g, r), arms = armsOf(G, g);
+    const EXTRA = ['stun', 'breakdef', 'counter', 'bowPow', 'navyPow', 'again', 'tacDmg', 'tacCost', 'tacHit', 'healPow', 'spRegen', 'steal', 'regen', 'physRes', 'tacRes', 'block', 'noConfuse', 'revive', 'lowHeal', 'startRouse', 'auraAtk', 'auraDef', 'duelHp', 'duelDmg'];
+    const withRelics = (arms, r) => { const R = relicFx(r); for (const k of ['crit', 'combo', 'pierce', 'dodge']) arms[k] = (arms[k] || 0) + (R[k] || 0); arms.sweep = Math.max(arms.sweep || 0, R.sweep || 0); arms.first ||= !!R.first; arms.flee ||= !!R.flee; arms.cav = (arms.cav || 1) * (1 + (R.cavPow || 0)); for (const k of EXTRA) arms[k] = R[k] || 0; return arms; };
+    const mk = (p) => { const g = p.g, r = p.rec, st = bstats(g, r), arms = withRelics(armsOf(G, g), r);
       if (g.isPlayer && wounded) { st.atk *= 0.85; st.def *= 0.85; }
       st.spd += arms.spd + (arms.first ? 999 : 0);
       const troop = r.troop === 'cav' && !hasHorse(G, g, r) ? 'inf' : r.troop || (hasHorse(G, g, r) ? 'cav' : p.look?.wpn === 'bow' ? 'bow' : 'inf');
@@ -87,6 +90,8 @@ export class Battle {
     // what the people in the player's life bring: sworn brothers, a fury for a fallen one, rivals, a killer to avenge
     this.mods = H && !o.drill ? battleMods(this.game, this.foes) : { atk: 1, foeAtk: 1, lines: [] };
     if (H && hasT(H, 'wanren')) this.mods.atk *= 1.05; if (H && o.siege && hasT(H, 'gongcheng')) this.mods.atk *= 1.1;
+    this.mods.atk *= 1 + Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraAtk || 0), 0));
+    this.partyDef = 1 - Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraDef || 0), 0));
     // a column for each side, spread from front to back, every other general a step out
     const zs = (n) => Array.from({ length: n }, (_, i) => (n === 1 ? 6.2 : 3.7 + i * Math.min(1.9, 5.2 / (n - 1))));
     const pz = zs(this.party.length), fz = zs(this.foes.length);
@@ -98,6 +103,8 @@ export class Battle {
     await this.say(o.title || `${this.foes.map((f) => f.name).slice(0, 3).join('、')}${this.foes.length > 3 ? '等' : ''}出現了！`);
     this.formBar();
     for (const l of this.mods.lines) await this.say(l, 1100);
+    const drum = Math.max(0, ...this.party.map((u) => u.arms.startRouse || 0));
+    if (drum) { for (const u of this.party) { u.status.rouse = drum + 1; this.float(u, '攻擊↑', '#ffb04a'); } await this.say('戰鼓擂響，全軍士氣大振！', 900); }
     let result;
     for (;;) {
       this.round++;
@@ -211,7 +218,10 @@ export class Battle {
       if (o.u.sol <= 0) continue;
       if (this.foes.every((f) => f.sol <= 0) || this.party.every((u) => u.sol <= 0)) break;
       await this.act(o);
+      if (!o.again && o.u.sol > 0 && o.u.arms?.again && Math.random() < o.u.arms.again && !this.foes.every((f) => f.sol <= 0) && !this.party.every((u) => u.sol <= 0)) { this.float(o.u, '再動！', '#8affff'); await wait(250); await this.act({ ...o, again: true }); }
     }
+    // treasures that mend: soldiers and stratagem points come back at the end of each round
+    for (const u of [...this.party, ...this.foes]) { if (u.sol <= 0 || !u.arms) continue; if (u.arms.regen) { const n = Math.round(u.solMax * u.arms.regen); u.sol = Math.min(u.solMax, u.sol + n); this.float(u, '+' + n, '#8aff8a'); } if (u.arms.spRegen && u.spMax) u.sp = Math.min(u.spMax, u.sp + u.arms.spRegen); }
     for (const u of [...this.party, ...this.foes]) for (const k of Object.keys(u.status)) if (--u.status[k] <= 0) delete u.status[k];
     for (const u of [...this.party, ...this.foes]) if (u.sol > 0) this.drawBar(u);
   }
@@ -223,7 +233,7 @@ export class Battle {
     const t = Math.random() < 0.5 ? live.sort((a, b) => a.sol - b.sol)[0] : live[Math.floor(Math.random() * live.length)];
     return { u: f, kind: 'atk', t };
   }
-  cost(u, k) { return Math.round(TACTICS[k].sp * (u.isPlayer && hasT(this.game.H, 'xianyuan') ? 0.8 : 1)); }
+  cost(u, k) { return Math.max(1, Math.round(TACTICS[k].sp * (u.isPlayer && hasT(this.game.H, 'xianyuan') ? 0.8 : 1) * (1 - (u.arms?.tacCost || 0)))); }
   side(u) { return u.side === 'party' ? this.party : this.foes; }
   other(u) { return u.side === 'party' ? this.foes : this.party; }
   async act(o) {
@@ -236,7 +246,9 @@ export class Battle {
       const miss = (t.status.evade && Math.random() < 0.5) || dodge, d = miss ? 0 : this.physDmg(u, t), combo = !miss && Math.random() < (u.st.war >= 85 ? 0.12 : 0) + (u.arms?.combo || 0);
       // a great halberd sweeps through the line beside the target
       const side = u.arms?.sweep && !miss ? this.other(u).filter((x) => x !== t && x.sol > 0).sort((a, b) => Math.abs(a.home[1] - t.home[1]) - Math.abs(b.home[1] - t.home[1]))[0] : null;
-      await this.charge(u, t, () => { if (miss) { this.float(t, dodge ? '閃開了！' : '落空', '#c8e8ff'); this.game.audio?.sfx('miss'); } else { this.hit(t, d, u); if (side) { this.float(u, '橫掃！', '#ffd86a'); this.hit(side, Math.round(this.physDmg(u, side) * u.arms.sweep), u); } } }, combo ? () => { if (t.sol > 0) { this.float(u, '連擊！', '#ffd86a'); this.hit(t, Math.round(this.physDmg(u, t) * 0.6), u); } } : null);
+      const after = () => { if (t.sol <= 0) return; if (u.arms?.stun && Math.random() < u.arms.stun && !t.arms?.noConfuse && !t.beast) { t.status.confuse = 1; this.float(t, '混亂！', '#c8a0ff'); this.drawBar(t); } if (u.arms?.breakdef) { t.status.broken = 2; t.brokenV = Math.max(t.brokenV || 0, u.arms.breakdef); this.float(t, '防禦↓', '#ff9a6a'); } };
+      await this.charge(u, t, () => { if (miss) { this.float(t, dodge ? '閃開了！' : '落空', '#c8e8ff'); this.game.audio?.sfx('miss'); } else { this.hit(t, d, u); after(); if (side) { this.float(u, '橫掃！', '#ffd86a'); this.hit(side, Math.round(this.physDmg(u, side) * u.arms.sweep), u); } } }, combo ? () => { if (t.sol > 0) { this.float(u, '連擊！', '#ffd86a'); this.hit(t, Math.round(this.physDmg(u, t) * 0.6), u); } } : null);
+      if (!miss && !o.counter && t.sol > 0 && u.sol > 0 && t.arms?.counter && Math.random() < t.arms.counter && !t.status.confuse) { this.float(t, '反擊！', '#ffb04a'); await wait(150); await this.charge(t, u, () => this.hit(u, Math.round(this.physDmg(t, u) * 0.6), t)); }
       await wait(40); return;
     }
     if (o.kind === 'tac') {
@@ -247,17 +259,18 @@ export class Battle {
       if (T.kind === 'dmg') {
         const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 && o.t.side !== u.side ? o.t : foes[0]].filter(Boolean);
         for (const t of ts) {
-          const hitP = clamp(0.6 + (u.st.int - t.st.int) / 110, 0.18, 0.97);
+          const hitP = clamp(0.6 + (u.st.int - t.st.int) / 110 + (u.arms?.tacHit || 0), 0.18, 0.97);
           if (Math.random() > hitP) { this.float(t, '識破！', '#c8e8ff'); continue; }
           const terr = this.o.terrain, bonus = (o.k === 'rock' && terr === 'hill') || (o.k === 'flood' && (terr === 'marsh' || terr === 'coast')) || ((o.k === 'fire' || o.k === 'blaze') && terr === 'forest') ? 1.35 : o.k === 'fire' && terr === 'snow' ? 0.7 : 1;
           const fm = FORMS[this.form[u.side === 'party' ? 'party' : 'foe']]?.tac || 1, tm = u.side === 'party' && hasT(this.game.H, 'zhiduo') ? 1.1 : 1;
-          const d = Math.round((u.st.int * 2.4 + (u.lv || 1) * 3) * T.pow * bonus * fm * tm * (0.9 + Math.random() * 0.2) * (110 / (110 + t.st.int * 0.5)));
+          const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : 1);
+          const d = Math.round((u.st.int * 2.4 + (u.lv || 1) * 3) * T.pow * bonus * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2) * (110 / (110 + t.st.int * 0.5)));
           if (u.side === 'party' && this.game.H) bump(this.game.H, 'tacs');
           this.hit(t, d, u, true);
         }
       }
-      if (T.kind === 'heal') { const ts = T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine.sort((a, b) => a.sol / a.solMax - b.sol / b.solMax)[0]]; for (const t of ts) { const n = Math.round((u.st.int * 3 + 60) * T.pow); t.sol = Math.min(t.solMax, t.sol + n); this.float(t, '+' + n, '#8aff8a'); this.drawBar(t); } }
-      if (T.kind === 'confuse') { const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 ? o.t : foes[0]]; for (const t of ts) { if (Math.random() < clamp(0.55 + (u.st.int - t.st.int) / 100, 0.1, 0.9)) { t.status.confuse = 2; this.float(t, '混亂！', '#c8a0ff'); this.drawBar(t); } else this.float(t, '識破！', '#c8e8ff'); } }
+      if (T.kind === 'heal') { const ts = T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine.sort((a, b) => a.sol / a.solMax - b.sol / b.solMax)[0]]; for (const t of ts) { const n = Math.round((u.st.int * 3 + 60) * T.pow * (1 + (u.arms?.healPow || 0))); t.sol = Math.min(t.solMax, t.sol + n); this.float(t, '+' + n, '#8aff8a'); this.drawBar(t); } }
+      if (T.kind === 'confuse') { const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 ? o.t : foes[0]]; for (const t of ts) { if (t.arms?.noConfuse) { this.float(t, '無效', '#c8e8ff'); continue; } if (Math.random() < clamp(0.55 + (u.st.int - t.st.int) / 100, 0.1, 0.9)) { t.status.confuse = 2; this.float(t, '混亂！', '#c8a0ff'); this.drawBar(t); } else this.float(t, '識破！', '#c8e8ff'); } }
       if (T.kind === 'buff') for (const t of mine) { t.status.rouse = 3; this.float(t, '攻擊↑', '#ffb04a'); }
       if (T.kind === 'guard') for (const t of mine) { t.status.guard = 3; this.float(t, '防禦↑', '#8ac8ff'); }
       if (T.kind === 'evade') for (const t of mine) { t.status.evade = 3; this.float(t, '迴避↑', '#c8e8ff'); }
@@ -274,18 +287,24 @@ export class Battle {
   physDmg(u, t) {
     const sf = 0.4 + 0.6 * Math.sqrt(Math.max(0, u.sol) / u.solMax), base = u.st.atk * 2.4 + (u.lv || 1) * 3;
     const ku = this.form?.[u.side === 'party' ? 'party' : 'foe'], kt = this.form?.[t.side === 'party' ? 'party' : 'foe'], fu = FORMS[ku], ft = FORMS[kt];
-    const def = t.st.def * (ft?.def || 1) * (1 - (u.arms?.pierce || 0));
+    const def = t.st.def * (ft?.def || 1) * (1 - (u.arms?.pierce || 0)) * (t.status.broken ? 1 - (t.brokenV || 0) : 1);
     let d = base * sf * (0.88 + Math.random() * 0.24) * (100 / (100 + def * 0.8));
     if (u.status.rouse) d *= 1.3; if (t.status.guard) d *= 0.5; if (this.o.siege && t.side === 'foe') d *= 0.85;
     // troops against troops on this ground; the formations; the cavalry of a famous horse
     d *= troopMul(u.troop, t.troop, this.o.terrain) * (fu?.atk || 1) * (fu && kt && fu.beats === kt ? 1.15 : 1);
     if (u.troop === 'bow' && fu?.bow) d *= fu.bow; if (u.troop === 'cav') d *= u.arms?.cav || 1;
     if (this.mods) d *= u.side === 'party' ? this.mods.atk : this.mods.foeAtk;
+    if (u.troop === 'bow') d *= 1 + (u.arms?.bowPow || 0); if (u.troop === 'navy') d *= 1 + (u.arms?.navyPow || 0);
+    d *= (1 - (t.arms?.physRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : 1);
+    if (t.arms?.block && Math.random() < t.arms.block) { d *= 0.5; this.float(t, '格擋', '#c8e8ff'); }
     if (Math.random() < 0.06 + u.st.war / 1500 + (u.arms?.crit || 0)) { d *= 1.6; this.float(u, '會心！', '#ffe04a'); }
     return Math.max(1, Math.round(d));
   }
   hit(t, d, by, magic) {
     t.sol = Math.max(0, t.sol - d); this.float(t, d, magic ? '#ffb04a' : '#ffffff', d > t.solMax * 0.25);
+    if (by && !magic && by.arms?.steal && by.sol > 0) { const n = Math.round(d * by.arms.steal); by.sol = Math.min(by.solMax, by.sol + n); this.drawBar(by); }
+    if (t.sol <= 0 && t.arms?.revive && !t.revived) { t.revived = true; t.sol = Math.round(t.solMax * t.arms.revive); setTimeout(() => this.float(t, '重整旗鼓！', '#ffd86a', true), 300); }
+    else if (t.sol > 0 && t.sol < t.solMax * 0.3 && t.arms?.lowHeal && !t.lowHealed) { t.lowHealed = true; const n = Math.round(t.solMax * t.arms.lowHeal); t.sol = Math.min(t.solMax, t.sol + n); setTimeout(() => this.float(t, '急救 +' + n, '#8aff8a'), 300); }
     this.game.audio?.sfx(magic ? 'fire' : 'hit');
     t.flashT = 0.18; t.shk = 0.25; this.drawBar(t);
     const back = t.side === 'party' ? 1 : -1; this.tween(0.25, (p) => { t.ox = back * 0.35 * Math.sin(p * Math.PI); });
@@ -372,7 +391,7 @@ export class Battle {
   }
   // a: { name, look, st, lv }, b the same; returns 'win' | 'lose' | 'flee' for a
   async duel(a, b, o = {}) {
-    const hpOf = (u) => Math.round((100 + u.st.war * 2 + (u.lv || 1) * 2) * (u.isPlayer && hasT(this.game.H, 'wushuang') ? 1.15 : 1));
+    const hpOf = (u) => Math.round((100 + u.st.war * 2 + (u.lv || 1) * 2) * (u.isPlayer && hasT(this.game.H, 'wushuang') ? 1.15 : 1) * (1 + (u.arms?.duelHp || 0)));
     const A = { u: a, hp: hpOf(a), max: hpOf(a), fury: 0 }, B = { u: b, hp: hpOf(b), max: hpOf(b), fury: 0 };
     // bring the two forward
     const pa = a.home, pb = b.home; a.duelist = b.duelist = true;
@@ -390,7 +409,7 @@ export class Battle {
       const ca = a.side === 'party' && !this.auto ? await this.menu('一騎討', opts) : this.duelAI(A, B);
       if (ca === 'flee') { if (Math.random() < clamp(0.5 + (a.st.war - b.st.war) / 80, 0.15, 0.9)) { res = 'flee'; await this.say(`${a.name}退了回去。`); break; } await this.say('退不了！'); }
       const cb = this.duelAI(B, A);
-      const dmg = (S, T, k, k2) => { const base = (S.u.st.war * 1.1 + 12) * (0.85 + Math.random() * 0.3) * (1 + (S.u.st.war - T.u.st.war) / 120);
+      const dmg = (S, T, k, k2) => { const base = (S.u.st.war * 1.1 + 12) * (0.85 + Math.random() * 0.3) * (1 + (S.u.st.war - T.u.st.war) / 120) * (1 + (S.u.arms?.duelDmg || 0));
         let m = k === 'hit' ? 0.32 : k === 'power' ? 0.55 : k === 'ult' ? 1.2 : 0; if (k2 === 'guard') m *= k === 'power' ? 0.2 : k === 'ult' ? 0.6 : 0.35; return Math.max(0, Math.round(base * m)); };
       const da = ca === 'flee' ? 0 : dmg(A, B, ca, cb), db = dmg(B, A, cb, ca === 'flee' ? 'hit' : ca);
       // a strong blow into a guard is turned back on the striker

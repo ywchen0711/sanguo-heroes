@@ -8,6 +8,7 @@ import { itemName } from './sim/text.js';
 import { LOOKS } from './sprites.js';
 import { CITY_POS } from './world.js';
 import { changed, deed } from './deeds.js';
+import { relicFx } from './relics.js';
 import { swear, addBond } from './bonds.js';
 
 const STORIES = [
@@ -320,7 +321,7 @@ class Kit {
   leave() { if (this.g.mode === 'town') this.g.leaveTown(); }
   // a duel with a named general, on a stage of its own
   async duel(x) {
-    const r0 = this.H.rec[this.me.id], a = { name: this.me.name, look: this.g.lookOf(this.me), lv: r0.lv, st: bstats(this.me, r0), isPlayer: true }, b = this.g.act.duelFoe(x);
+    const r0 = this.H.rec[this.me.id], a = { name: this.me.name, look: this.g.lookOf(this.me), lv: r0.lv, st: bstats(this.me, r0), isPlayer: true, arms: relicFx(r0) }, b = this.g.act.duelFoe(x);
     const was = this.g.mode; this.g.mode = 'battle';
     const r = await this.g.battle.soloDuel(a, b, { noFlee: true }); this.g.battle.close(); this.g.mode = was; this.g.audio.music(was === 'town' ? 'town' : 'field');
     if (r === 'win') { this.H.st.duels++; this.me.duelsWon++; }

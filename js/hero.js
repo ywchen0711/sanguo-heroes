@@ -2,6 +2,7 @@
 // battle, as in the old Famicom games), stratagem points, equipment bought in shops, the party, ranks and fame.
 // A general's 統率 / 武力 / 智力 come from the simulation (with their famous treasures); levels add to them for good.
 import { refresh } from './sim/engine.js';
+import { slotV, itemOf, relicFx } from './relics.js';
 
 // ---------------------------------------------------------------- shops: [id, name, value, price, tier]
 export const WEAPONS = [['w1', '鐵劍', 4, 120, 1], ['w2', '長槍', 7, 300, 1], ['w3', '大刀', 10, 650, 2], ['w4', '鋼戟', 14, 1300, 3], ['w5', '精鋼劍', 18, 2600, 4], ['w6', '斬馬刀', 23, 4800, 5], ['w7', '龍鱗槍', 29, 8500, 6]];
@@ -25,7 +26,7 @@ export const usable = (k) => ITEMS[k] && !ITEMS[k].gift && !ITEMS[k].mat;
 // [gold, ore, black iron, chance of success]
 export const FORGE = [null, [150, 1, 0, 1], [400, 2, 0, 0.9], [900, 3, 0, 0.75], [2000, 2, 1, 0.6], [4000, 3, 2, 0.45]];
 export const forgeOf = (r, k) => (r.forge && r.forge[k]) || 0;
-export const eqName = (r, k) => (r.eq?.[k] ? EQUIP[r.eq[k]].n + (forgeOf(r, k) ? '+' + forgeOf(r, k) : '') : '—');
+export const eqName = (r, k) => { const it = itemOf(r.eq?.[k]); return it ? it.n + (it.lv > 1 ? ` Lv${it.lv}` : '') + (forgeOf(r, k) ? '+' + forgeOf(r, k) : '') : '—'; };
 
 // ---------------------------------------------------------------- the famous horses and weapons do more than add to the numbers
 export const ARMS = {
@@ -110,15 +111,16 @@ export const rankOf = (merit) => { let k = 0; RANKS.forEach((r, i) => { if (meri
 // ---------------------------------------------------------------- levels
 export const expNeed = (lv) => 30 + lv * lv * 18;
 // a general's record in the party: level, experience, soldiers, stratagem points and equipment
-export function newRec(g, lv) { const r = { lv: lv || startLv(g), exp: 0, sol: 0, sp: 0, eq: { w: null, a: null, h: null } }; r.sol = solMax(g, r); r.sp = spMax(g, r); return r; }
+export function newRec(g, lv) { const r = { lv: lv || startLv(g), exp: 0, sol: 0, sp: 0, eq: { w: null, a: null, h: null, x: null } }; r.sol = solMax(g, r); r.sp = spMax(g, r); return r; }
 // how seasoned a general is when we meet them: the able ones a little more
 export const startLv = (g) => Math.max(1, Math.round((g.lead + g.war + g.int) / 30 - 3));
-export const solMax = (g, r) => Math.round(150 + g.lead * 6 + r.lv * 40 + (r.eq?.h ? EQUIP[r.eq.h].v * 25 : 0));
-export const spMax = (g, r) => Math.round(g.int * 0.9 + r.lv * 2);
+export const solMax = (g, r) => { const fx = relicFx(r); return Math.round((150 + (g.lead + (fx.stat.lead || 0)) * 6 + r.lv * 40 + slotV(r, 'h') * 25) * (1 + (fx.solMax || 0))); };
+export const spMax = (g, r) => Math.round((g.int + (relicFx(r).stat.int || 0)) * 0.9 + r.lv * 2);
 // battle numbers
 export function bstats(g, r) {
-  const w = (r.eq?.w ? EQUIP[r.eq.w].v : 0) + forgeOf(r, 'w') * 3, a = (r.eq?.a ? EQUIP[r.eq.a].v : 0) + forgeOf(r, 'a') * 2.5, h = r.eq?.h ? EQUIP[r.eq.h].v : 0;
-  return { atk: g.war + w, def: g.lead * 0.6 + a * 1.6 + r.lv, int: g.int, spd: (g.war + g.lead) / 2 + h * 2 + r.lv * 0.3, lead: g.lead, war: g.war };
+  const w = slotV(r, 'w') + forgeOf(r, 'w') * 3, a = slotV(r, 'a') + forgeOf(r, 'a') * 2.5, h = slotV(r, 'h'), fx = relicFx(r), S = fx.stat;
+  const war = g.war + (S.war || 0), lead = g.lead + (S.lead || 0), int = g.int + (S.int || 0);
+  return { atk: war + w, def: lead * 0.6 + a * 1.6 + r.lv, int, spd: (war + lead) / 2 + h * 2 + r.lv * 0.3 + (fx.spd || 0), lead, war, cha: g.cha + (S.cha || 0), pol: g.pol + (S.pol || 0) };
 }
 // experience: returns the levels gained and the stats that grew (a level-up adds a point to 武力, 統率 or 智力 now and then)
 export function gainExp(G, g, r, n, rand = Math.random) {
