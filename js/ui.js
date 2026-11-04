@@ -49,6 +49,7 @@ export class UI {
       const done = (v) => { this.pop(h); box.remove(); this.game.audio?.sfx(v == null ? 'cancel' : 'ok'); res(v); };
       const h = (k) => { if (k === 'up') move(-1); if (k === 'down') move(1); if (k === 'left' && o.lr) o.lr(-1, sel, done); if (k === 'right' && o.lr) o.lr(1, sel, done); if (k === 'ok' && opts[sel] && !opts[sel].off) done(opts[sel].k); if (k === 'back' && !o.noBack) done(null); };
       UI.moved = false; this.push(h); host.appendChild(box); draw(); o.hover?.(sel);
+      const bot = this.game.auto; if (bot?.on) setTimeout(() => { if (box.isConnected && bot.on) done(bot.pick(opts, o)); }, 320);
       if (o.onOpen) o.onOpen(box, done);
     });
   }
@@ -63,10 +64,11 @@ export class UI {
       const tick = setInterval(() => { n += 2; el.innerHTML = chars.slice(0, n).join('').replace(/\n/g, '<br>'); if (n >= chars.length) { clearInterval(tick); full = true; box.classList.add('done'); } }, 22);
       const h = (k) => { if (k !== 'ok' && k !== 'back') return; if (!full) { n = chars.length; return; } clearInterval(tick); this.pop(h); box.remove(); res(); };
       box.onclick = () => h('ok'); this.push(h);
+      if (this.game.auto?.on) setTimeout(() => { if (box.isConnected) { n = chars.length; full = true; clearInterval(tick); this.pop(h); box.remove(); res(); } }, 650);
     });
   }
   async yesno(q, name, look) { return (await this.ask(q, [{ k: true, n: '是' }, { k: false, n: '否' }], name, look)) === true; }
-  async ask(q, opts, name, look) { const el = document.createElement('div'); el.className = 'talk done'; el.innerHTML = `${look ? this.portrait(look) : ''}<div class="t-body">${name ? `<div class="t-name">${name}</div>` : ''}<div class="t-text">${q.replace(/\n/g, '<br>')}</div></div>`; this.layer.appendChild(el); const r = await this.choose(opts, { cls: 'small yn' }); el.remove(); return r; }
+  async ask(q, opts, name, look) { const el = document.createElement('div'); el.className = 'talk done'; el.innerHTML = `${look ? this.portrait(look) : ''}<div class="t-body">${name ? `<div class="t-name">${name}</div>` : ''}<div class="t-text">${q.replace(/\n/g, '<br>')}</div></div>`; this.layer.appendChild(el); const r = await this.choose(opts, { cls: 'small yn', q }); el.remove(); return r; }
   portrait(look) { const c = frameCanvas(personSheet(look), 0, 1); return `<img class="t-port" src="${c.toDataURL()}">`; }
   toast(html, ms = 2600) { const host = document.getElementById('toasts'); while (host.children.length >= 5) host.firstChild.remove(); const t = document.createElement('div'); t.className = 'toast'; t.innerHTML = html; host.appendChild(t); setTimeout(() => t.classList.add('out'), ms); setTimeout(() => t.remove(), ms + 500); }
   // ---------------------------------------------------------------- a full panel (status, chronicle, map …); resolves when closed
@@ -79,6 +81,7 @@ export class UI {
       // a panel with its own keys (onKey) moves its own cursor instead of scrolling; onBack can keep it open
       const h = (k) => { if (k === 'back') { if (o.onBack && o.onBack(box)) return; close(); return; } if (k === 'ok' && !o.keepOk) { close(); return; } if (o.onKey) { o.onKey(k, box); return; } if (k === 'up') body.scrollTop -= 60; if (k === 'down') body.scrollTop += 60; };
       box.querySelector('.p-x').onclick = close; this.push(h); o.onOpen?.(box, close);
+      if (this.game.auto?.on && !o.noAuto) setTimeout(() => { if (box.isConnected) close(); }, 900);
     });
   }
   fade(on, ms = 300) { const f = document.getElementById('fade'); f.style.transition = `opacity ${ms}ms`; f.style.opacity = on ? 1 : 0; return new Promise((r) => setTimeout(r, ms)); }

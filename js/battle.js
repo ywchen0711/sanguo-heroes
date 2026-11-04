@@ -89,6 +89,7 @@ export class Battle {
     this.form = { party: H?.form || 'yulin', foe: foes.some((f) => f.gid != null) || o.siege ? Object.keys(FORMS)[Math.floor(Math.random() * 5)] : null };
     // what the people in the player's life bring: sworn brothers, a fury for a fallen one, rivals, a killer to avenge
     this.mods = H && !o.drill ? battleMods(this.game, this.foes) : { atk: 1, foeAtk: 1, lines: [] };
+    if (H && this.game.perk) this.mods.atk *= 1 + (this.game.perk().atk || 0);
     if (H && hasT(H, 'wanren')) this.mods.atk *= 1.05; if (H && o.siege && hasT(H, 'gongcheng')) this.mods.atk *= 1.1;
     this.mods.atk *= 1 + Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraAtk || 0), 0));
     this.partyDef = 1 - Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraDef || 0), 0));

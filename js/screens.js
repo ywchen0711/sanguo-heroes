@@ -39,6 +39,8 @@ export class Screens {
       <p>📜 <b>史書</b>：歷史轉折點（宛城、下邳、官渡、孫策遇刺、赤壁、麥城、夷陵、五丈原……）你都可以插手。遊戲結束時，史官會為你寫一篇列傳。</p>
       <p>🏁 <b>結束</b>：選定的年數到了、天下統一、或是提前結算時，計算你一生的功績。</p>
       <p>操作：方向鍵／WASD 移動，Z／Enter 確認，X／Esc 取消，C 選單。手機用畫面上的按鈕。</p>
+      <p>🤖 <b>電腦代玩</b>：按 P（或選單裡的「電腦代玩」）讓電腦替你玩，按方向鍵取回控制。</p>
+      <p>🎖 <b>官階</b>：官階越高，帶兵越多、同伴越多。同勢力的武將可以邀請同行（交談或太守府的「點將」）。</p>
       <p>🎥 <b>自由視角</b>：用滑鼠拖曳畫面旋轉，滾輪縮放；或是 Q／E 旋轉、＋／－ 縮放、R 還原。手機用兩指旋轉、捏合縮放。方向鍵永遠照著畫面上的方向走。</p>`, { title: '遊戲說明' });
   }
   async setup() {
@@ -121,7 +123,7 @@ export class Screens {
   // ---------------------------------------------------------------- the end: what happened to the realm, and what you did in it
   async ending() {
     const G = this.g.G, H = this.g.H, g = G.gens[H.pid];
-    this.g.mode = 'end'; this.g.locked = true;
+    this.g.mode = 'end'; this.g.locked = true; if (this.g.auto?.on) this.g.auto.toggle(false);
     const sc = score(G, H);
     const fs = Object.values(G.factions).filter((f) => f.alive && citiesOf(G, f.id).length).sort((a, b) => citiesOf(G, b.id).length - citiesOf(G, a.id).length);
     const realm = G.over && G.over !== 'time' ? `<p class="big">${G.factions[G.over].name}統一了天下！</p>` : `<p class="big">${G.year}年，天下仍未統一。</p><p>${fs.slice(0, 5).map((f) => `<span style="color:${f.color}">■</span>${f.name}（${citiesOf(G, f.id).length} 城）`).join('　')}</p>`;

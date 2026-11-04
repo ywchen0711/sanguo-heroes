@@ -107,6 +107,18 @@ export const tacticsOf = (g) => Object.keys(TACTICS).filter((k) => { const T = T
 // ---------------------------------------------------------------- ranks of a serving officer, by merit (功績), and their monthly pay
 export const RANKS = [['從事', 0, 20], ['校尉', 40, 50], ['都尉', 100, 90], ['中郎將', 200, 150], ['將軍', 350, 240], ['大將軍', 600, 400]];
 export const rankOf = (merit) => { let k = 0; RANKS.forEach((r, i) => { if (merit >= r[1]) k = i; }); return k; };
+// what a rank brings: soldiers led (x the base), companions who may travel along, recruiting, monthly reinforcement, attack, what it opens
+export const PERKS = [
+  { n: '在野', troop: 1, party: 4, recruit: 0, regen: 0.08, atk: 0, d: '' },
+  { n: '從事', troop: 1, party: 4, recruit: 0, regen: 0.08, atk: 0, d: '領月俸' },
+  { n: '校尉', troop: 1.15, party: 4, recruit: 0, regen: 0.1, atk: 0, d: '可以率軍攻城' },
+  { n: '都尉', troop: 1.3, party: 5, recruit: 0.05, regen: 0.1, atk: 0, d: '內政的效果更好' },
+  { n: '中郎將', troop: 1.5, party: 5, recruit: 0.1, regen: 0.12, atk: 0.03, d: '可以邀請同勢力的武將同行' },
+  { n: '將軍', troop: 1.75, party: 6, recruit: 0.15, regen: 0.15, atk: 0.05, d: '同勢力武將幾乎都願意同行' },
+  { n: '大將軍', troop: 2, party: 6, recruit: 0.2, regen: 0.18, atk: 0.08, d: '同勢力武將一定同行' },
+  { n: '君主', troop: 2, party: 6, recruit: 0.2, regen: 0.18, atk: 0.08, d: '號令一國' },
+];
+export const perkText = (P) => `帶兵 ×${P.troop}　同伴最多 ${P.party} 人${P.recruit ? `　招募 +${Math.round(P.recruit * 100)}%` : ''}　每月補兵 ${Math.round(P.regen * 100)}%${P.atk ? `　全軍攻擊 +${Math.round(P.atk * 100)}%` : ''}${P.d ? '　' + P.d : ''}`;
 
 // ---------------------------------------------------------------- levels
 export const expNeed = (lv) => 30 + lv * lv * 18;
@@ -114,7 +126,7 @@ export const expNeed = (lv) => 30 + lv * lv * 18;
 export function newRec(g, lv) { const r = { lv: lv || startLv(g), exp: 0, sol: 0, sp: 0, eq: { w: null, a: null, h: null, x: null } }; r.sol = solMax(g, r); r.sp = spMax(g, r); return r; }
 // how seasoned a general is when we meet them: the able ones a little more
 export const startLv = (g) => Math.max(1, Math.round((g.lead + g.war + g.int) / 30 - 3));
-export const solMax = (g, r) => { const fx = relicFx(r); return Math.round((150 + (g.lead + (fx.stat.lead || 0)) * 6 + r.lv * 40 + slotV(r, 'h') * 25) * (1 + (fx.solMax || 0))); };
+export const solMax = (g, r) => { const fx = relicFx(r); return Math.round((150 + (g.lead + (fx.stat.lead || 0)) * 6 + r.lv * 40 + slotV(r, 'h') * 25) * (1 + (fx.solMax || 0)) * (r.cmd || 1)); }; // cmd: the rank of the party's leader
 export const spMax = (g, r) => Math.round((g.int + (relicFx(r).stat.int || 0)) * 0.9 + r.lv * 2);
 // battle numbers
 export function bstats(g, r) {

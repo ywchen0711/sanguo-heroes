@@ -60,7 +60,7 @@ const STORIES = [
       s.exp(20);
     } },
   // ---------------------------------------------------------------- 三顧茅廬 (anyone famous enough can try)
-  { id: 'sangu', when: 'town', repeat: true, yr: [200, 215], hint: '襄陽附近的隆中，住著一位臥龍先生。名聲夠響亮的人，去三次就能請他出山。', ok: (s) => s.free('諸葛亮') && s.gen('諸葛亮').city === s.cityId && !s.inParty(s.gen('諸葛亮')) && s.H.fame >= 250 && s.H.party.length < 4 && (s.H.sangu || 0) < 3,
+  { id: 'sangu', when: 'town', repeat: true, yr: [200, 215], hint: '襄陽附近的隆中，住著一位臥龍先生。名聲夠響亮的人，去三次就能請他出山。', ok: (s) => s.free('諸葛亮') && s.gen('諸葛亮').city === s.cityId && !s.inParty(s.gen('諸葛亮')) && s.H.fame >= 250 && s.H.party.length < s.g.partyMax() && (s.H.sangu || 0) < 3,
     async run(s) {
       const kl = s.gen('諸葛亮'); s.H.sangu = (s.H.sangu || 0) + 1;
       if (s.H.sangu === 1) { await s.say('書童', '先生今早出門了，不知道什麼時候回來。', LOOKS.villager('書童')); await s.say('', '第一次拜訪，沒有見到諸葛亮。（再來兩次吧）'); return; }
@@ -110,7 +110,7 @@ const STORIES = [
       const ht = s.gen('華佗'); s.H.huatuo = s.G.year;
       await s.say('華佗', '我是行醫的華佗。看你的部下傷兵不少，讓我來看看吧。', ht);
       s.heal(); s.toast('華佗治好了全隊的傷兵！');
-      if (s.H.party.length < 4 && await s.yes('要邀請華佗同行嗎？')) { if (Math.random() < 0.35 + s.me.cha / 400) { s.join(ht, 80); await s.say('華佗', '好，跟著你，可以救更多的人。', ht); } else await s.say('華佗', '我還要去別處救人，就此別過。', ht); }
+      if (s.H.party.length < s.g.partyMax() && await s.yes('要邀請華佗同行嗎？')) { if (Math.random() < 0.35 + s.me.cha / 400) { s.join(ht, 80); await s.say('華佗', '好，跟著你，可以救更多的人。', ht); } else await s.say('華佗', '我還要去別處救人，就此別過。', ht); }
     } },
   // ---------------------------------------------------------------- 小霸王與太史慈
   { id: 'taishici', when: 'month', ok: (s) => s.year >= 194 && s.year <= 198 && s.isOne('孫策') && s.alive('太史慈') && s.gen('太史慈').fac !== s.me.fac && s.near('建業', 40),
@@ -118,7 +118,7 @@ const STORIES = [
       const ts = s.gen('太史慈');
       await s.say('太史慈', '久聞小霸王之名，今日特來一會！', ts);
       const r = await s.duel(ts);
-      if (r === 'win') { await s.say('太史慈', '……將軍神勇，我服了。願追隨將軍！', ts); if (s.H.party.length < 4) s.join(ts, 95); s.fame(80); }
+      if (r === 'win') { await s.say('太史慈', '……將軍神勇，我服了。願追隨將軍！', ts); if (s.H.party.length < s.g.partyMax()) s.join(ts, 95); s.fame(80); }
       else await s.say('太史慈', '小霸王，不過如此！', ts);
     } },
   // ---------------------------------------------------------------- 定軍山
@@ -313,7 +313,7 @@ class Kit {
   bond(x, n) { addBond(this.g, x.id, n); }
   kill(x, cause, by = this.me) { const had = this.G.items.filter((it) => it.holder === x.id); die(this.G, x, cause, by); if (by === this.me) { this.H.st.kills.push(x.name); for (const it of had) if (it.holder !== this.me.id && it.holder == null) { give(this.G, it, this.me); this.toast(`得到了「${itemName(it.key)}」！`); } } }
   join(x, loyalty) {
-    if (this.H.party.length >= 4 || this.H.party.includes(x.id)) return;
+    if (this.H.party.length >= this.g.partyMax() || this.H.party.includes(x.id)) return;
     x.follow = this.H.pid; this.H.party.push(x.id); this.H.rec[x.id] ||= newRec(x);
     if (this.me.status === 'serving') serve(this.G, x, this.me.fac, this.me.city, loyalty); else if (x.status === 'serving') { x.status = 'free'; x.fac = null; }
     this.g.respawnParty(); this.g.hud();

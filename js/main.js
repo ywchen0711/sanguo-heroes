@@ -8,7 +8,7 @@ import { buildTown, buildVillage, buildCave } from './town.js';
 import { lookFor, LOOKS, soldierSheet, beastSheet, assignLooks } from './sprites.js';
 import { newGame, step, rng, citiesOf, gensOf, busy, pickGovernor } from './sim/engine.js';
 import { fmt, dateStr } from './sim/text.js';
-import { newRec, solMax, spMax, bstats, gainExp, rankOf, RANKS, score } from './hero.js';
+import { newRec, solMax, spMax, bstats, gainExp, rankOf, RANKS, score, PERKS } from './hero.js';
 import { Battle } from './battle.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
@@ -16,6 +16,7 @@ import { Actions } from './actions.js';
 import { Screens } from './screens.js';
 import { Events } from './events.js';
 import { Story } from './story.js';
+import { AutoPlay } from './auto.js';
 import { deed, histDeaths, checkTitles, hasT, knownAs } from './deeds.js';
 import { mourn } from './bonds.js';
 import { mark } from './dex.js';
@@ -28,10 +29,11 @@ const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 
 
 class Game {
   constructor() {
-    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this);
+    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
+    addEventListener('keydown', (e) => { if (!this.G || this.mode === 'title' || this.mode === 'end') return; if ((e.key === 'p' || e.key === 'P') && !this.ui.busy) this.auto.toggle(); else if (this.auto.on && /^Arrow|^[wasdWASD]$/.test(e.key) && !this.ui.busy) this.auto.toggle(false); }, true);
     addEventListener('keyup', (e) => this.keys.delete(e.key));
     addEventListener('blur', () => this.keys.clear());
     this.touchPad(); this.freeCam();
@@ -65,7 +67,10 @@ class Game {
   load2() { this.world ||= buildWorld(); this.mode = 'world'; document.body.classList.add('playing'); assignLooks(this.G.gens); }
   get me() { return this.G.gens[this.H.pid]; }
   // the party as [{ g, rec, look, solMax, spMax }]
-  partyList() { return [this.H.pid, ...this.H.party].map((id) => { const g = this.G.gens[id], rec = this.H.rec[id]; return { g, rec, look: this.lookOf(g), solMax: solMax(g, rec), spMax: spMax(g, rec) }; }); }
+  partyList() { const cmd = this.perk().troop; return [this.H.pid, ...this.H.party].map((id) => { const g = this.G.gens[id], rec = this.H.rec[id]; rec.cmd = cmd; return { g, rec, look: this.lookOf(g), solMax: solMax(g, rec), spMax: spMax(g, rec) }; }); }
+  // what the player's rank brings (see PERKS), and how many may travel with them
+  perk() { const g = this.me; return PERKS[this.isLord() ? 7 : g.status === 'serving' ? 1 + rankOf(g.merit) : 0]; }
+  partyMax() { return this.perk().party; }
   lookOf(g) { const f = g.status === 'serving' && this.G.factions[g.fac]; return lookFor(g, f ? f.color : '#7a6a5a'); }
   myFaction() { const g = this.me; return g.status === 'serving' ? g.fac : null; }
   isLord() { const f = this.myFaction(); return !!f && this.G.factions[f].lord === this.H.pid; }
@@ -210,11 +215,11 @@ class Game {
     // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
     try {
-      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); }
+      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); if (this.auto.on && !this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); }
       if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
-  held() { const k = this.keys, tp = this.tpad; if (k.has('ArrowUp') || k.has('w') || k.has('W') || tp === 'up') return 'up'; if (k.has('ArrowDown') || k.has('s') || k.has('S') || tp === 'down') return 'down'; if (k.has('ArrowLeft') || k.has('a') || k.has('A') || tp === 'left') return 'left'; if (k.has('ArrowRight') || k.has('d') || k.has('D') || tp === 'right') return 'right'; return null; }
+  held() { if (this.auto?.on) return this.auto.hasStep() ? 'auto' : null; const k = this.keys, tp = this.tpad; if (k.has('ArrowUp') || k.has('w') || k.has('W') || tp === 'up') return 'up'; if (k.has('ArrowDown') || k.has('s') || k.has('S') || tp === 'down') return 'down'; if (k.has('ArrowLeft') || k.has('a') || k.has('A') || tp === 'left') return 'left'; if (k.has('ArrowRight') || k.has('d') || k.has('D') || tp === 'right') return 'right'; return null; }
   move(dt) {
     const P = this.pos; if (!P || this.ui.busy || this.locked) { this.animWalk(dt, false); return; }
     if (P.moving) {
@@ -230,7 +235,7 @@ class Game {
   tryStep() {
     const P = this.pos, d0 = this.held();
     if (!d0) { this.bumped = null; return; }
-    const d = this.view.screenDir(d0);
+    const d = d0 === 'auto' ? this.auto.takeStep() : this.view.screenDir(d0); if (!d) return;
     const [dx, dz, di] = DIRS[d]; P.dir = d; this.actors[0].dir = di;
     const nx = P.x + dx, nz = P.z + dz;
     if (!this.canWalk(nx, nz)) { this.place(1); this.bump(nx, nz); return; }
@@ -302,7 +307,7 @@ class Game {
     // pay
     if (g.status === 'serving') { const pay = this.isLord() ? 0 : RANKS[rankOf(g.merit)][2]; if (pay) this.H.gold += pay; this.H.st.bestRank = Math.max(this.H.st.bestRank, rankOf(g.merit)); }
     // the wounded recover a little each month
-    for (const p of this.partyList()) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * 0.08));
+    const regen = this.perk().regen; for (const p of this.partyList()) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * regen));
     // the news: big events everywhere, and anything about my own faction
     const mine = before.fac;
     const big = logs.filter((e) => e.level >= 3 || (e.level >= 2 && (e.fac === mine || e.kind === 'war' || e.kind === 'death')) || (mine && e.fac === mine && ['war', 'defect', 'succession', 'fall'].includes(e.kind)) || e.def === mine);
@@ -343,8 +348,8 @@ class Game {
     const G = this.G, g = this.me, f = this.myFaction() && G.factions[this.myFaction()], el = document.getElementById('hud');
     if (!G) { el.innerHTML = ''; return; }
     const sol = this.partyList().reduce((s, p) => s + p.rec.sol, 0), max = this.partyList().reduce((s, p) => s + p.solMax, 0);
-    const tt = knownAs(this.H), hurt = this.H.wound > G.t;
-    el.innerHTML = `<div class="h-name"><b>${g.name}</b>${tt ? `<em class="h-title">「${tt}」</em>` : ''}<span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍・' + this.rank() : '在野'}</span>${hurt ? '<em class="h-hurt">負傷</em>' : ''}</div>
+    const tt = knownAs(this.H), hurt = this.H.wound > G.t, bot = this.auto?.on;
+    el.innerHTML = `<div class="h-name"><b>${g.name}</b>${tt ? `<em class="h-title">「${tt}」</em>` : ''}<span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍・' + this.rank() : '在野'}</span>${hurt ? '<em class="h-hurt">負傷</em>' : ''}${bot ? '<em class="h-bot">🤖 代玩中</em>' : ''}</div>
       <div class="h-row"><span>${dateStr(G.year, G.month)}${this.H.days % 30 + 1}日</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span></div>
       <div class="h-row"><span>兵力 ${sol}/${max}</span><span>Lv ${this.H.rec[this.H.pid].lv}</span><span>隊伍 ${this.H.party.length + 1}</span></div>`;
     this.screens.minimap();
