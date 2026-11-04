@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>三國英傑傳</title>
+<meta name="description" content="扮演三國任何一位武將，在會自己運轉的天下裡練功、招募、決鬥、攻城，改變歷史。HD-2D 風格的三國 RPG。">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+<div id="stage"></div>
+<div id="hud"></div>
+<canvas id="minimap" width="140" height="140"></canvas>
+<div id="battle"><div class="b-stage"></div><div class="b-ui"></div></div>
+<div id="ui"></div>
+<div id="toasts"></div>
+<div id="title">
+  <div class="t-sky"></div>
+  <div class="t-hills"></div>
+  <div class="t-box">
+    <h1>三國英傑傳</h1>
+    <div class="t-sub">Heroes of the Three Kingdoms</div>
+    <div class="t-menu"></div>
+    <div class="t-best"></div>
+    <div class="t-foot">五百位武將　四十五座城池　天下由你改寫</div>
+  </div>
+</div>
+<div id="tpad">
+  <div class="dpad"><b data-d="up">▲</b><b data-d="left">◀</b><b data-d="right">▶</b><b data-d="down">▼</b></div>
+  <div class="btns"><b id="tB">B</b><b id="tA">A</b></div>
+</div>
+<div id="fade"></div>
+<script type="module" src="js/main.js?v=1"></script>
+</body>
+</html>
