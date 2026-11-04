@@ -179,6 +179,63 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
     else if (w === 'fan') { const fx = hx, fy = hy2 - 3; for (let u = -2; u <= 2; u++) for (let v = 0; v < 4 - Math.abs(u); v++) wq(fx + u, fy - v, v === 0 ? '#c8c8c8' : '#f8f8f0'); wq(fx, fy + 1, wood); }
   }
 }
+// ---------------------------------------------------------------- foot soldiers for the battle squads: true proportions, not chibi
+// kind: soldier | bandit | turban | nomad | barbarian | pirate; role: spear | bow | flag. A sheet laid out like a person's
+// (4 rows of directions x 3 frames, 24x32), drawn side-on: the left row is drawn, the right is its mirror, and the
+// front and back rows reuse them.
+const SOL = {
+  soldier: (c) => ({ skin: '#e8b890', body: c, bodyD: shade(c, 0.68), trim: '#d8d0b8', hat: 'helm', hatC: shade(c, 0.55), plume: '#e83a2a', pants: '#3a3028', wpn: 'spear', shield: true, plates: true }),
+  bandit: () => ({ skin: '#d8a078', body: '#7a5a3a', bodyD: '#5a4028', trim: '#4a3a2a', hat: 'band', hatC: '#a83a2a', pants: '#4a4038', wpn: 'blade', bare: true }),
+  turban: () => ({ skin: '#e8b890', body: '#a89a5a', bodyD: '#7a6e3a', trim: '#e8c830', hat: 'scarf', hatC: '#f0d030', pants: '#6a5a3a', wpn: 'spear' }),
+  nomad: () => ({ skin: '#d8a078', body: '#7a5a40', bodyD: '#5a3e2a', trim: '#c8a060', hat: 'fur', hatC: '#8a6a4a', pants: '#4a3a2a', wpn: 'bow', fur: true }),
+  barbarian: () => ({ skin: '#8a5a38', body: '#8a6a2a', bodyD: '#6a4a1a', trim: '#e8c860', hat: 'feather', hatC: '#d84a2a', pants: '#5a3a1a', wpn: 'spear', shield: true, rattan: true, bare: true }),
+  pirate: () => ({ skin: '#c89a70', body: '#e8e8e8', bodyD: '#3a5a8a', trim: '#2a2a2a', hat: 'band', hatC: '#2a4a8a', pants: '#3a3a4a', wpn: 'blade', stripes: true }),
+};
+export function soldierSheet(kind = 'soldier', color = '#8a4a3a', role = 'spear') {
+  const key = `sol_${kind}_${color}_${role}`; if (cache.has(key)) return cache.get(key);
+  const S = (SOL[kind] || SOL.soldier)(color); if (role === 'bow') S.wpn = 'bow', S.shield = false; if (role === 'flag') S.wpn = 'flag', S.shield = false;
+  const cv = px(FW * 3, FH * 4);
+  for (let f = 0; f < 3; f++) { drawSoldier(cv, f * FW, 1 * FH, f, S, color, false); drawSoldier(cv, f * FW, 2 * FH, f, S, color, true); drawSoldier(cv, f * FW, 0, f, S, color, false); drawSoldier(cv, f * FW, 3 * FH, f, S, color, true); }
+  outline(cv, '#140e0a');
+  const out = { canvas: cv.c, fw: FW, fh: FH }; cache.set(key, out); return out;
+}
+function drawSoldier(cv, ox, oy, frame, S, color, flip) {
+  const P = (i, j, c) => { if (c) cv.P(ox + (flip ? FW - 1 - i : i), oy + j, c); }, R = (i, j, w, h, c) => { for (let u = 0; u < w; u++) for (let v = 0; v < h; v++) P(i + u, j + v, c); };
+  const step = frame === 0 ? 1 : frame === 2 ? -1 : 0, bob = frame === 1 ? 0 : 1, y = 4 + bob; // everything (the spear tip too) stays inside the 32 rows
+  const skin = S.skin, skinD = shade(skin, 0.8), steel = '#c8ccd8', steelD = '#7a8090', wood = '#7a4a22';
+  // the back arm and leg first (darker)
+  R(11 - step, y + 19, 3, 6, shade(S.pants, 0.75)); R(11 - step, y + 24, 4, 2, '#1e1610');
+  // a flag on a pole behind the bearer
+  if (S.wpn === 'flag') { R(15, y - 3, 1, 25, wood); for (let j = 0; j < 9; j++) for (let i = 0; i < 7 - (j > 6 ? j - 6 : 0); i++) P(16 + i, y - 3 + j, j === 0 ? shade(color, 1.25) : (i + j) % 5 === 0 ? shade(color, 0.85) : color); P(15, y - 4, '#e8c860'); }
+  // legs: trousers and boots, walking
+  R(8 + step, y + 19, 3, 6, S.pants); R(7 + step, y + 24, 4, 2, '#2a2018'); P(7 + step, y + 25, '#3a3028');
+  // the body: lamellar plates, a vest over bare arms, a fur coat, a striped shirt
+  R(7, y + 10, 7, 9, S.body);
+  if (S.plates) { for (let j = 0; j < 9; j += 2) for (let i = 0; i < 7; i++) P(7 + i, y + 10 + j, (i + j) % 2 ? shade(S.body, 0.82) : shade(S.body, 1.12)); R(7, y + 10, 7, 1, S.trim); }
+  if (S.stripes) for (let j = 0; j < 8; j += 2) R(7, y + 10 + j, 7, 1, S.bodyD);
+  if (S.fur) { R(7, y + 10, 7, 2, '#d8c8a8'); R(7, y + 17, 7, 1, '#d8c8a8'); }
+  R(6, y + 16, 9, 1, S.trim); P(9, y + 16, '#e8c860'); // the belt and buckle
+  R(7, y + 17, 7, 3, S.bodyD); P(8, y + 19, shade(S.bodyD, 0.8)); P(12, y + 19, shade(S.bodyD, 0.8)); // the skirt
+  // the head: a real face in profile, not a big chibi one
+  R(8, y + 3, 6, 7, skin); R(7, y + 5, 1, 3, skin); P(7, y + 6, skinD); R(8, y + 9, 5, 1, skinD);
+  P(8, y + 5, '#1a1410'); P(9, y + 5, '#1a1410'); P(7, y + 7, skinD); P(8, y + 8, shade(skin, 0.7));
+  R(12, y + 3, 2, 5, '#1a1410'); // hair at the back of the head
+  switch (S.hat) {
+    case 'helm': R(7, y + 1, 7, 3, S.hatC); R(7, y + 1, 7, 1, shade(S.hatC, 1.35)); R(13, y + 3, 2, 4, S.hatC); R(6, y + 3, 2, 1, shade(S.hatC, 1.2)); R(10, y - 1, 2, 2, steel); R(11, y - 3, 2, 2, S.plume); P(12, y - 4, S.plume); P(13, y - 3, S.plume); break;
+    case 'band': R(7, y + 2, 7, 2, '#1a1410'); R(7, y + 3, 7, 1, S.hatC); P(14, y + 3, S.hatC); P(15, y + 4, S.hatC); P(15, y + 5, S.hatC); break;
+    case 'scarf': R(7, y + 1, 7, 3, S.hatC); R(7, y + 3, 7, 1, shade(S.hatC, 0.8)); R(14, y + 2, 2, 5, S.hatC); P(16, y + 6, S.hatC); break;
+    case 'fur': R(6, y + 1, 9, 3, S.hatC); R(6, y + 3, 9, 1, '#d8c8a8'); R(13, y + 3, 2, 5, S.hatC); break;
+    case 'feather': R(7, y + 2, 7, 2, '#c8a040'); for (let k = 0; k < 4; k++) R(8 + k * 2, y - 2 - (k % 2), 1, 4, k % 2 ? S.hatC : '#f0f0e8'); break;
+  }
+  // the front arm and the weapon
+  const arm = S.bare ? skin : shade(S.body, 0.9);
+  if (S.wpn === 'spear') { R(5, y - 1, 1, 26, wood); R(4, y - 2, 3, 1, steel); R(5, y - 4, 1, 2, '#ffffff'); P(4, y - 3, steel); P(6, y - 3, steel); R(4, y, 3, 1, '#e83a2a'); R(5, y + 11, 3, 2, arm); P(5, y + 12, skin); }
+  if (S.wpn === 'blade') { R(6, y + 11, 2, 4, arm); P(5, y + 14, skin); for (let k = 0; k < 9; k++) { P(4 - Math.floor(k / 3), y + 13 - k, k ? steel : '#8a6a3a'); if (k > 1) P(5 - Math.floor(k / 3), y + 13 - k, steelD); } R(3, y + 13, 3, 1, '#c8a040'); }
+  if (S.wpn === 'bow') { for (let k = 0; k < 15; k++) P(4 - (k > 2 && k < 12 ? 1 : 0), y + 5 + k, wood); for (let k = 0; k < 15; k++) P(5, y + 5 + k, '#e8e8d8'); R(5, y + 11, 3, 2, arm); R(14, y + 9, 2, 7, '#6a4a2a'); P(14, y + 8, '#e8e8e8'); P(15, y + 8, '#e8e8e8'); }
+  if (S.wpn === 'flag') { R(12, y + 11, 3, 2, arm); }
+  // the shield on the front arm: round lacquer with a boss, or woven rattan
+  if (S.shield) { const sc = S.rattan ? '#b8904a' : shade(color, 0.85); for (let j = -4; j <= 4; j++) for (let i = -3; i <= 3; i++) if (i * i / 9 + j * j / 16 <= 1) P(7 + i, y + 14 + j, (i * i / 9 + j * j / 16 > 0.6) ? (S.rattan ? '#8a6a32' : '#e8c860') : S.rattan && (i + j) % 2 ? '#a07a3a' : sc); P(7, y + 14, S.rattan ? '#6a4a22' : '#e8e8e8'); }
+}
 // a frame as its own small canvas (for battle and portraits)
 export function frameCanvas(sheet, dir, f = 1) { const c = document.createElement('canvas'); c.width = sheet.fw; c.height = sheet.fh; c.getContext('2d').drawImage(sheet.canvas, f * sheet.fw, dir * sheet.fh, sheet.fw, sheet.fh, 0, 0, sheet.fw, sheet.fh); return c; }
 

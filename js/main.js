@@ -5,7 +5,7 @@
 import { View, THREE, personSheet } from './render.js';
 import { buildWorld, T, WALK, ENC, CITY_POS, regionAt, W as WW } from './world.js';
 import { buildTown } from './town.js';
-import { lookFor, LOOKS } from './sprites.js';
+import { lookFor, LOOKS, soldierSheet } from './sprites.js';
 import { newGame, step, rng, citiesOf, gensOf, busy, pickGovernor } from './sim/engine.js';
 import { fmt, dateStr } from './sim/text.js';
 import { newRec, solMax, spMax, bstats, gainExp, rankOf, RANKS, score } from './hero.js';
@@ -132,7 +132,7 @@ class Game {
   frame(t) {
     const dt = Math.min(0.05, (t - this.last) / 1000); this.last = t;
     if (this.mode === 'world' || this.mode === 'town') { this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); }
-    if (this.mode !== 'battle' && this.mode !== 'title' || this.view.M) this.view.render(dt);
+    if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     requestAnimationFrame((t2) => this.frame(t2));
   }
   held() { const k = this.keys, tp = this.tpad; if (k.has('ArrowUp') || k.has('w') || k.has('W') || tp === 'up') return 'up'; if (k.has('ArrowDown') || k.has('s') || k.has('S') || tp === 'down') return 'down'; if (k.has('ArrowLeft') || k.has('a') || k.has('A') || tp === 'left') return 'left'; if (k.has('ArrowRight') || k.has('d') || k.has('D') || tp === 'right') return 'right'; return null; }
@@ -172,12 +172,13 @@ class Game {
       return;
     }
     const k = this.world.at(P.x, P.z); this.onRoad = k === T.ROAD || k === T.BRIDGE;
-    this.H.days++; this.steps = (this.steps || 0) + 1;
-    if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; }
+    // ten steps on the land make a day, thirty days a month
+    this.steps = (this.steps || 0) + 1; this.H.walk = (this.H.walk || 0) + 1;
+    if (this.H.walk % 10 === 0) { this.H.days++; if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; } }
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
     if (this.steps > 5 && Math.random() < (ENC[k] || 0)) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); }
-    if (this.H.days % 3 === 0) this.hud();
+    if (this.H.walk % 10 === 0) this.hud();
   }
   bump(x, z) {
     if (this.mode !== 'town' || this.ui.busy || this.ui.settling) return;
@@ -234,7 +235,7 @@ class Game {
   march(from, to, color, win) {
     if (this.mode !== 'world') return;
     const a = CITY_POS[from], b = CITY_POS[to], d = Math.hypot(a.x - b.x, a.y - b.y); if (d > 60) return;
-    const act = this.view.addActor(personSheet(LOOKS.soldier(color)), a.x, a.y + 1, { scale: 1.1 });
+    const act = this.view.addActor(soldierSheet('soldier', color, 'flag'), a.x, a.y + 1, { scale: 1.2 });
     act.march = { a, b, t: 0, dur: 4 + d / 8, win }; (this.armies ||= []).push(act);
   }
   armyTick(dt) {
@@ -248,7 +249,7 @@ class Game {
     if (!G) { el.innerHTML = ''; return; }
     const sol = this.partyList().reduce((s, p) => s + p.rec.sol, 0), max = this.partyList().reduce((s, p) => s + p.solMax, 0);
     el.innerHTML = `<div class="h-name"><b>${g.name}</b><span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍・' + this.rank() : '在野'}</span></div>
-      <div class="h-row"><span>${dateStr(G.year, G.month)}</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span></div>
+      <div class="h-row"><span>${dateStr(G.year, G.month)}${this.H.days % 30 + 1}日</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span></div>
       <div class="h-row"><span>兵力 ${sol}/${max}</span><span>Lv ${this.H.rec[this.H.pid].lv}</span><span>隊伍 ${this.H.party.length + 1}</span></div>`;
     this.screens.minimap();
   }

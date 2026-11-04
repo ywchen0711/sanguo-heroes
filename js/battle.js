@@ -6,7 +6,7 @@
 // Duels (一騎討): two generals alone between the armies. Each turn both choose — 攻擊, 猛攻 (strong, but a guard turns it
 // back), 防守 (blocks most and builds fury) or 必殺 (when fury is full) — and 武力 decides the rest.
 import { View, THREE, personSheet, beastSheet, canvasTex } from './render.js';
-import { LOOKS, shade } from './sprites.js';
+import { LOOKS, shade, soldierSheet } from './sprites.js';
 import { TACTICS, tacticsOf, bstats, ITEMS } from './hero.js';
 import { FX } from './fx.js';
 
@@ -23,6 +23,7 @@ export class Battle {
     this.view.camOff.set(0, 11, 11); this.view.camera.fov = 38; this.view.camera.updateProjectionMatrix();
     this.view.tsH.uniforms.band.value = this.view.tsV.uniforms.band.value = 0.24;
     this.fx = new FX(this.view.scene); this.tw = [];
+    this.view.sun.shadow.mapSize.set(1024, 1024); // the small stage does not need the land's big shadow map
   }
   // a tween: fn(p) every frame for dur seconds, p from 0 to 1; resolves when done
   tween(dur, fn) { return new Promise((res) => this.tw.push({ t: 0, dur, fn, res })); }
@@ -44,8 +45,10 @@ export class Battle {
     a.face = face; this.setFrame(a, 1);
     // the squad: a few soldiers behind the general
     u.squad = [];
-    if (!u.beast && !noSquad) for (let k = 0; k < 6; k++) { const sx = x + (face === 1 ? 1 : -1) * (0.85 + (k % 3) * 0.5), sz = z - 0.75 + Math.floor(k / 3) * 0.6 + (k % 3) * 0.08;
-      const s = v.addActor(personSheet(u.side === 'party' ? LOOKS.soldier(this.partyColor) : u.solLook), sx, sz, { scale: 0.52 }); s.face = face; s.home = [sx, sz]; s.ph = Math.random() * 6; this.setFrame(s, 1); u.squad.push(s); }
+    const kind = u.side === 'party' ? 'soldier' : u.solKind || 'soldier', col = u.side === 'party' ? this.partyColor : u.color || '#8a4a3a';
+    if (!u.beast && !noSquad) for (let k = 0; k < 6; k++) { const sx = x + (face === 1 ? 1 : -1) * (0.8 + (k % 3) * 0.55), sz = z - 0.8 + Math.floor(k / 3) * 0.65 + (k % 3) * 0.08;
+      const role = kind === 'nomad' ? 'bow' : k === 1 && kind === 'soldier' ? 'flag' : k === 5 && (kind === 'soldier' || kind === 'turban') ? 'bow' : 'spear';
+      const s = v.addActor(soldierSheet(kind, col, role), sx, sz, { scale: 0.68 }); s.face = face; s.home = [sx, sz]; s.ph = Math.random() * 6; this.setFrame(s, 1); u.squad.push(s); }
     u.actor = a; u.home = [x, z]; u.ox = 0; u.oz = 0; u.oy = 0; u.sx = 0; u.alive0 = true; u.shown = u.squad.length;
     u.bar = v.addLabel('', a.sprite, u.beast ? 1.5 : 2.0, 'u-bar'); this.drawBar(u);
   }
@@ -197,13 +200,13 @@ export class Battle {
   other(u) { return u.side === 'party' ? this.foes : this.party; }
   async act(o) {
     const u = o.u;
-    if (o.kind === 'confused') { this.float(u, '混亂中', '#c8a0ff'); await wait(350); return; }
+    if (o.kind === 'confused') { this.float(u, '混亂中', '#c8a0ff'); this.fx.stars(u.home[0] + 0.5, 1.6, u.home[1] + 0.5); await wait(280); return; }
     if (o.kind === 'wait') return;
     if (o.kind === 'atk') {
       let t = o.t; if (!t || t.sol <= 0) t = this.other(u).find((x) => x.sol > 0); if (!t) return;
       const miss = t.status.evade && Math.random() < 0.5, d = miss ? 0 : this.physDmg(u, t), combo = !miss && u.st.war >= 85 && Math.random() < 0.12;
       await this.charge(u, t, () => { if (miss) { this.float(t, '落空', '#c8e8ff'); this.game.audio?.sfx('miss'); } else this.hit(t, d, u); }, combo ? () => { if (t.sol > 0) { this.float(u, '連擊！', '#ffd86a'); this.hit(t, Math.round(this.physDmg(u, t) * 0.6), u); } } : null);
-      await wait(180); return;
+      await wait(40); return;
     }
     if (o.kind === 'tac') {
       const T = TACTICS[o.k]; if (u.sp < T.sp) { return this.act({ u, kind: 'atk', t: o.t && o.t.side !== u.side ? o.t : null }); }

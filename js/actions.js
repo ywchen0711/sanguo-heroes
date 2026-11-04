@@ -35,7 +35,7 @@ export class Actions {
     else text += '\n我是在野之身。可以投靠明主，也可以聚集豪傑，自立為王。';
     text += `\n\n距離結束還有 ${this.H.years} 年。`;
     await this.ui.say(g.name, text, look);
-    await this.ui.say('', '【操作】方向鍵移動，Z 確認／對話，X 取消，C 打開選單。\n走到門前就能進入建築。和城裡的武將對話，可以招募、切磋或挑戰。\n在大地圖上走一步是一天，三十天就是一個月，天下也會跟著變化。');
+    await this.ui.say('', '【操作】方向鍵移動，Z 確認／對話，X 取消，C 打開選單。\n走到門前就能進入建築。和城裡的武將對話，可以招募、切磋或挑戰。\n在大地圖上走十步是一天，三十天就是一個月，天下也會跟著變化。');
   }
   // ---------------------------------------------------------------- the menu
   async menu() {
@@ -361,7 +361,7 @@ export class Actions {
     const solMax = Math.round((beast ? 70 + lv * 26 : 90 + lead * 4 + lv * 28) * (boss ? 1.6 : 1));
     const look = beast ? null : kind === 'soldier' ? LOOKS.soldier(color || '#8a6a4a') : (LOOKS[kind] || LOOKS.bandit)();
     if (boss && look) look.key += 'boss';
-    return { name: boss ? name : name, look, beast: beast ? kind : null, lv, war, lead, int, sol: solMax, solMax, sp: Math.round(int * 0.9 + lv), boss, solLook: look ? { ...look, small: true, key: look.key + 's' } : null, wpn: Math.round(lv / 3), arm: Math.round(lv / 4) };
+    return { name, look, beast: beast ? kind : null, solKind: beast ? null : kind, color: color || null, lv, war, lead, int, sol: solMax, solMax, sp: Math.round(int * 0.9 + lv), boss, solLook: look ? { ...look, small: true, key: look.key + 's' } : null, wpn: Math.round(lv / 3), arm: Math.round(lv / 4) };
   }
   async encounter(region, tile) {
     const types = FOES[region] || FOES.central, [base, kind] = pick(types), lv0 = this.g.partyList().reduce((s, p) => s + p.rec.lv, 0) / (this.H.party.length + 1);
