@@ -11,7 +11,7 @@ const STEP = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const RISKY = /生死|斬首|斬殺|下野|離開這個|背叛|高價賣|視而不見|不關我的事|按兵不動|太危險|重新選擇|稱王天下/;
 const RISKY_Q = /生死決鬥|離開.+軍嗎|賣掉|結束，結算|提前結算|斬殺/;
 export class AutoPlay {
-  constructor(game) { this.g = game; this.on = false; this.path = []; this.want = null; this.wait = 0; this.tasks = []; }
+  constructor(game) { this.g = game; this.on = false; this.path = []; this.want = null; this.wait = 0; this.tasks = []; this.stuckN = 0; this.lastCity = null; this.restDay = -99; }
   get G() { return this.g.G; } get H() { return this.g.H; }
   toggle(v = !this.on) {
     this.on = v; this.path = []; this.tasks = []; this.target = null;
@@ -49,6 +49,27 @@ export class AutoPlay {
     const dx = n[0] - P.x, dz = n[1] - P.z; if (Math.abs(dx) + Math.abs(dz) !== 1) { this.path = []; return null; }
     return dx > 0 ? 'right' : dx < 0 ? 'left' : dz > 0 ? 'down' : 'up';
   }
+  // ---------------------------------------------------------------- the watchdog: called every frame while it plays. If nothing has
+  // changed for a while - the same place, the same dialog, still locked - it shakes things loose instead of waiting
+  watch(dt) {
+    if (!this.on) return; const g = this.g, P = g.pos, key = `${g.mode}|${P?.x},${P?.z}|${g.ui.stack.length}|${g.locked}`;
+    if (key !== this.wKey) { this.wKey = key; this.wT = 0; } else this.wT = (this.wT || 0) + dt;
+    if (g.mode === 'town') this.townT = (this.townT || 0) + dt; else this.townT = 0;
+    if (g.mode === 'battle' || g.mode === 'title' || g.mode === 'end') return;
+    if (g.ui.busy && this.wT > 8) {                                                                               // a dialog nobody answered
+      this.busyT = (this.busyT || 0) + 1; g.ui.key(this.busyT % 2 ? 'ok' : 'back'); this.wT = 6;
+      if (this.busyT > 8) { this.busyT = 0; g.ui.stack.pop(); document.querySelectorAll('#ui > .talk, #ui > .menu, #ui > .panel').forEach((el, i, all) => { if (i === all.length - 1) el.remove(); }); } // last resort: close it
+      return;
+    }
+    if (!g.ui.busy) this.busyT = 0;
+    if (!g.ui.busy && g.locked && this.wT > 12) { g.locked = false; this.wT = 0; return; }                        // left locked
+    if (!g.ui.busy && !g.locked && (this.wT > 5 || this.townT > 45)) {                                            // standing still, or too long in a town
+      this.path = []; this.errands = []; this.townKey = null; this.wT = 0;
+      if (g.mode === 'town' && (this.townT > 45 || this.stuckN++ > 1)) { this.townT = 0; this.stuckN = 0; g.leaveTown(); }
+      else if (g.mode === 'world') this.wander();
+    }
+  }
+  wander() { const P = this.g.pos; for (let k = 0; k < 30; k++) { const a = Math.random() * Math.PI * 2, d = 4 + Math.random() * 10, x = Math.round(P.x + Math.cos(a) * d), z = Math.round(P.z + Math.sin(a) * d); const t = this.g.world.at(x, z); if (WALK[t] && t !== T.CITY && t < 15 && this.walkTo((xx, zz) => xx === x && zz === z)) { this.want = null; this.target = '野外'; return true; } } return false; }
   // ---------------------------------------------------------------- deciding, a few times a second when idle
   tick(dt) {
     if (!this.on) return; this.wait -= dt; if (this.wait > 0 || this.path.length) return; this.wait = 0.4;
@@ -61,7 +82,8 @@ export class AutoPlay {
     const G = this.G, H = this.H, P = this.g.pos, me = this.g.me, mine = this.g.myFaction(), pt = this.party();
     const cities = G.cities.map((c) => ({ ...CITY_POS[c.id], C: c }));
     // 1. hurt: back to the nearest friendly city to rest
-    if (pt.sol < pt.max * 0.45) { const own = mine ? this.near(cities.filter((c) => c.C.owner === mine), P)[0] : null, any = this.near(cities, P)[0], home = own && own[1] < any[1] + 25 ? own : any; if (home && this.goCity(home[0].C, ['in'])) return; }
+    if (pt.sol < pt.max * 0.45 && this.H.days - this.restDay > 3) { const own = mine ? this.near(cities.filter((c) => c.C.owner === mine), P)[0] : null, any = this.near(cities, P)[0], home = own && own[1] < any[1] + 25 ? own : any; if (home && this.goCity(home[0].C, ['in'])) return; }
+    if (pt.sol < pt.max * 0.45) { if (this.wander()) return; }
     // 2. a bounty to hunt
     const m = H.missions.filter((x) => !x.done).sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z))[0];
     if (m && this.walkTo((x, z) => x === m.x && z === m.z)) { this.want = null; this.target = m.boss; return; }
@@ -75,7 +97,7 @@ export class AutoPlay {
     if (!mine && H.fame >= 60 && Math.random() < 0.5) { const lordCity = this.near(cities.filter((c) => c.C.owner), P).slice(0, 6).sort((a, b) => citiesOf(G, b[0].C.owner).length - citiesOf(G, a[0].C.owner).length)[0]; if (lordCity && this.goCity(lordCity[0].C, ['in'])) { this.tasks = ['serve']; return; } }
     // 5. otherwise a city now and then (shopping, bounties, work), or a walk in the country for the fights
     // shops and inns are open to anyone: one of the nearest few cities, whoever holds it
-    if (Math.random() < 0.5) { const c = this.near(cities, P).filter(([, d]) => d < 45).slice(0, 4)[Math.floor(Math.random() * 4)]; if (c && this.goCity(c[0].C, ['in'])) return; }
+    if (Math.random() < 0.5) { const c = this.near(cities.filter((c) => c.C.name !== this.lastCity), P).filter(([, d]) => d < 45).slice(0, 4)[Math.floor(Math.random() * 4)]; if (c && this.goCity(c[0].C, ['in'])) return; }
     for (let k = 0; k < 20; k++) { const a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 10, x = Math.round(P.x + Math.cos(a) * d), z = Math.round(P.z + Math.sin(a) * d); const t = this.g.world.at(x, z); if (WALK[t] && t !== T.CITY && t < 15 && this.walkTo((xx, zz) => xx === x && zz === z)) { this.want = null; this.target = '野外'; return; } }
   }
   // ---------------------------------------------------------------- in a town: a short list of errands, then out of the gate
@@ -99,7 +121,7 @@ export class AutoPlay {
       this.errands = list; this.tasks = [];
     }
     const e = this.errands.shift();
-    if (!e) { const gt = M.gate; this.walkTo((x, z) => z >= M.H - 1 && x >= gt.x0 && x <= gt.x1); this.want = null; return; }
+    if (!e) { this.lastCity = M.C.name; const gt = M.gate; this.walkTo((x, z) => z >= M.H - 1 && x >= gt.x0 && x <= gt.x1); this.want = null; return; }
     if (e.door) { const d = M.doors.find((x) => x.id === e.door); if (!d) return; this.errand = e; this.walkTo((x, z) => x === d.x && z === d.z); return; }
     const t = e.thing || { x: Math.round(e.npc.a.x), z: Math.round(e.npc.a.z) };
     // walk next to it and then into it (a bump opens a chest or speaks to the master)
@@ -109,7 +131,7 @@ export class AutoPlay {
   async door(door, C) {
     const A = this.g.act, H = this.H, e = this.errand || {}; this.errand = null;
     const mine = this.g.myFaction(), f = mine && this.G.factions[mine];
-    if (door.id === 'inn') { const cost = 8 * (H.party.length + 1); if (H.gold >= cost) { H.gold -= cost; for (const p of this.g.partyList()) { p.rec.sp = p.spMax; p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * 0.25)); } await A.passDays(1); this.g.saveGame(); } if (C.owner && C.owner === mine) await A.draft(C, true); else if (H.gold > 300) await this.hire(); return true; }
+    if (door.id === 'inn') { const cost = 8 * (H.party.length + 1); this.restDay = H.days; if (H.gold < cost) { for (const p of this.g.partyList()) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * 0.12)); await A.passDays(3); this.g.ui.toast('🤖 沒錢住店，在馬廄歇了三天', 2500); } if (H.gold >= cost) { H.gold -= cost; for (const p of this.g.partyList()) { p.rec.sp = p.spMax; p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * 0.25)); } await A.passDays(1); this.g.saveGame(); } if (C.owner && C.owner === mine) await A.draft(C, true); else if (H.gold > 300) await this.hire(); return true; }
     if (door.id === 'arms') { this.shop(C); return true; }
     if (door.id === 'goods') { while ((H.items.med || 0) < 4 && H.gold >= 30) { H.gold -= 30; H.items.med = (H.items.med || 0) + 1; } return true; }
     if (door.id === 'tavern') {
