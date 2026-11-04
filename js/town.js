@@ -107,9 +107,21 @@ export function buildCave(place) {
   const rooms = [];
   for (let k = 0; k < 6; k++) {
     let [sx, sz] = main[Math.floor(r() * main.length)], dir = r() < 0.5 ? -1 : 1; const len = 4 + Math.floor(r() * 7);
-    for (let i = 0; i < len; i++) { sx += r() < 0.7 ? dir : 0; sz += r() < 0.3 ? (r() < 0.5 ? -1 : 1) : 0; sx = Math.max(2, Math.min(W - 3, sx)); sz = Math.max(3, Math.min(H - 4, sz)); dig(sx, sz); }
+    // one axis at a time, so every step joins the last by a side and not just a corner
+    for (let i = 0; i < len; i++) { const nx = Math.max(2, Math.min(W - 3, sx + (r() < 0.7 ? dir : 0))); dig(nx, sz); const nz = Math.max(3, Math.min(H - 4, sz + (r() < 0.3 ? (r() < 0.5 ? -1 : 1) : 0))); dig(nx, nz); sx = nx; sz = nz; }
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) dig(sx + dx, sz + dz);
     rooms.push([sx, sz]);
+  }
+  // any pocket the diggers left cut off is joined to the cave by a straight tunnel to the nearest open tile that is
+  for (let pass = 0; pass < 20; pass++) {
+    const seen = new Uint8Array(W * H), st = [[17, H - 2]]; seen[(H - 2) * W + 17] = 1;
+    while (st.length) { const [x, z] = st.pop(); for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, nz = z + dz, k = nz * W + nx; if (nx > 0 && nz > 0 && nx < W - 1 && nz < H - 1 && open[k] && !seen[k]) { seen[k] = 1; st.push([nx, nz]); } } }
+    let lost = -1; for (let k = 0; k < W * H; k++) if (open[k] && !seen[k]) { lost = k; break; }
+    if (lost < 0) break;
+    const lx = lost % W, lz = Math.floor(lost / W); let best = null, bd = 1e9;
+    for (let k = 0; k < W * H; k++) if (seen[k]) { const d = Math.abs(k % W - lx) + Math.abs(Math.floor(k / W) - lz); if (d < bd) { bd = d; best = k; } }
+    let x = lx, z = lz; const tx = best % W, tz = Math.floor(best / W);
+    while (x !== tx) { x += Math.sign(tx - x); dig(x, z); } while (z !== tz) { z += Math.sign(tz - z); dig(x, z); }
   }
   const props = [], npcs = [], chests = [];
   // chests in the rooms, the master in the deep chamber, strange things here and there
@@ -117,6 +129,8 @@ export function buildCave(place) {
   const ODD = ['hermit', 'stele', 'spring', 'bones', 'shrine'], odd = [];
   for (const [cx, cz] of rooms.slice(4)) odd.push({ x: cx, z: cz, kind: ODD[Math.floor(r() * ODD.length)] });
   if (r() < 0.6) { const [mx, mz] = main[Math.floor(main.length * (0.3 + r() * 0.4))]; if (at(mx + 1, mz)) odd.push({ x: mx + 1, z: mz, kind: ODD[Math.floor(r() * ODD.length)] }); }
+  // nothing solid may close a passage: each chest, strange thing and hermit stands in a little room of its own
+  for (const t of [...chests, ...odd]) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) dig(t.x + dx, t.z + dz);
   for (const c of chests) props.push({ kind: 'chest', x: c.x, z: c.z, chest: c.i });
   // torches along the main way
   main.forEach(([mx, mz], i) => { if (i % 6 === 3) { const tx = at(mx - 1, mz) ? mx + 2 : mx - 1; if (!at(tx, mz)) props.push({ kind: 'lantern', x: tx, z: mz, y: 0, wall: true }); } });

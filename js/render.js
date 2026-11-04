@@ -50,7 +50,7 @@ export class View {
     host.appendChild(r.domElement);
     this.scene = new THREE.Scene(); this.scene.fog = new THREE.Fog('#c8d8e8', 26, 60);
     this.camera = new THREE.PerspectiveCamera(32, 1, 0.5, 200);
-    this.camOff = new THREE.Vector3(0, 16.4, 13.8);
+    this.camOff = new THREE.Vector3(0, 16.4, 13.8); this.baseOff = this.camOff.clone(); this.yaw = 0; this.zoom = 1;
     this.hemi = new THREE.HemisphereLight('#dfefff', '#6a5a3a', 1.35); this.scene.add(this.hemi);
     const sun = this.sun = new THREE.DirectionalLight('#fff0d8', 2.1); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 80 }); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.03;
@@ -77,7 +77,8 @@ export class View {
   setMap(M) {
     this.clearMap(); this.M = M; this.shadowDirty = true;
     this.scene.background = new THREE.Color(M.sky || '#9ac8f0'); this.scene.fog.color.set(M.fog || M.sky || '#c8d8e8');
-    this.scene.fog.near = M.fogNear || 26; this.scene.fog.far = M.fogFar || 60;
+    this.scene.fog.near = M.fogNear || 26; this.scene.fog.far = M.fogFar || 60; this.fogBase = [this.scene.fog.near, this.scene.fog.far];
+    if (this.zoom !== 1) { this.scene.fog.near *= Math.max(1, this.zoom); this.scene.fog.far *= Math.max(1, this.zoom); }
     this.hemi.intensity = M.dark ? 0.75 : 1.35; this.sun.intensity = M.dark ? 0.45 : 2.1; this.hemi.color.set(M.dark ? '#d8b898' : '#dfefff');
     // the party carries a torch in the dark
     if (M.dark && !this.torch) { this.torch = new THREE.PointLight('#ffb070', 3.2, 11, 1.4); this.scene.add(this.torch); } if (this.torch) this.torch.visible = !!M.dark;
@@ -161,11 +162,11 @@ export class View {
     this.decoMats ||= {};
     const mat = (k) => this.decoMats[k] ||= new THREE.MeshBasicMaterial({ map: tex(k >= 5 ? rockCanvas(k === 6) : treeCanvas(k - 1)), alphaTest: 0.5, fog: true, side: THREE.DoubleSide });
     const geo = this.decoGeo ||= new THREE.PlaneGeometry(1, 1).translate(0, 0.49, 0);
-    const o = this.camOff, up = Math.min(1.5, (Math.hypot(o.y, o.z) / Math.max(0.001, o.z)) * 0.82);
+    const up = this.upK();
     const byKind = new Map(); for (const s of spots) { if (!byKind.has(s.d)) byKind.set(s.d, []); byKind.get(s.d).push(s); }
-    const out = [], m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    const out = [], m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw || 0), v = new THREE.Vector3(), sc = new THREE.Vector3();
     for (const [k, list] of byKind) {
-      const im = new THREE.InstancedMesh(geo, mat(k), list.length);
+      const im = new THREE.InstancedMesh(geo, mat(k), list.length); im.userData.spots = list;
       list.forEach((s, i) => { m.compose(v.set(s.x, s.y, s.z), q, sc.set(s.sx, s.sy * up, 1)); im.setMatrixAt(i, m); });
       im.instanceMatrix.needsUpdate = true; if (im.computeBoundingSphere) im.computeBoundingSphere(); else im.frustumCulled = false;
       this.mapGroup.add(im); out.push(im);
@@ -278,14 +279,47 @@ export class View {
     return a;
   }
   // the board's size as it should look on screen
-  sizeActor(a, w, h) { const o = this.camOff, up = Math.hypot(o.y, o.z) / Math.max(0.001, o.z); a.sprite.scale.set(w, h * Math.min(1.5, up * 0.82), 1); }
+  sizeActor(a, w, h) { a.sprite.scale.set(w, h * this.upK(), 1); }
   removeActor(a) { this.scene.remove(a.sprite, a.shadow); a.tex.dispose(); a.sprite.material.dispose(); if (a.label) this.removeLabel(a.label); this.actors.delete(a); }
   placeActor(a) {
-    const h = a.y ?? 0; a.sprite.position.set(a.x + 0.5, h, a.z + 0.5); a.shadow.position.set(a.x + 0.5, h + 0.03, a.z + 0.5);
+    const h = a.y ?? 0; a.sprite.position.set(a.x + 0.5, h, a.z + 0.5); a.shadow.position.set(a.x + 0.5, h + 0.03, a.z + 0.5); a.sprite.rotation.y = this.yaw || 0;
     // a beast's sheet is two side-view frames facing left (face 2 turns it round); a person's is 4 directions x 3 frames
     if (a.beast) { const flip = a.face === 2; a.tex.repeat.set((flip ? -1 : 1) / 2, 1); a.tex.offset.set(((a.bframe || 0) % 2) / 2 + (flip ? 0.5 : 0), 0); return; }
-    a.tex.offset.set(a.frame / 3, 1 - (a.dir + 1) / 4);
+    a.tex.offset.set(a.frame / 3, 1 - (this.viewRow(a.dir) + 1) / 4);
   }
+  // ---------------------------------------------------------------- the free camera
+  // yaw: how far round the camera has turned (0 = looking north as before); zoom: 1 as before, less is closer
+  setView(yaw, zoom) {
+    const was = this.yaw; this.yaw = yaw; this.zoom = Math.max(0.55, Math.min(1.7, zoom));
+    const b = this.baseOff, k = this.zoom, horiz = b.z * k;
+    this.camOff.set(Math.sin(yaw) * horiz, b.y * k, Math.cos(yaw) * horiz);
+    if (this.fogBase) { this.scene.fog.near = this.fogBase[0] * Math.max(1, k); this.scene.fog.far = this.fogBase[1] * Math.max(1, k); }
+    const sc = this.sun.shadow.camera, ext = 26 * Math.max(1, k); if (sc.right !== ext) { Object.assign(sc, { left: -ext, right: ext, top: ext, bottom: -ext }); sc.updateProjectionMatrix(); }
+    if (Math.abs(was - yaw) > 0.02 || this._decoYaw == null) this.turnDeco();
+    for (const a of this.actors) this.placeActor(a);
+    this.shadowDirty = true;
+  }
+  // which row of a sheet to show: a figure's facing in the world, seen from where the camera is now
+  viewRow(dir) {
+    if (!this.yaw) return dir;
+    const f = [[0, 1], [-1, 0], [1, 0], [0, -1]][dir] || [0, 1], s = Math.sin(this.yaw), c = Math.cos(this.yaw);
+    const toward = f[0] * s + f[1] * c, right = f[0] * c - f[1] * s;
+    return Math.abs(toward) >= Math.abs(right) ? (toward > 0 ? 0 : 3) : right > 0 ? 2 : 1;
+  }
+  // the world direction (0 down 1 left 2 right 3 up) that a key means on screen right now
+  screenDir(key) {
+    const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
+    const v = { down: [s, c], up: [-s, -c], right: [c, -s], left: [-c, s] }[key];
+    const W = [['down', 0, 1], ['left', -1, 0], ['right', 1, 0], ['up', 0, -1]];
+    return W.reduce((best, w) => (w[1] * v[0] + w[2] * v[1] > best[1] ? [w[0], w[1] * v[0] + w[2] * v[1]] : best), ['down', -9])[0];
+  }
+  // trees and rocks are boards too: they turn to face the camera
+  turnDeco() {
+    this._decoYaw = this.yaw;
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw), v = new THREE.Vector3(), sc = new THREE.Vector3(), up = this.upK();
+    for (const c of this.chunks.values()) for (const im of c.deco) { const list = im.userData.spots; if (!list) continue; list.forEach((s, i) => { m.compose(v.set(s.x, s.y, s.z), q, sc.set(s.sx, s.sy * up, 1)); im.setMatrixAt(i, m); }); im.instanceMatrix.needsUpdate = true; }
+  }
+  upK() { const o = this.camOff, horiz = Math.hypot(o.x, o.z); return Math.min(1.5, (Math.hypot(o.y, horiz) / Math.max(0.001, horiz)) * 0.82); }
   // ---------------------------------------------------------------- the frame
   follow(x, y, z, snap) {
     const tgt = (this._tgt ||= new THREE.Vector3()).set(x + 0.5, y, z + 0.5);

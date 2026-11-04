@@ -34,7 +34,7 @@ class Game {
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
     addEventListener('keyup', (e) => this.keys.delete(e.key));
     addEventListener('blur', () => this.keys.clear());
-    this.touchPad();
+    this.touchPad(); this.freeCam();
     this.last = performance.now(); requestAnimationFrame((t) => this.frame(t));
     this.screens.title();
   }
@@ -104,7 +104,7 @@ class Game {
     M.city = null; M.C = C; M.place = q;
     const st = (this.H.places ||= {})[q.id] ||= { chests: [], odd: [], boss: false };
     if (M.cave) for (const pr of M.props) if (pr.kind === 'chest' && st.chests.includes(pr.chest)) pr.open = true;
-    const [sx, sz] = at && at.place === q.id ? [at.x, at.z] : M.spawn;
+    const [sx, sz] = at && at.place === q.id && M.walkable(at.x, at.z) ? [at.x, at.z] : M.spawn; // an old save may stand where the cave has changed
     this.pos = { x: sx, z: sz, dir: at?.dir || 'up', town: null, place: q.id };
     this.me.city = q.near; for (const id of this.H.party) this.G.gens[id].city = q.near;
     this.view.setMap({ ...M, water: null });
@@ -143,7 +143,7 @@ class Game {
     }
   }
   // the camera follows the leader; in a town it stays inside the walls
-  camTo(x, z, snap) { if (this.mode === 'town') { const mx = Math.min(9, this.town.W / 2 - 0.5), mz = Math.min(6, this.town.H / 2 - 0.5); x = Math.max(mx, Math.min(this.town.W - mx - 1, x)); z = Math.max(mz, Math.min(this.town.H - mz, z)); } this.view.follow(x, this.mode === 'town' ? 0 : this.groundY(Math.round(x), Math.round(z)), z, snap); }
+  camTo(x, z, snap) { if (this.mode === 'town' && Math.abs(this.view.yaw) < 0.01 && this.view.zoom <= 1.02) { const mx = Math.min(9, this.town.W / 2 - 0.5), mz = Math.min(6, this.town.H / 2 - 0.5); x = Math.max(mx, Math.min(this.town.W - mx - 1, x)); z = Math.max(mz, Math.min(this.town.H - mz, z)); } this.view.follow(x, this.mode === 'town' ? 0 : this.groundY(Math.round(x), Math.round(z)), z, snap); }
   groundY(x, z) { if (this.mode === 'town') return 0; const h = this.world.hAt(x, z); return Math.max(h, -0.05); }
   spawnParty(x, z, dir) {
     this.actors = []; const list = this.partyList();
@@ -194,7 +194,7 @@ class Game {
     serving.forEach((g, i) => { const [x, z] = spots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
     for (const g of [...serving, ...free]) mark(this, g.id, 1);
     for (const id of sagesHere(this)) {
-      const [x, z] = M.cave ? this.freeSpot(M.boss[0], M.boss[1] + 3) : this.freeSpot(M.spawn[0], Math.max(2, M.spawn[1] - 4)); const S = SAGES[id], a = this.view.addActor(personSheet(S.look()), x, z, { scale: 0.95 });
+      const [x, z] = M.cave ? this.freeSpot(M.boss[0] + 2, M.boss[1] - 1) : this.freeSpot(M.spawn[0], Math.max(2, M.spawn[1] - 4)); const S = SAGES[id], a = this.view.addActor(personSheet(S.look()), x, z, { scale: 0.95 });
       a.label = this.view.addLabel(`<b style="color:#c8b8ff">${S.n}</b>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, home: [x, z], special: 'sage', sage: id });
     }
     free.forEach((g, i) => { const [x, z] = fspots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b><i>在野</i>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
@@ -210,7 +210,7 @@ class Game {
     // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
     try {
-      if (this.mode === 'world' || this.mode === 'town') { this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); }
+      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); }
       if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
@@ -228,8 +228,9 @@ class Game {
     this.animWalk(dt, false); this.tryStep();
   }
   tryStep() {
-    const P = this.pos, d = this.held();
-    if (!d) { this.bumped = null; return; }
+    const P = this.pos, d0 = this.held();
+    if (!d0) { this.bumped = null; return; }
+    const d = this.view.screenDir(d0);
     const [dx, dz, di] = DIRS[d]; P.dir = d; this.actors[0].dir = di;
     const nx = P.x + dx, nz = P.z + dz;
     if (!this.canWalk(nx, nz)) { this.place(1); this.bump(nx, nz); return; }
@@ -347,6 +348,40 @@ class Game {
       <div class="h-row"><span>${dateStr(G.year, G.month)}${this.H.days % 30 + 1}日</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span></div>
       <div class="h-row"><span>兵力 ${sol}/${max}</span><span>Lv ${this.H.rec[this.H.pid].lv}</span><span>隊伍 ${this.H.party.length + 1}</span></div>`;
     this.screens.minimap();
+  }
+  // ---------------------------------------------------------------- the free camera: drag to turn, the wheel to zoom,
+  // Q / E to turn, + / - to zoom, R to put it back; two fingers on a touch screen. Remembered between games.
+  freeCam() {
+    const V = this.view, el = V.renderer.domElement; let cam = { yaw: 0, zoom: 1 };
+    try { cam = { ...cam, ...JSON.parse(localStorage.getItem('sanguo-heroes-cam') || '{}') }; } catch (e) {}
+    const want = { ...cam }, keep = () => { try { localStorage.setItem('sanguo-heroes-cam', JSON.stringify(want)); } catch (e) {} };
+    this.camWant = want; V.setView(want.yaw, want.zoom);
+    const live = () => this.mode === 'world' || this.mode === 'town';
+    let drag = null;
+    const host = document.getElementById('stage');
+    host.addEventListener('pointerdown', (e) => { if (!live() || e.pointerType === 'touch') return; drag = { x: e.clientX, yaw: want.yaw }; });
+    addEventListener('pointermove', (e) => { if (!drag) return; want.yaw = drag.yaw - (e.clientX - drag.x) * 0.008; });
+    addEventListener('pointerup', () => { if (drag) { drag = null; keep(); } });
+    host.addEventListener('wheel', (e) => { if (!live()) return; e.preventDefault(); want.zoom = Math.max(0.55, Math.min(1.7, want.zoom * (e.deltaY > 0 ? 1.08 : 1 / 1.08))); keep(); }, { passive: false });
+    addEventListener('keydown', (e) => {
+      if (this.ui.busy || !live()) return;
+      if (e.key === 'q' || e.key === 'Q') want.yaw += Math.PI / 8; if (e.key === 'e' || e.key === 'E') want.yaw -= Math.PI / 8;
+      if (e.key === '+' || e.key === '=') want.zoom = Math.max(0.55, want.zoom / 1.12); if (e.key === '-' || e.key === '_') want.zoom = Math.min(1.7, want.zoom * 1.12);
+      if (e.key === 'r' || e.key === 'R') { want.yaw = 0; want.zoom = 1; }
+      if ('qQeE+=-_rR'.includes(e.key)) keep();
+    });
+    // two fingers: turn and pinch
+    let t2 = null;
+    host.addEventListener('touchstart', (e) => { if (e.touches.length === 2 && live()) { const [a, b] = e.touches; t2 = { ang: Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX), d: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY), yaw: want.yaw, zoom: want.zoom }; } }, { passive: true });
+    host.addEventListener('touchmove', (e) => { if (!t2 || e.touches.length !== 2) return; const [a, b] = e.touches; want.yaw = t2.yaw - (Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX) - t2.ang); want.zoom = Math.max(0.55, Math.min(1.7, t2.zoom * t2.d / Math.max(20, Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY)))); }, { passive: true });
+    host.addEventListener('touchend', () => { if (t2) { t2 = null; keep(); } });
+  }
+  // ease the camera towards where it was asked to be
+  camTick(dt) {
+    const V = this.view, w = this.camWant; if (!w) return;
+    const dy = w.yaw - V.yaw, dz = w.zoom - V.zoom; if (Math.abs(dy) < 0.001 && Math.abs(dz) < 0.001) return;
+    const k = Math.min(1, dt * 10); V.setView(Math.abs(dy) < 0.001 ? w.yaw : V.yaw + dy * k, Math.abs(dz) < 0.001 ? w.zoom : V.zoom + dz * k);
+    if (this.pos) this.camTo(this.pos.fx ?? this.pos.x, this.pos.fz ?? this.pos.z, true);
   }
   // ---------------------------------------------------------------- touch: a pad and two buttons
   touchPad() {
