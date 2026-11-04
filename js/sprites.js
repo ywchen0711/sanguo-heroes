@@ -194,6 +194,7 @@ const SOL = {
 export function soldierSheet(kind = 'soldier', color = '#8a4a3a', role = 'spear') {
   const key = `sol_${kind}_${color}_${role}`; if (cache.has(key)) return cache.get(key);
   const S = (SOL[kind] || SOL.soldier)(color); if (role === 'bow') S.wpn = 'bow', S.shield = false; if (role === 'flag') S.wpn = 'flag', S.shield = false;
+  if (role === 'cav') return riderSheet(key, S, color);
   const cv = px(FW * 3, FH * 4);
   for (let f = 0; f < 3; f++) { drawSoldier(cv, f * FW, 1 * FH, f, S, color, false); drawSoldier(cv, f * FW, 2 * FH, f, S, color, true); drawSoldier(cv, f * FW, 0, f, S, color, false); drawSoldier(cv, f * FW, 3 * FH, f, S, color, true); }
   outline(cv, '#140e0a');
@@ -210,11 +211,12 @@ function drawSoldier(cv, ox, oy, frame, S, color, flip) {
   // legs: trousers and boots, walking
   R(8 + step, y + 19, 3, 6, S.pants); R(7 + step, y + 24, 4, 2, '#2a2018'); P(7 + step, y + 25, '#3a3028');
   // the body: lamellar plates, a vest over bare arms, a fur coat, a striped shirt
-  R(7, y + 10, 7, 9, S.body);
+  R(7, y + 10, 7, 9, S.body); R(7, y + 10, 1, 7, shade(S.body, 1.18)); R(13, y + 10, 1, 7, shade(S.body, 0.78));
   if (S.plates) { for (let j = 0; j < 9; j += 2) for (let i = 0; i < 7; i++) P(7 + i, y + 10 + j, (i + j) % 2 ? shade(S.body, 0.82) : shade(S.body, 1.12)); R(7, y + 10, 7, 1, S.trim); }
   if (S.stripes) for (let j = 0; j < 8; j += 2) R(7, y + 10 + j, 7, 1, S.bodyD);
   if (S.fur) { R(7, y + 10, 7, 2, '#d8c8a8'); R(7, y + 17, 7, 1, '#d8c8a8'); }
   R(6, y + 16, 9, 1, S.trim); P(9, y + 16, '#e8c860'); // the belt and buckle
+  if (S.plates) { R(6, y + 10, 3, 2, shade(S.hatC, 1.1)); P(6, y + 10, shade(S.hatC, 1.4)); }   // a shoulder guard
   R(7, y + 17, 7, 3, S.bodyD); P(8, y + 19, shade(S.bodyD, 0.8)); P(12, y + 19, shade(S.bodyD, 0.8)); // the skirt
   // the head: a real face in profile, not a big chibi one
   R(8, y + 3, 6, 7, skin); R(7, y + 5, 1, 3, skin); P(7, y + 6, skinD); R(8, y + 9, 5, 1, skinD);
@@ -236,31 +238,146 @@ function drawSoldier(cv, ox, oy, frame, S, color, flip) {
   // the shield on the front arm: round lacquer with a boss, or woven rattan
   if (S.shield) { const sc = S.rattan ? '#b8904a' : shade(color, 0.85); for (let j = -4; j <= 4; j++) for (let i = -3; i <= 3; i++) if (i * i / 9 + j * j / 16 <= 1) P(7 + i, y + 14 + j, (i * i / 9 + j * j / 16 > 0.6) ? (S.rattan ? '#8a6a32' : '#e8c860') : S.rattan && (i + j) % 2 ? '#a07a3a' : sc); P(7, y + 14, S.rattan ? '#6a4a22' : '#e8e8e8'); }
 }
+// a horseman: 32x32 cells, the same 4 rows x 3 frames as a soldier (the left- and right-facing rows are what battles use)
+const CW = 32;
+function riderSheet(key, S, color) {
+  const cv = px(CW * 3, FH * 4);
+  for (let f = 0; f < 3; f++) for (let row = 0; row < 4; row++) drawRider(cv, f * CW, row * FH, f, S, color, row >= 2);
+  outline(cv, '#140e0a');
+  const out = { canvas: cv.c, fw: CW, fh: FH, rider: true }; cache.set(key, out); return out;
+}
+function drawRider(cv, ox, oy, frame, S, color, flip) {
+  const P = (i, j, c) => { if (c) cv.P(ox + (flip ? CW - 1 - i : i), oy + j, c); }, R = (i, j, w, h, c) => { for (let u = 0; u < w; u++) for (let v = 0; v < h; v++) P(i + u, j + v, c); };
+  const horse = S.fur ? '#8a5a3a' : color === '#d8d8d8' ? '#e8e0d0' : '#6a4a32', hD = shade(horse, 0.7), hL = shade(horse, 1.2), mane = '#2a1a12';
+  const g = frame === 0 ? 1 : frame === 2 ? -1 : 0, bob = frame === 1 ? 0 : 1, y = 2 + bob;
+  // the horse: far legs, body, near legs (galloping), neck and head, mane, tail
+  R(21 - g, y + 21, 2, 7, hD); R(9 + g, y + 21, 2, 7, hD);
+  R(8, y + 15, 17, 7, horse); R(8, y + 15, 17, 1, hL); R(8, y + 21, 17, 1, hD); R(7, y + 16, 1, 5, horse); R(25, y + 16, 1, 4, horse);
+  R(24 + g, y + 21, 2, 7, horse); R(12 - g, y + 21, 2, 7, horse);
+  for (const x of [9 + g, 12 - g, 21 - g, 24 + g]) R(x, y + 28, 2, 1, '#1a1410');
+  R(4, y + 10, 5, 7, horse); R(1, y + 9, 5, 4, horse); R(0, y + 11, 2, 2, hL); P(0, y + 12, '#1a1410'); P(3, y + 10, '#1a1410'); R(4, y + 7, 2, 3, horse); // neck, head, ear
+  R(6, y + 8, 2, 8, mane); R(25, y + 15, 2, 2, mane); R(26, y + 16, 2, 6 + (frame % 2), mane);
+  R(4, y + 12, 1, 2, '#c8a040'); R(10, y + 14, 9, 2, S.trim); R(13, y + 15, 3, 3, '#8a2a1a'); // bridle, saddle, saddle cloth
+  // the rider: leg, body, head, hat, weapon
+  R(13, y + 13, 3, 6, S.pants); R(13, y + 18, 3, 2, '#2a2018');
+  R(12, y + 4, 7, 10, S.body); R(12, y + 4, 1, 9, shade(S.body, 1.18)); R(18, y + 4, 1, 9, shade(S.body, 0.78)); R(12, y + 11, 7, 1, S.trim);
+  if (S.plates) for (let j = 0; j < 6; j += 2) for (let i = 0; i < 7; i++) P(12 + i, y + 5 + j, (i + j) % 2 ? shade(S.body, 0.82) : shade(S.body, 1.1));
+  if (S.fur) { R(12, y + 4, 7, 2, '#d8c8a8'); }
+  R(13, y - 2, 5, 6, S.skin); R(12, y, 1, 2, S.skin); P(13, y, '#1a1410'); R(17, y - 2, 1, 4, '#1a1410');
+  if (S.hat === 'helm') { R(12, y - 4, 7, 3, S.hatC); R(12, y - 4, 7, 1, shade(S.hatC, 1.35)); R(15, y - 6, 1, 2, S.plume || '#e83a2a'); }
+  else if (S.hat === 'fur') { R(12, y - 4, 7, 3, S.hatC); R(12, y - 2, 7, 1, '#d8c8a8'); R(18, y - 2, 1, 4, S.hatC); }
+  else if (S.hat === 'scarf') { R(12, y - 4, 7, 3, S.hatC); R(18, y - 3, 2, 4, S.hatC); }
+  else if (S.hat === 'feather') { R(12, y - 3, 7, 2, '#c8a040'); for (let k = 0; k < 3; k++) R(13 + k * 2, y - 7 + (k % 2), 1, 4, k % 2 ? S.hatC : '#f0f0e8'); }
+  else { R(12, y - 3, 7, 2, '#1a1410'); R(12, y - 2, 7, 1, S.hatC || '#a83a2a'); }
+  const arm = S.bare ? S.skin : shade(S.body, 0.9);
+  if (S.wpn === 'bow') { for (let k = 0; k < 13; k++) P(9 - (k > 2 && k < 10 ? 1 : 0), y + 1 + k, '#7a4a22'); for (let k = 0; k < 13; k++) P(10, y + 1 + k, '#e8e8d8'); R(10, y + 6, 3, 2, arm); }
+  else { for (let k = 0; k < 16; k++) P(11 - k, y + 9 - Math.round(k * 0.35), '#7a4a22'); R(0, y + 2, 1, 2, '#e8eef8'); P(1, y + 3, '#c8ccd8'); R(10, y + 8, 3, 2, arm); R(3, y + 5, 2, 1, '#e83a2a'); } // a lance couched forward
+}
 // a frame as its own small canvas (for battle and portraits)
 export function frameCanvas(sheet, dir, f = 1) { const c = document.createElement('canvas'); c.width = sheet.fw; c.height = sheet.fh; c.getContext('2d').drawImage(sheet.canvas, f * sheet.fw, dir * sheet.fh, sheet.fw, sheet.fh, 0, 0, sheet.fw, sheet.fh); return c; }
 
 // ---------------------------------------------------------------- beasts: [frames of 32x24, facing left]
-export function beastSheet(kind) {
-  const key = 'beast_' + kind; if (cache.has(key)) return cache.get(key);
-  const cv = px(32 * 2, 24);
-  for (let f = 0; f < 2; f++) {
-    const { P } = cv, o = f * 32, p = (i, j, c) => P(o + i, j, c), r = (i, j, a, b, c) => { for (let u = 0; u < a; u++) for (let v = 0; v < b; v++) p(i + u, j + v, c); };
-    // a bat: wings up and down; a snake: a coil with its head raised
-    if (kind === 'bat') { const up = f === 0; r(13, 9, 6, 6, '#3a2a3a'); r(14, 8, 1, 2, '#3a2a3a'); r(17, 8, 1, 2, '#3a2a3a'); p(14, 11, '#ff3a2a'); p(17, 11, '#ff3a2a');
-      for (let k = 0; k < 10; k++) { const h = up ? Math.round(k * 0.6) : -Math.round(k * 0.3); r(12 - k, 10 - h, 1, 3 + (k % 3 === 0 ? 1 : 0), k % 3 ? '#5a3a5a' : '#2a1a2a'); r(19 + k, 10 - h, 1, 3 + (k % 3 === 0 ? 1 : 0), k % 3 ? '#5a3a5a' : '#2a1a2a'); } continue; }
-    if (kind === 'snake') { for (let k = 0; k < 22; k++) { const x = 6 + k, y = 18 + Math.round(Math.sin(k / 2.5 + f) * 2); r(x, y, 1, 3, k % 4 < 2 ? '#4a8a3a' : '#2a5a2a'); p(x, y + 2, '#c8c060'); }
-      for (let j = 0; j < 9; j++) r(5 - Math.round(Math.sin(j / 3) * 1), 9 + j, 3, 1, j % 3 ? '#4a8a3a' : '#2a5a2a'); r(2, 7, 5, 3, '#4a8a3a'); p(3, 8, '#ffe040'); p(1, 9, '#e83a2a'); p(0, 10, '#e83a2a'); continue; }
-    const T = { tiger: ['#e8962a', '#1a1410', '#f8f0e0'], wolf: ['#8a8a98', '#4a4a58', '#d8d8e0'], bear: ['#5a3a2a', '#3a2418', '#8a6a4a'], boar: ['#6a4a3a', '#3a2a1a', '#e8e0c8'], whitetiger: ['#f0f0f0', '#2a2a3a', '#ffffff'] }[kind];
-    const [c, d, l] = T, lg = f ? 1 : 0;
-    r(8, 8, 18, 9, c); r(8, 15, 18, 2, d); r(10, 9, 14, 2, shade(c, 1.15));
-    if (kind === 'tiger' || kind === 'whitetiger') for (let k = 0; k < 5; k++) r(11 + k * 3, 8, 1, 6, d);
-    r(2, 5, 9, 8, c); r(1, 9, 3, 3, l); p(4, 7, '#1a1410'); p(5, 7, '#fff'); r(3, 3, 2, 3, c); r(8, 3, 2, 3, c); p(1, 10, '#1a1410');
-    if (kind === 'boar') { p(1, 12, '#fff'); p(2, 13, '#fff'); }
-    r(9, 17, 3, 5 - lg, d); r(14, 17, 3, 5 - (1 - lg), d); r(19, 17, 3, 5 - lg, d); r(23, 17, 3, 5 - (1 - lg), d);
-    for (let k = 0; k < 6; k++) p(26 + k, 9 - Math.round(Math.sin(k / 2 + f) * 2), c);
+// ---------------------------------------------------------------- beasts: two side-view frames (48x32 each, facing left), shaded
+// like the generals: a soft light from the top left, a darker belly side, legs that stride from one frame to the next
+const BW = 48, BH = 32;
+function beastKit(cv, o) {
+  const buf = new Map(), key = (i, j) => (j << 8) | i;
+  const P = (i, j, c) => { i = Math.round(i); j = Math.round(j); if (c && i >= 0 && j >= 0 && i < BW && j < BH) buf.set(key(i, j), c); };
+  const has = (i, j) => buf.has(key(Math.round(i), Math.round(j)));
+  const lit = (T, l) => (l > 0.4 ? T[0] : l < -0.35 ? T[2] : T[1]);
+  // a shaded ellipse
+  const E = (cx, cy, rx, ry, T, only) => { for (let j = Math.floor(cy - ry); j <= cy + ry; j++) for (let i = Math.floor(cx - rx); i <= cx + rx; i++) { const dx = (i + 0.5 - cx) / rx, dy = (j + 0.5 - cy) / ry; if (dx * dx + dy * dy > 1 || (only && !has(i, j))) continue; P(i, j, Array.isArray(T) ? lit(T, -dx * 0.55 - dy * 0.8) : T); } };
+  // a rounded limb from (x0,y0) to (x1,y1), r0 -> r1 thick, shaded across
+  const L = (x0, y0, x1, y1, r0, r1, T) => { const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1, m = Math.max(r0, r1) + 1;
+    for (let j = Math.floor(Math.min(y0, y1) - m); j <= Math.max(y0, y1) + m; j++) for (let i = Math.floor(Math.min(x0, x1) - m); i <= Math.max(x0, x1) + m; i++) {
+      const t = Math.max(0, Math.min(1, ((i + 0.5 - x0) * dx + (j + 0.5 - y0) * dy) / l2)), vx = i + 0.5 - (x0 + dx * t), vy = j + 0.5 - (y0 + dy * t), r = r0 + (r1 - r0) * t, d = Math.hypot(vx, vy);
+      if (d <= r) P(i, j, Array.isArray(T) ? lit(T, (-vx * 0.55 - vy * 0.8) / Math.max(1, r)) : T); } };
+  const C = (pts, r0, r1, T) => { for (let k = 0; k + 1 < pts.length; k++) L(pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], r0 + (r1 - r0) * k / (pts.length - 1), r0 + (r1 - r0) * (k + 1) / (pts.length - 1), T); };
+  // a filled polygon in one colour
+  const Q = (pts, c) => { const ys = pts.map((p) => p[1]); for (let j = Math.floor(Math.min(...ys)); j <= Math.ceil(Math.max(...ys)); j++) { const xs = []; for (let k = 0; k < pts.length; k++) { const [ax, ay] = pts[k], [bx, by] = pts[(k + 1) % pts.length]; if ((ay <= j + 0.5 && by > j + 0.5) || (by <= j + 0.5 && ay > j + 0.5)) xs.push(ax + (j + 0.5 - ay) / (by - ay) * (bx - ax)); } xs.sort((a, b) => a - b); for (let k = 0; k + 1 < xs.length; k += 2) for (let i = Math.round(xs[k]); i < Math.round(xs[k + 1]); i++) P(i, j, c); } };
+  const flush = () => { for (const [k, c] of buf) cv.P(o + (k & 255), k >> 8, c); };
+  return { P, has, E, L, C, Q, flush };
+}
+const tri = (c) => [shade(c, 1.25), c, shade(c, 0.7)];
+function drawBeast(K, kind, f) {
+  const { P, E, L, C, Q } = K, st = f ? 1 : -1; // the stride: legs swing one way, then the other
+  const eye = (x, y, c = '#ffd23a') => { P(x, y, c); P(x + 1, y, c); P(x, y - 1, shade(c, 1.3)); P(x + 1, y + 1, '#1a1410'); P(x, y + 1, '#1a1410'); };
+  if (kind === 'wolf') {
+    const F = tri('#8a8c9a'), D = tri('#5a5c6a'), W = tri('#d8d8e0');
+    C([[37, 14], [42, 10 + st], [46, 13 + st]], 2.6, 1.6, F); L(45, 13 + st, 47, 14 + st, 1.4, 1, W);            // the bushy tail
+    L(32, 19, 33 - st * 2, 29, 2, 1.6, D); L(18, 19, 17 + st * 2, 29, 2, 1.6, D);                               // far legs
+    E(27, 16, 12, 6, F); E(17, 16, 6.5, 6.5, F); E(27, 20, 9, 2.2, W);                                          // body, chest, belly
+    L(36, 19, 37 + st * 2, 29, 2.3, 1.8, F); L(15, 19, 14 - st * 2, 29, 2.3, 1.8, F);                           // near legs
+    for (const x of [14 - st * 2, 17 + st * 2, 33 - st * 2, 37 + st * 2]) { P(x - 1, 30, '#2a2a34'); P(x, 30, '#2a2a34'); P(x + 1, 30, '#2a2a34'); }
+    E(10, 12, 5.5, 4.5, F); L(7, 14, 1, 15, 2.4, 1.6, F); L(6, 16, 2, 16.5, 1.2, 1, W); P(0, 14, '#1a1410'); P(0, 15, '#1a1410');
+    Q([[9, 9], [11, 2], [13, 9]], F[1]); Q([[6, 10], [7, 4], [9, 9]], D[1]); P(11, 5, '#e8b0b8');
+    eye(8, 11); for (let i = 2; i < 7; i++) P(i, 17, '#2a1a1a'); P(3, 18, '#fff');
+    for (let i = 0; i < 5; i++) P(19 + i * 3, 11, F[0]);                                                          // a ruff of light fur
   }
+  if (kind === 'tiger' || kind === 'whitetiger') {
+    const white = kind === 'whitetiger', F = tri(white ? '#f0f0f4' : '#e8902a'), S = white ? '#2a2a3a' : '#1a1410', W = tri('#fff8ec');
+    C([[37, 15], [42, 9 + st], [46, 7 + st]], 2, 1.6, F); for (const k of [41, 44]) E(k, 10 + st - (k - 41) / 2, 1.4, 1.6, S, true); E(46, 7 + st, 1.6, 1.6, S);
+    L(32, 20, 33 - st * 2, 29, 2.4, 2, tri(shade(F[1], 0.8))); L(18, 20, 17 + st * 2, 29, 2.4, 2, tri(shade(F[1], 0.8)));
+    E(27, 17, 12.5, 6.5, F); E(18, 17, 6.5, 6.5, F); E(26, 21, 9, 2.2, W);
+    for (let k = 0; k < 6; k++) { const x = 20 + k * 3.2; L(x, 11, x + 1, 16 + (k % 2), 0.6, 0.5, S); } // stripes
+    for (const k of [0, 1]) { E(k ? 33 : 13, k ? 22 : 22, 1, 1, S, true); }
+    L(36, 20, 37 + st * 2, 29, 2.6, 2.2, F); L(15, 20, 14 - st * 2, 29, 2.6, 2.2, F);
+    for (const x of [14 - st * 2, 17 + st * 2, 33 - st * 2, 37 + st * 2]) E(x, 29.5, 2.4, 1.3, W);
+    E(10, 13, 7, 6.2, F); E(6, 16, 3.6, 2.6, W); E(12, 18, 4, 2, W);                                           // head, muzzle, cheek ruff
+    E(7, 7, 2, 2, F); E(13, 6.5, 2, 2, F); P(7, 7, '#e8b0b8'); P(13, 6.5, '#e8b0b8');
+    for (const [x, y] of [[11, 9], [14, 11], [9, 9]]) L(x, y, x + 1, y + 2, 0.5, 0.5, S);                      // brow stripes
+    eye(7, 11, white ? '#6ac8ff' : '#ffd23a'); P(2, 15, '#2a1a1a'); P(3, 15, '#e88a9a'); P(2, 16, '#2a1a1a');
+    for (let i = 3; i < 7; i++) P(i, 18, '#2a1a1a'); P(4, 19, '#fff');
+  }
+  if (kind === 'bear') {
+    const F = tri('#6a4430'), D = tri('#4a2e20'), M = tri('#b08a62');
+    L(31, 21, 32 - st, 29, 3.2, 2.8, D); L(17, 21, 16 + st, 29, 3.2, 2.8, D);
+    E(27, 16, 14, 8.5, F); E(31, 9.5, 7.5, 4, F); E(26, 21, 10, 2.5, tri('#7a5440'));                          // body, the hump
+    L(37, 21, 38 + st, 29, 3.4, 3, F); L(14, 21, 13 - st, 29, 3.4, 3, F);
+    for (const x of [13 - st, 38 + st]) for (const d of [-2, 0, 2]) P(x + d, 31, '#e8e0c8');                      // claws
+    E(10, 13, 6.5, 5.8, F); E(5, 15.5, 3.5, 2.6, M); P(2, 14, '#1a1410'); P(2, 15, '#1a1410'); P(3, 14, '#3a2a2a');
+    E(8, 7.5, 2.2, 2.2, F); E(14, 7.5, 2.2, 2.2, F); P(8, 7.5, M[1]); P(14, 7.5, M[1]);
+    eye(8, 11, '#2a1a10'); P(8, 10, '#fff'); for (let i = 3; i < 7; i++) P(i, 18, '#2a1a1a');
+  }
+  if (kind === 'boar') {
+    const F = tri('#5a3a2c'), D = tri('#3a2418'), B = '#2a1a10';
+    L(31, 21, 32 - st * 2, 29, 2, 1.7, D); L(18, 21, 17 + st * 2, 29, 2, 1.7, D);
+    E(28, 17, 13, 7.5, F); E(18, 17, 7, 7, F);
+    for (let k = 0; k < 9; k++) { const x = 15 + k * 3, y = 10 - (k > 1 && k < 7 ? 1 : 0); Q([[x - 1.5, y + 2], [x + 0.5, y - 2 - (k % 2)], [x + 1.5, y + 2]], B); } // the bristly crest
+    L(36, 21, 37 + st * 2, 29, 2.2, 1.9, F); L(15, 21, 14 - st * 2, 29, 2.2, 1.9, F);
+    for (const x of [14 - st * 2, 17 + st * 2, 32 - st * 2, 37 + st * 2]) { P(x - 1, 30, '#1a1010'); P(x, 30, '#1a1010'); }
+    Q([[14, 10], [4, 13], [2, 18], [6, 22], [15, 22]], F[1]); E(9, 14, 4, 3, F); E(2.5, 17, 1.8, 2.6, tri('#c88a7a')); P(2, 16, B); P(2, 18, B);
+    C([[6, 19], [4, 16], [5, 13]], 1.1, 0.7, tri('#f4ecd8'));                                                     // a tusk
+    Q([[11, 9], [13, 5], [14, 10]], D[1]); eye(9, 13, '#ff6a3a');
+    C([[40, 15], [43, 13], [44, 15]], 0.9, 0.7, F);                                                               // a curly tail
+  }
+  if (kind === 'bat') { // seen from the front: wings up, then down
+    const F = tri('#4a3050'), Wm = tri('#7a4a7a'), up = f === 0;
+    for (const s of [-1, 1]) { const X = (x) => 24 + s * x;
+      const pts = up ? [[3, 12], [12, 3], [21, 1], [17, 8], [21, 11], [15, 13], [17, 17], [8, 16]] : [[3, 13], [11, 18], [20, 24], [18, 17], [22, 18], [16, 14], [18, 12], [8, 11]];
+      Q(pts.map(([x, y]) => [X(x), y]), Wm[1]);
+      for (const [x, y] of up ? [[21, 1], [21, 11], [17, 17]] : [[20, 24], [22, 18], [18, 12]]) L(X(3), 12, X(x), y, 0.6, 0.5, F[2]);
+    }
+    E(24, 15, 4.5, 5.5, F); E(24, 9, 4, 3.5, F); Q([[20, 8], [21, 2], [23, 7]], F[1]); Q([[28, 8], [27, 2], [25, 7]], F[1]);
+    P(22, 9, '#ff3a2a'); P(26, 9, '#ff3a2a'); P(22, 8, '#ff9a8a'); P(26, 8, '#ff9a8a'); P(23, 12, '#fff'); P(25, 12, '#fff'); for (let i = 22; i < 27; i++) P(i, 11, '#1a0a1a');
+    L(22, 20, 21, 23, 0.7, 0.6, F[2]); L(26, 20, 27, 23, 0.7, 0.6, F[2]);
+  }
+  if (kind === 'snake') { // coiled, its head raised and swaying, a forked tongue
+    const F = tri('#4a9a3a'), D = '#2a5a22', Bl = tri('#d8d070'), sw = f ? 1 : -1;
+    E(28, 25, 13, 5, F); E(28, 21, 10, 4, F); E(27, 17.5, 6.5, 3, F);
+    for (let k = 0; k < 7; k++) { const x = 18 + k * 3.4; E(x, 25 - (k % 2), 1.2, 1, D, true); E(x + 1.5, 21 + (k % 2), 1, 0.8, D, true); }
+    C([[22, 18], [16 + sw, 13], [12 + sw, 8]], 3, 2.4, F); L(19, 18, 14 + sw, 12, 1, 1, Bl[1]);
+    E(9 + sw, 7, 5, 3.4, F); E(6 + sw, 8, 2, 1.6, Bl);
+    eye(9 + sw, 6, '#ffe040'); P(4 + sw, 6, '#1a1410');
+    L(4 + sw, 8.5, 1 + sw, 8.5, 0.5, 0.5, '#e83a2a'); P(0 + sw, 7.5, '#e83a2a'); P(0 + sw, 9.5, '#e83a2a');
+  }
+}
+export function beastSheet(kind) {
+  const key = 'beast2_' + kind; if (cache.has(key)) return cache.get(key);
+  const cv = px(BW * 2, BH);
+  for (let f = 0; f < 2; f++) { const K = beastKit(cv, f * BW); drawBeast(K, kind, f); K.flush(); }
   outline(cv);
-  const out = { canvas: cv.c, fw: 32, fh: 24, beast: true }; cache.set(key, out); return out;
+  const out = { canvas: cv.c, fw: BW, fh: BH, beast: true }; cache.set(key, out); return out;
 }
 
 // ---------------------------------------------------------------- the land: a 16x16 tile atlas (8 x 4 tiles)

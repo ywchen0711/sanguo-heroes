@@ -74,7 +74,7 @@ class Game {
   enterWorld(x, z, dir = 'down') {
     this.mode = 'world'; this.town = null; this.pos = { x, z, dir, town: null };
     const M = this.world, V = this.view, TT = { 0: [14, 15], 1: [14, 15], 2: [0, 15], 3: [1, 15], 4: [5, 15], 5: [9, 15], 6: [6, 16], 7: [7, 17], 8: [8, 23], 9: [3, 15], 10: [13, 13], 11: [18, 11], 12: [4, 23], 13: [22, 15], 14: [19, 15], 15: [18, 15], 16: [2, 15], 17: [9, 15] };
-    V.setMap({ W: M.W, H: M.H, water: -0.24, sky: '#9ac8f0', fog: '#c8dcec', fogNear: 24, fogFar: 52,
+    V.setMap({ W: M.W, H: M.H, water: -0.24, sky: '#9ac8f0', fog: '#c8dcec', fogNear: 30, fogFar: 64,
       tile: (x, z) => { if (x < 0 || z < 0 || x >= M.W || z >= M.H) return null; const k = M.at(x, z), [top, side] = TT[k]; return { top: k === T.MOUNT && M.hAt(x, z) > 1.8 ? 7 : top, side, side2: k === T.MOUNT || k === T.SNOW ? 16 : side, h: M.hAt(x, z) }; },
       deco: (x, z) => M.deco[z * M.W + x] === 5 && M.at(x, z) === T.SNOW ? 6 : M.deco[z * M.W + x],
       props: CITY_POS.map((c) => { const C = this.G.cities[c.id], f = C.owner && this.G.factions[C.owner]; return { kind: 'city', x: c.x + 0.5, z: c.y + 0.5, r: c.size >= 3 ? 2 : 1, size: c.size, color: f ? f.color : '#9a9a9a', roofRed: c.size >= 3, label: this.cityLabel(c.id), labelY: c.size >= 3 ? 3.4 : 2.6, labelClass: 'city', cityId: c.id }; }).concat(this.placeProps()) });
@@ -120,7 +120,7 @@ class Game {
   // the master of a cave (until beaten) and its strange things
   caveThings(M, st) {
     const q = M.place;
-    if (!st.boss) { const B = this.act.caveBoss(q), [bx, by] = M.boss; const sheet = B.beast ? beastSheet(B.beast) : personSheet(B.look); const a = this.view.addActor(sheet, bx, by, { scale: B.beast ? 1.5 : 1.25 }); if (B.beast) { a.tex.repeat.set(1 / 2, 1); this.view.sizeActor(a, 1.9, 1.45); } a.label = this.view.addLabel(`<b style="color:#ff8a6a">${B.name}</b>`, a.sprite, B.beast ? 1.6 : 2, 'npc'); this.npcs.push({ x: bx, z: by, a, home: [bx, by], special: 'boss', boss: B }); }
+    if (!st.boss) { const B = this.act.caveBoss(q), [bx, by] = M.boss; const sheet = B.beast ? beastSheet(B.beast) : personSheet(B.look); const a = this.view.addActor(sheet, bx, by, { scale: B.beast ? 1.5 : 1.25 }); if (B.beast) { a.beast = true; a.face = 2; this.view.sizeActor(a, 2.6, 1.75); this.view.placeActor(a); } a.label = this.view.addLabel(`<b style="color:#ff8a6a">${B.name}</b>`, a.sprite, B.beast ? 1.6 : 2, 'npc'); this.npcs.push({ x: bx, z: by, a, home: [bx, by], special: 'boss', boss: B }); }
     M.odd.forEach((o, i) => { if (o.kind === 'hermit' && !st.odd.includes(i)) { const a = this.view.addActor(personSheet(LOOKS.villager('隱士' + q.name)), o.x, o.z, { scale: 0.95 }); this.npcs.push({ x: o.x, z: o.z, a, home: [o.x, o.z], special: 'odd', odd: i }); } else this.view.addProp({ kind: o.kind, x: o.x, z: o.z, used: st.odd.includes(i) }); });
   }
   cityLabel(id) { const C = this.G.cities[id], f = C.owner && this.G.factions[C.owner]; return `<b>${C.name}</b>${f ? `<i style="color:${f.color}">${f.name}</i>` : '<i>無主</i>'}`; }
@@ -143,7 +143,7 @@ class Game {
     }
   }
   // the camera follows the leader; in a town it stays inside the walls
-  camTo(x, z, snap) { if (this.mode === 'town') { x = Math.max(7, Math.min(this.town.W - 8, x)); z = Math.max(5, Math.min(this.town.H - 5, z)); } this.view.follow(x, this.mode === 'town' ? 0 : this.groundY(Math.round(x), Math.round(z)), z, snap); }
+  camTo(x, z, snap) { if (this.mode === 'town') { const mx = Math.min(9, this.town.W / 2 - 0.5), mz = Math.min(6, this.town.H / 2 - 0.5); x = Math.max(mx, Math.min(this.town.W - mx - 1, x)); z = Math.max(mz, Math.min(this.town.H - mz, z)); } this.view.follow(x, this.mode === 'town' ? 0 : this.groundY(Math.round(x), Math.round(z)), z, snap); }
   groundY(x, z) { if (this.mode === 'town') return 0; const h = this.world.hAt(x, z); return Math.max(h, -0.05); }
   spawnParty(x, z, dir) {
     this.actors = []; const list = this.partyList();

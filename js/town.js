@@ -122,5 +122,5 @@ export function buildCave(place) {
   main.forEach(([mx, mz], i) => { if (i % 6 === 3) { const tx = at(mx - 1, mz) ? mx + 2 : mx - 1; if (!at(tx, mz)) props.push({ kind: 'lantern', x: tx, z: mz, y: 0, wall: true }); } });
   const tile = (x, z) => { if (x < 0 || z < 0 || x >= W || z >= H) return null; const i = z * W + x; return open[i] ? { top: (x * 7 + z * 13) % 5 ? 2 : 6, side: 16, h: 0 } : { top: 16, side: 16, h: z >= H - 3 ? 0.4 : 0.85 + ((x * 5 + z * 3) % 3) * 0.12 }; }; // low walls, so the camera sees over them
   const solid = new Set([...chests.map((c) => c.z * W + c.x), ...odd.map((o) => o.z * W + o.x)]);
-  return { W, H, tile, walkable: (x, z) => x >= 0 && z >= 0 && x < W && z < H && open[z * W + x] === 1 && !solid.has(z * W + x), props, doors: [], npcs, chests, odd, boss, spawn: [17, H - 2], gate: { x0: 16, x1: 18, z: H - 1 }, sky: '#140e0a', fog: '#140e0a', fogNear: 16, fogFar: 34, dark: true, cave: true };
+  return { W, H, tile, walkable: (x, z) => x >= 0 && z >= 0 && x < W && z < H && open[z * W + x] === 1 && !solid.has(z * W + x), props, doors: [], npcs, chests, odd, boss, spawn: [17, H - 2], gate: { x0: 16, x1: 18, z: H - 1 }, sky: '#140e0a', fog: '#140e0a', fogNear: 20, fogFar: 38, dark: true, cave: true };
 }

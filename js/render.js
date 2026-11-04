@@ -50,7 +50,7 @@ export class View {
     host.appendChild(r.domElement);
     this.scene = new THREE.Scene(); this.scene.fog = new THREE.Fog('#c8d8e8', 26, 60);
     this.camera = new THREE.PerspectiveCamera(32, 1, 0.5, 200);
-    this.camOff = new THREE.Vector3(0, 12.5, 10.5);
+    this.camOff = new THREE.Vector3(0, 16.4, 13.8);
     this.hemi = new THREE.HemisphereLight('#dfefff', '#6a5a3a', 1.35); this.scene.add(this.hemi);
     const sun = this.sun = new THREE.DirectionalLight('#fff0d8', 2.1); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 80 }); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.03;
@@ -266,6 +266,8 @@ export class View {
   removeActor(a) { this.scene.remove(a.sprite, a.shadow); a.tex.dispose(); a.sprite.material.dispose(); if (a.label) this.removeLabel(a.label); this.actors.delete(a); }
   placeActor(a) {
     const h = a.y ?? 0; a.sprite.position.set(a.x + 0.5, h, a.z + 0.5); a.shadow.position.set(a.x + 0.5, h + 0.03, a.z + 0.5);
+    // a beast's sheet is two side-view frames facing left (face 2 turns it round); a person's is 4 directions x 3 frames
+    if (a.beast) { const flip = a.face === 2; a.tex.repeat.set((flip ? -1 : 1) / 2, 1); a.tex.offset.set(((a.bframe || 0) % 2) / 2 + (flip ? 0.5 : 0), 0); return; }
     a.tex.offset.set(a.frame / 3, 1 - (a.dir + 1) / 4);
   }
   // ---------------------------------------------------------------- the frame

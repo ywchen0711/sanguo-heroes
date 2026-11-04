@@ -23,7 +23,7 @@ export class Battle {
   ensureView() {
     if (this.view) return;
     this.view = new View(this.root.querySelector('.b-stage'));
-    this.view.camOff.set(0, 11, 11); this.view.camera.fov = 38; this.view.camera.updateProjectionMatrix();
+    this.view.camOff.set(0, 13.4, 13.4); this.view.camera.fov = 37; this.view.camera.updateProjectionMatrix();
     this.view.tsH.uniforms.band.value = this.view.tsV.uniforms.band.value = 0.24;
     this.fx = new FX(this.view.scene); this.tw = [];
     this.view.sun.shadow.mapSize.set(1024, 1024); // the small stage does not need the land's big shadow map
@@ -35,7 +35,7 @@ export class Battle {
   stage(terrain, siege) {
     const v = this.view, [top, alt] = GROUND[terrain] || GROUND.plain, W = 18, H = 12;
     const rnd = (x, z) => ((x * 73 + z * 151) % 17) / 17;
-    v.setMap({ W, H, water: terrain === 'coast' || terrain === 'river' ? -0.2 : null, sky: { snow: '#c8d8e8', desert: '#e8c890', city: '#b8c8d8', cave: '#120c08' }[terrain] || '#a8d0f0', fogNear: terrain === 'cave' ? 12 : 18, fogFar: terrain === 'cave' ? 30 : 40, dark: terrain === 'cave',
+    v.setMap({ W, H, water: terrain === 'coast' || terrain === 'river' ? -0.2 : null, sky: { snow: '#c8d8e8', desert: '#e8c890', city: '#b8c8d8', cave: '#120c08' }[terrain] || '#a8d0f0', fogNear: terrain === 'cave' ? 17 : 24, fogFar: terrain === 'cave' ? 36 : 50, dark: terrain === 'cave',
       tile: (x, z) => { if (x < 0 || z < 0 || x >= W || z >= H) return null; const back = z < 3; return { top: back && siege ? 11 : terrain === 'cave' && back ? 16 : rnd(x, z) < 0.18 ? alt : top, side: siege && back ? 11 : terrain === 'cave' ? 16 : 15, h: back ? (siege ? 1.6 : terrain === 'cave' ? 2.4 : terrain === 'hill' ? 0.9 : terrain === 'river' ? -0.5 : 0.3) : 0 }; },
       deco: (x, z) => (z === 1 || z === 2) && !siege && terrain !== 'cave' && rnd(x, z) < 0.45 ? (terrain === 'forest' ? 2 : terrain === 'hill' ? 5 : terrain === 'snow' ? 6 : terrain === 'desert' ? (rnd(z, x) < 0.5 ? 5 : 0) : 1 + Math.floor(rnd(z, x) * 3)) : 0,
       props: siege ? [{ kind: 'banner', x: 3, y: 1.6, z: 1, color: siege.color }, { kind: 'banner', x: 13, y: 1.6, z: 1, color: siege.color }] : [] });
@@ -44,18 +44,18 @@ export class Battle {
   unitActor(u, x, z, face, noSquad) {
     const v = this.view, sheet = u.beast ? beastSheet(u.beast) : personSheet(u.look);
     const a = v.addActor(sheet, x, z, { scale: u.beast ? 1.3 : 1.2 });
-    if (u.beast) { a.tex.repeat.set(1 / 2, 1); a.beast = true; v.sizeActor(a, 1.75, 1.3); }
+    if (u.beast) { a.beast = true; v.sizeActor(a, 2.3, 1.55); }
     a.face = face; this.setFrame(a, 1);
     // the squad: a few soldiers behind the general
     u.squad = [];
     const kind = u.side === 'party' ? 'soldier' : u.solKind || 'soldier', col = u.side === 'party' ? this.partyColor : u.color || '#8a4a3a';
     if (!u.beast && !noSquad) for (let k = 0; k < 6; k++) { const sx = x + (face === 1 ? 1 : -1) * (0.8 + (k % 3) * 0.55), sz = z - 0.8 + Math.floor(k / 3) * 0.65 + (k % 3) * 0.08;
-      const role = kind === 'nomad' || u.troop === 'bow' ? 'bow' : k === 1 && kind === 'soldier' ? 'flag' : k === 5 && (kind === 'soldier' || kind === 'turban') ? 'bow' : 'spear';
-      const s = v.addActor(soldierSheet(kind, col, role), sx, sz, { scale: 0.68 }); s.face = face; s.home = [sx, sz]; s.ph = Math.random() * 6; this.setFrame(s, 1); u.squad.push(s); }
+      const cav = u.troop === 'cav' && (kind === 'soldier' || kind === 'nomad' || kind === 'turban'), role = cav ? 'cav' : kind === 'nomad' || u.troop === 'bow' ? 'bow' : k === 1 && kind === 'soldier' ? 'flag' : k === 5 && (kind === 'soldier' || kind === 'turban') ? 'bow' : 'spear';
+      const sh = soldierSheet(kind, col, role), s = v.addActor(sh, sx, sz, { scale: 0.76 }); if (sh.rider) v.sizeActor(s, 1.53 * 0.76 * 1.05, 1.53 * 0.76 * 1.05); s.face = face; s.home = [sx, sz]; s.ph = Math.random() * 6; this.setFrame(s, 1); u.squad.push(s); }
     u.actor = a; u.home = [x, z]; u.ox = 0; u.oz = 0; u.oy = 0; u.sx = 0; u.alive0 = true; u.shown = u.squad.length;
     u.bar = v.addLabel('', a.sprite, u.beast ? 1.5 : 2.0, 'u-bar'); this.drawBar(u);
   }
-  setFrame(a, f) { if (a.beast) { a.tex.offset.set((f % 2) / 2, 0); a.tex.repeat.x = (a.face === 2 ? -1 : 1) / 2; if (a.face === 2) a.tex.offset.x += 1 / 2; return; } a.frame = f; a.dir = a.face; this.view.placeActor(a); }
+  setFrame(a, f) { if (a.beast) { a.bframe = f === 2 ? 1 : 0; this.view.placeActor(a); return; } a.frame = f; a.dir = a.face; this.view.placeActor(a); }
   drawBar(u) {
     const p = Math.max(0, u.sol / u.solMax);
     u.bar.el.innerHTML = `<b>${u.troop ? `<small class="tr ${u.troop}">${TROOPS[u.troop].n[0]}</small>` : ''}${u.name}</b><i style="--p:${p * 100}%;--c:${p > 0.5 ? '#6ae06a' : p > 0.25 ? '#e8c84a' : '#e85a4a'}"></i><span>${Math.max(0, Math.round(u.sol))}</span>${u.status.confuse ? '<em>混亂</em>' : ''}`;
