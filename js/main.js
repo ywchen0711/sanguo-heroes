@@ -131,7 +131,7 @@ class Game {
   // ---------------------------------------------------------------- the frame
   frame(t) {
     const dt = Math.min(0.05, (t - this.last) / 1000); this.last = t;
-    if (this.mode === 'world' || this.mode === 'town') { this.move(dt); this.npcTick(dt); this.armyTick(dt); }
+    if (this.mode === 'world' || this.mode === 'town') { this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); }
     if (this.mode !== 'battle' && this.mode !== 'title' || this.view.M) this.view.render(dt);
     requestAnimationFrame((t2) => this.frame(t2));
   }
@@ -143,10 +143,13 @@ class Game {
       P.fx = P.from[0] + (P.x - P.from[0]) * p; P.fz = P.from[1] + (P.z - P.from[1]) * p;
       this.place(p); this.camTo(P.fx, P.fz);
       this.animWalk(dt, true);
-      if (p >= 1) { P.moving = false; P.fx = P.x; P.fz = P.z; this.arrived(); }
+      if (p >= 1) { const over = P.mt - 1; P.moving = false; P.fx = P.x; P.fz = P.z; const at = this.mode; this.arrived(); if (this.mode === at && !this.ui.busy && !this.locked && this.held()) { this.tryStep(); if (P.moving) P.mt = Math.min(0.5, over); } }
       return;
     }
-    const d = this.held(); this.animWalk(dt, false);
+    this.animWalk(dt, false); this.tryStep();
+  }
+  tryStep() {
+    const P = this.pos, d = this.held();
     if (!d) return;
     const [dx, dz, di] = DIRS[d]; P.dir = d; this.actors[0].dir = di;
     const nx = P.x + dx, nz = P.z + dz;

@@ -34,7 +34,7 @@ export class Battle {
   unitActor(u, x, z, face, noSquad) {
     const v = this.view, sheet = u.beast ? beastSheet(u.beast) : personSheet(u.look);
     const a = v.addActor(sheet, x, z, { scale: u.beast ? 1.3 : 1.2 });
-    if (u.beast) { a.tex.repeat.set(1 / 2, 1); a.beast = true; a.sprite.scale.set(1.75, 1.3, 1); }
+    if (u.beast) { a.tex.repeat.set(1 / 2, 1); a.beast = true; v.sizeActor(a, 1.75, 1.3); }
     a.face = face; this.setFrame(a, 1);
     // the squad: a few soldiers behind the general
     u.squad = [];

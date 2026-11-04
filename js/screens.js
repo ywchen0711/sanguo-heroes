@@ -89,10 +89,12 @@ export class Screens {
     await this.ui.panel(`<div class="realm"><canvas width="400" height="400"></canvas><div class="rlist">${list}</div></div>`, { title: `天下　${dateStr(G.year, G.month)}`, cls: 'wide', onOpen: (box) => this.drawMap(box.querySelector('canvas'), 2, true) });
   }
   drawMap(cv, k, big) {
-    const G = this.g.G, M = this.g.world, x = cv.getContext('2d'), img = x.createImageData(W, H), C = { 0: [46, 96, 160], 1: [70, 130, 190], 2: [120, 160, 80], 3: [110, 150, 72], 4: [60, 110, 60], 5: [140, 140, 90], 6: [130, 120, 110], 7: [230, 236, 240], 8: [210, 180, 120], 9: [190, 170, 130], 10: [150, 110, 70], 11: [200, 190, 170], 12: [220, 210, 160], 13: [90, 120, 90], 14: [160, 170, 80] };
-    for (let i = 0; i < W * H; i++) { const c = C[M.t[i]], j = i * 4; img.data[j] = c[0]; img.data[j + 1] = c[1]; img.data[j + 2] = c[2]; img.data[j + 3] = 255; }
-    const off = document.createElement('canvas'); off.width = W; off.height = H; off.getContext('2d').putImageData(img, 0, 0);
-    x.imageSmoothingEnabled = false; x.drawImage(off, 0, 0, cv.width, cv.height);
+    const G = this.g.G, M = this.g.world, x = cv.getContext('2d');
+    // the land itself is drawn once and kept
+    if (!this.base) { const img = new ImageData(W, H), C = { 0: [46, 96, 160], 1: [70, 130, 190], 2: [120, 160, 80], 3: [110, 150, 72], 4: [60, 110, 60], 5: [140, 140, 90], 6: [130, 120, 110], 7: [230, 236, 240], 8: [210, 180, 120], 9: [190, 170, 130], 10: [150, 110, 70], 11: [200, 190, 170], 12: [220, 210, 160], 13: [90, 120, 90], 14: [160, 170, 80] };
+      for (let i = 0; i < W * H; i++) { const c = C[M.t[i]], j = i * 4; img.data[j] = c[0]; img.data[j + 1] = c[1]; img.data[j + 2] = c[2]; img.data[j + 3] = 255; }
+      this.base = document.createElement('canvas'); this.base.width = W; this.base.height = H; this.base.getContext('2d').putImageData(img, 0, 0); }
+    x.imageSmoothingEnabled = false; x.drawImage(this.base, 0, 0, cv.width, cv.height);
     const s = cv.width / W;
     // territory: a soft disc of the owner's colour round each city
     for (const c of CITY_POS) { const o = G.cities[c.id].owner, f = o && G.factions[o]; if (!f) continue; x.fillStyle = f.color + '55'; x.beginPath(); x.arc(c.x * s, c.y * s, (big ? 9 : 7) * s, 0, Math.PI * 2); x.fill(); }

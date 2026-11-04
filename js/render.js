@@ -45,7 +45,7 @@ export class View {
   constructor(host) {
     this.host = host;
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1)); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
     host.appendChild(r.domElement);
     this.scene = new THREE.Scene(); this.scene.fog = new THREE.Fog('#c8d8e8', 26, 60);
@@ -99,12 +99,16 @@ export class View {
     for (const l of this.labels) l.el.remove(); this.labels = [];
   }
   // build the chunks near a point, drop the far ones
-  updateChunks(cx, cz) {
-    const S = 16, R = 3, kx = Math.floor(cx / S), kz = Math.floor(cz / S), want = new Set();
+  // budget: how many missing chunks to build now (the nearest first); the rest come in the next frames
+  updateChunks(cx, cz, budget = Infinity) {
+    const S = 16, R = 3, kx = Math.floor(cx / S), kz = Math.floor(cz / S), want = new Set(), need = [];
+    if (!this.M) return;
     for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
       const x = kx + dx, z = kz + dz; if (x < 0 || z < 0 || x * S >= this.M.W || z * S >= this.M.H) continue;
-      const k = x + ',' + z; want.add(k); if (!this.chunks.has(k)) this.chunks.set(k, this.buildChunk(x * S, z * S, S));
+      const k = x + ',' + z; want.add(k); if (!this.chunks.has(k)) need.push([dx * dx + dz * dz, k, x, z]);
     }
+    need.sort((a, b) => a[0] - b[0]);
+    for (const [, k, x, z] of need.slice(0, budget)) this.chunks.set(k, this.buildChunk(x * S, z * S, S));
     for (const [k, c] of this.chunks) if (!want.has(k)) { this.mapGroup.remove(c.mesh); c.mesh.geometry.dispose(); for (const s of c.deco) this.mapGroup.remove(s); this.chunks.delete(k); }
   }
   buildChunk(x0, z0, S) {
@@ -213,13 +217,17 @@ export class View {
   // ---------------------------------------------------------------- actors: a sprite sheet on a billboard, with a blob shadow
   addActor(sheet, x, z, o = {}) {
     const t = tex(sheet.canvas); t.repeat.set(1 / 3, 1 / 4); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, alphaTest: 0.5, fog: true })); s.center.set(0.5, 0.04);
-    const k = o.scale || 1; s.scale.set(1.15 * k, 1.53 * k, 1);
+    // an upright board (not a camera-facing sprite: that would lean back into the wall behind a character), stretched
+    // up so that seen from the tilted camera it keeps its proportions
+    const s = new THREE.Mesh(this.boardGeo ||= new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ map: t, alphaTest: 0.5, fog: true, side: THREE.DoubleSide }));
+    const k = o.scale || 1; this.sizeActor({ sprite: s }, 1.15 * k, 1.53 * k);
     const sh = new THREE.Mesh(this.shadowGeo ||= new THREE.CircleGeometry(0.32, 16).rotateX(-Math.PI / 2), this.shadowMat ||= new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.3, depthWrite: false }));
     const a = { sheet, sprite: s, shadow: sh, tex: t, x, z, y: 0, dir: 0, frame: 1, walkT: 0, ...o };
     this.scene.add(s, sh); this.actors.add(a); this.placeActor(a);
     return a;
   }
+  // the board's size as it should look on screen
+  sizeActor(a, w, h) { const o = this.camOff, up = Math.hypot(o.y, o.z) / Math.max(0.001, o.z); a.sprite.scale.set(w, h * Math.min(1.5, up * 0.82), 1); }
   removeActor(a) { this.scene.remove(a.sprite, a.shadow); a.tex.dispose(); a.sprite.material.dispose(); if (a.label) this.removeLabel(a.label); this.actors.delete(a); }
   placeActor(a) {
     const h = a.y ?? 0; a.sprite.position.set(a.x + 0.5, h, a.z + 0.5); a.shadow.position.set(a.x + 0.5, h + 0.03, a.z + 0.5);
