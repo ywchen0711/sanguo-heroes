@@ -105,3 +105,11 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
   .talk { bottom: 8px; padding: 8px 10px; } .t-port { width: 64px; height: 86px; } .t-text { font-size: 14px; }
   .duel-hud { flex-direction: column; gap: 4px; } .dh { width: 170px; }
 }
+/* the name of a stratagem sweeping across the battle */
+.b-cut { position: absolute; left: 0; right: 0; top: 34%; height: 86px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(10, 6, 4, 0.78) 20%, rgba(10, 6, 4, 0.78) 80%, transparent); border-top: 2px solid rgba(232, 200, 96, 0.6); border-bottom: 2px solid rgba(232, 200, 96, 0.6); animation: cutin 0.3s ease-out; transition: opacity 0.35s, transform 0.35s; }
+.b-cut.r { align-items: flex-end; padding-right: 14%; } .b-cut.l { align-items: flex-start; padding-left: 14%; }
+.b-cut small { font-size: 15px; color: #f0e0c0; letter-spacing: 0.2em; text-shadow: 0 2px 2px #000; }
+.b-cut b { font-size: 46px; font-weight: 900; letter-spacing: 0.25em; text-shadow: 0 3px 0 #000, 0 0 16px currentColor; line-height: 1.1; }
+.b-cut.out { opacity: 0; transform: scaleY(0.2); }
+@keyframes cutin { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
+@media (max-width: 640px) { .b-cut b { font-size: 32px; } .b-cut { height: 66px; } }

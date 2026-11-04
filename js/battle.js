@@ -8,9 +8,11 @@
 import { View, THREE, personSheet, beastSheet, canvasTex } from './render.js';
 import { LOOKS, shade } from './sprites.js';
 import { TACTICS, tacticsOf, bstats, ITEMS } from './hero.js';
+import { FX } from './fx.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const ease = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2), easeIn = (p) => p * p * p, easeOut = (p) => 1 - (1 - p) ** 3;
 const GROUND = { plain: [0, 1], forest: [5, 0], hill: [9, 6], desert: [8, 2], snow: [7, 6], city: [18, 10], marsh: [22, 0], coast: [4, 0] };
 
 export class Battle {
@@ -20,7 +22,11 @@ export class Battle {
     this.view = new View(this.root.querySelector('.b-stage'));
     this.view.camOff.set(0, 11, 11); this.view.camera.fov = 38; this.view.camera.updateProjectionMatrix();
     this.view.tsH.uniforms.band.value = this.view.tsV.uniforms.band.value = 0.24;
+    this.fx = new FX(this.view.scene); this.tw = [];
   }
+  // a tween: fn(p) every frame for dur seconds, p from 0 to 1; resolves when done
+  tween(dur, fn) { return new Promise((res) => this.tw.push({ t: 0, dur, fn, res })); }
+  shake(k = 0.25) { this.shakeT = Math.max(this.shakeT || 0, k); }
   // ---------------------------------------------------------------- the stage
   stage(terrain, siege) {
     const v = this.view, [top, alt] = GROUND[terrain] || GROUND.plain, W = 18, H = 12;
@@ -39,16 +45,18 @@ export class Battle {
     // the squad: a few soldiers behind the general
     u.squad = [];
     if (!u.beast && !noSquad) for (let k = 0; k < 6; k++) { const sx = x + (face === 1 ? 1 : -1) * (0.85 + (k % 3) * 0.5), sz = z - 0.75 + Math.floor(k / 3) * 0.6 + (k % 3) * 0.08;
-      const s = v.addActor(personSheet(u.side === 'party' ? LOOKS.soldier(this.partyColor) : u.solLook), sx, sz, { scale: 0.52 }); s.face = face; this.setFrame(s, 1); u.squad.push(s); }
-    u.actor = a; u.home = [x, z];
+      const s = v.addActor(personSheet(u.side === 'party' ? LOOKS.soldier(this.partyColor) : u.solLook), sx, sz, { scale: 0.52 }); s.face = face; s.home = [sx, sz]; s.ph = Math.random() * 6; this.setFrame(s, 1); u.squad.push(s); }
+    u.actor = a; u.home = [x, z]; u.ox = 0; u.oz = 0; u.oy = 0; u.sx = 0; u.alive0 = true; u.shown = u.squad.length;
     u.bar = v.addLabel('', a.sprite, u.beast ? 1.5 : 2.0, 'u-bar'); this.drawBar(u);
   }
   setFrame(a, f) { if (a.beast) { a.tex.offset.set((f % 2) / 2, 0); a.tex.repeat.x = (a.face === 2 ? -1 : 1) / 2; if (a.face === 2) a.tex.offset.x += 1 / 2; return; } a.frame = f; a.dir = a.face; this.view.placeActor(a); }
   drawBar(u) {
     const p = Math.max(0, u.sol / u.solMax);
     u.bar.el.innerHTML = `<b>${u.name}</b><i style="--p:${p * 100}%;--c:${p > 0.5 ? '#6ae06a' : p > 0.25 ? '#e8c84a' : '#e85a4a'}"></i><span>${Math.max(0, Math.round(u.sol))}</span>${u.status.confuse ? '<em>混亂</em>' : ''}`;
-    const n = Math.ceil(6 * p); u.squad?.forEach((s, k) => { s.sprite.visible = s.shadow.visible = k < n && u.sol > 0; });
-    if (u.sol <= 0 && u.actor) { u.actor.sprite.material.opacity = 0.35; u.actor.sprite.material.transparent = true; }
+    const n = u.sol > 0 ? Math.ceil((u.squad?.length || 0) * p) : 0;
+    u.squad?.forEach((s, k) => { if (k < n) { s.down = 0; s.sprite.visible = s.shadow.visible = true; s.sprite.rotation.z = 0; s.sprite.material.opacity = 1; } else if (s.sprite.visible && !s.down) s.down = 0.001; });
+    if (u.sol <= 0 && u.actor && !u.routT) u.routT = 0.001;
+    if (u.sol > 0 && u.routT) { u.routT = 0; u.actor.sprite.rotation.z = 0; u.actor.sprite.material.opacity = 1; u.actor.sprite.visible = true; }
   }
   float(u, text, color = '#fff', big) {
     const l = this.view.addLabel(`<span style="color:${color}">${text}</span>`, u.actor.sprite, 1.9, 'dmg' + (big ? ' big' : ''));
@@ -69,6 +77,7 @@ export class Battle {
     this.foes.forEach((u, i) => this.unitActor(u, 4.6 - (i % 2) * 1.2, fz[i], 2));
     this.loop = true; const tick = (t) => { if (!this.loop) return; const dt = Math.min(0.05, (t - (this.lt || t)) / 1000); this.lt = t; this.anim(dt); this.view.render(dt); requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     this.game.audio?.music('battle');
+    this.marchIn();
     await this.say(o.title || `${this.foes.map((f) => f.name).slice(0, 3).join('、')}${this.foes.length > 3 ? '等' : ''}出現了！`);
     let result;
     for (;;) {
@@ -80,15 +89,44 @@ export class Battle {
       if (this.party.every((u) => u.sol <= 0)) { result = 'lose'; break; }
       if (result) break;
     }
+    if (result === 'win') await this.cheer();
+    if (result === 'flee') await this.retreat();
     // write the soldiers back
     for (const u of this.party) { u.rec.sol = Math.max(0, Math.round(u.sol)); u.rec.sp = Math.max(0, Math.round(u.sp)); }
     const out = { result, foes: this.foes, party: this.party, rounds: this.round };
     return out;
   }
-  close() { this.loop = false; this.root.classList.remove('on'); this.ui.innerHTML = ''; this.view?.clearMap(); }
+  // both armies march in from their side of the field
+  marchIn() {
+    const all = [...this.party, ...this.foes];
+    for (const u of all) { u.ox = (u.side === 'party' ? 7 : -7); u.running = true; }
+    return this.tween(0.9, (p) => { for (const u of all) { u.ox = (u.side === 'party' ? 7 : -7) * (1 - easeOut(p)); if (Math.random() < 0.2) this.fx.dust(u.home[0] + u.ox, u.home[1], 1, u.side === 'party' ? -1 : 1); if (p >= 1) u.running = false; } });
+  }
+  async cheer() { const live = this.party.filter((u) => u.sol > 0); for (const u of live) u.cheer = true; await this.tween(1.0, (p) => { for (const u of live) u.oy = Math.abs(Math.sin(p * Math.PI * 3)) * 0.45; }); for (const u of live) { u.cheer = false; u.oy = 0; } }
+  async retreat() { const live = this.party.filter((u) => u.sol > 0); for (const u of live) { u.running = true; u.actor.face = 2; for (const s of u.squad) s.face = 2; } await this.tween(0.7, (p) => { for (const u of live) { u.ox = easeIn(p) * 8; if (Math.random() < 0.3) this.fx.dust(u.home[0] + u.ox, u.home[1], 1, 1); } }); }
+  close() { this.fx?.clear(); this.tw = []; this.loop = false; this.root.classList.remove('on'); this.ui.innerHTML = ''; this.view?.clearMap(); }
   anim(dt) {
     this.at = (this.at || 0) + dt; const f = Math.floor(this.at * 3) % 2 ? 0 : 2;
-    for (const u of [...this.party, ...this.foes]) if (u.actor && u.sol > 0) { this.setFrame(u.actor, u.busy ? 1 : f); for (const s of u.squad || []) this.setFrame(s, f); }
+    for (const w of [...this.tw]) { w.t += dt; const p = Math.min(1, w.t / w.dur); w.fn(p); if (p >= 1) { this.tw = this.tw.filter((x) => x !== w); w.res(); } }
+    this.fx?.update(dt);
+    for (const u of [...(this.party || []), ...(this.foes || [])]) {
+      const a = u.actor; if (!a) continue;
+      const run = u.running ? (Math.floor(this.at * 10) % 2 ? 0 : 2) : f;
+      if (u.sol > 0 || u.routT === 0) this.setFrame(a, u.busy && !u.running ? 1 : run);
+      a.x = u.home[0] + u.ox + (u.shk > 0 ? Math.sin(this.at * 90) * u.shk * 0.5 : 0); a.z = u.home[1] + u.oz; a.y = u.oy; if (u.shk > 0) u.shk -= dt;
+      // red for a moment when hit
+      if (u.flashT > 0) { u.flashT -= dt; a.sprite.material.color.set(u.flashT > 0 ? '#ff7a6a' : '#ffffff'); }
+      if (u.routT) { u.routT += dt; const q = Math.min(1, u.routT / 0.6); a.sprite.rotation.z = (u.side === 'party' ? -1 : 1) * q * 1.3; a.sprite.material.transparent = true; a.sprite.material.opacity = 1 - q * 0.75; }
+      this.view.placeActor(a);
+      for (const s of u.squad || []) {
+        if (s.down) { s.down += dt; const q = Math.min(1, s.down / 0.5); s.sprite.rotation.z = (u.side === 'party' ? -1 : 1) * q * 1.5; s.sprite.material.transparent = true; s.sprite.material.opacity = 1 - q; if (q >= 1) s.sprite.visible = s.shadow.visible = false; }
+        else if (s.sprite.visible) this.setFrame(s, u.running ? run : f);
+        s.x = s.home[0] + u.ox * (u.squadK ?? 1) + (u.flee ? u.flee * (u.side === 'party' ? 1 : -1) : 0); s.z = s.home[1] + u.oz * (u.squadK ?? 1); s.y = u.oy * 0.5 + (u.cheer ? Math.max(0, Math.sin(this.at * 12 + s.ph)) * 0.25 : 0); this.view.placeActor(s);
+      }
+    }
+    // the camera shakes on a big blow
+    if (this.shakeT > 0) { this.shakeT -= dt; const k = Math.max(0, this.shakeT) * 0.6; this.view.camera.position.x += (Math.random() - 0.5) * k; this.view.camera.position.y += (Math.random() - 0.5) * k; }
+    else if (this.view?.camTarget) this.view.follow(this.view.camTarget.x - 0.5, this.view.camTarget.y, this.view.camTarget.z - 0.5, true);
   }
   // ---------------------------------------------------------------- orders
   async orders() {
@@ -163,16 +201,15 @@ export class Battle {
     if (o.kind === 'wait') return;
     if (o.kind === 'atk') {
       let t = o.t; if (!t || t.sol <= 0) t = this.other(u).find((x) => x.sol > 0); if (!t) return;
-      await this.lunge(u, t);
-      if (t.status.evade && Math.random() < 0.5) { this.float(t, '落空', '#c8e8ff'); this.game.audio?.sfx('miss'); return; }
-      const d = this.physDmg(u, t); this.hit(t, d, u);
-      if (u.st.war >= 85 && Math.random() < 0.12 && t.sol > 0) { await wait(220); this.float(u, '連擊！', '#ffd86a'); this.hit(t, Math.round(this.physDmg(u, t) * 0.6), u); }
-      await wait(260); return;
+      const miss = t.status.evade && Math.random() < 0.5, d = miss ? 0 : this.physDmg(u, t), combo = !miss && u.st.war >= 85 && Math.random() < 0.12;
+      await this.charge(u, t, () => { if (miss) { this.float(t, '落空', '#c8e8ff'); this.game.audio?.sfx('miss'); } else this.hit(t, d, u); }, combo ? () => { if (t.sol > 0) { this.float(u, '連擊！', '#ffd86a'); this.hit(t, Math.round(this.physDmg(u, t) * 0.6), u); } } : null);
+      await wait(180); return;
     }
     if (o.kind === 'tac') {
       const T = TACTICS[o.k]; if (u.sp < T.sp) { return this.act({ u, kind: 'atk', t: o.t && o.t.side !== u.side ? o.t : null }); }
-      u.sp -= T.sp; await this.say(`${u.name}使出「${T.n}」！`, 520); this.flash(T);
+      u.sp -= T.sp;
       const foes = this.other(u).filter((x) => x.sol > 0), mine = this.side(u).filter((x) => x.sol > 0);
+      await this.cast(u, T, o.k, T.kind === 'dmg' || T.kind === 'confuse' ? (T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 && o.t.side !== u.side ? o.t : foes[0]].filter(Boolean)) : T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine[0]].filter(Boolean));
       if (T.kind === 'dmg') {
         const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 && o.t.side !== u.side ? o.t : foes[0]].filter(Boolean);
         for (const t of ts) {
@@ -208,15 +245,72 @@ export class Battle {
   hit(t, d, by, magic) {
     t.sol = Math.max(0, t.sol - d); this.float(t, d, magic ? '#ffb04a' : '#ffffff', d > t.solMax * 0.25);
     this.game.audio?.sfx(magic ? 'fire' : 'hit');
-    t.shake = 0.3; this.drawBar(t);
-    if (t.sol <= 0) { this.float(t, '潰敗', '#ff6a5a', true); t.routedBy = by; }
+    t.flashT = 0.18; t.shk = 0.25; this.drawBar(t);
+    const back = t.side === 'party' ? 1 : -1; this.tween(0.25, (p) => { t.ox = back * 0.35 * Math.sin(p * Math.PI); });
+    if (d > t.solMax * 0.25 || magic && d > t.solMax * 0.15) this.shake(0.3);
+    if (t.sol <= 0) { this.float(t, '潰敗', '#ff6a5a', true); t.routedBy = by; this.shake(0.35); t.flee = 0; this.tween(0.8, (p) => { t.flee = easeIn(p) * 3; }); }
   }
-  async lunge(u, t) {
-    const a = u.actor, [hx, hz] = u.home, tx = t.home[0] + (u.side === 'party' ? 1.3 : -1.3), tz = t.home[1];
+  ranged(u) { return ['bow', 'gun'].includes(u.look?.wpn); }
+  // a charge: the general runs at the enemy with the squad behind, strikes (onHit), maybe again (onHit2), and runs back;
+  // archers loose a volley instead
+  async charge(u, t, onHit, onHit2) {
+    const dir = u.side === 'party' ? -1 : 1, [hx, hz] = u.home, tx = t.home[0] - dir * 1.25 + (t.ox || 0), tz = t.home[1];
     u.busy = true;
-    for (let k = 0; k <= 8; k++) { const p = k / 8; a.x = hx + (tx - hx) * p; a.z = hz + (tz - hz) * p; this.view.placeActor(a); await wait(18); }
-    await wait(60); for (let k = 0; k <= 8; k++) { const p = k / 8; a.x = tx + (hx - tx) * p; a.z = tz + (hz - tz) * p; this.view.placeActor(a); await wait(16); }
-    u.busy = false;
+    if (this.ranged(u) && !t.duelist) {
+      await this.tween(0.15, (p) => { u.oy = Math.sin(p * Math.PI) * 0.25; });
+      const shooters = [u.actor, ...u.squad.filter((s) => s.sprite.visible)];
+      shooters.forEach((s, i) => setTimeout(() => this.fx.arrow(s.x + 0.5, 0.8, s.z + 0.5, t.home[0] + 0.5 + (Math.random() - 0.5) * 0.8, t.home[1] + 0.5 + (Math.random() - 0.5) * 0.6), i * 60));
+      this.game.audio?.sfx('miss');
+      await wait(shooters.length * 60 + 420); this.fx.sparks(t.home[0] + 0.5, 0.8, t.home[1] + 0.5, 6); onHit();
+      if (onHit2) { await wait(200); onHit2(); }
+      u.busy = false; return;
+    }
+    u.running = true; u.squadK = 0.55;
+    await this.tween(0.26, (p) => { const e = easeIn(p); u.ox = (tx - hx) * e; u.oz = (tz - hz) * e; if (Math.random() < 0.5) this.fx.dust(hx + u.ox + 0.5, hz + u.oz + 0.5, 1, dir); });
+    u.running = false;
+    // the blow
+    const cx = t.home[0] + 0.5 - dir * 0.4, cz = t.home[1] + 0.5;
+    this.fx.slash(cx, 1.0, cz, dir > 0); this.fx.sparks(cx, 0.9, cz, 9); this.game.audio?.sfx('clash');
+    onHit();
+    await this.tween(0.12, (p) => { u.ox = (tx - hx) + dir * 0.25 * Math.sin(p * Math.PI); });
+    if (onHit2) { this.fx.slash(cx, 0.8, cz, dir < 0); this.fx.sparks(cx, 0.9, cz, 6); onHit2(); await this.tween(0.12, (p) => { u.ox = (tx - hx) + dir * 0.25 * Math.sin(p * Math.PI); }); }
+    await wait(90);
+    u.running = true; const ox = u.ox, oz = u.oz;
+    await this.tween(0.24, (p) => { const e = easeOut(p); u.ox = ox * (1 - e); u.oz = oz * (1 - e); });
+    u.running = false; u.squadK = 1; u.ox = u.oz = 0; u.busy = false;
+  }
+  lunge(u, t) { return this.charge(u, t, () => {}); }
+  // the caster raises a hand (a hop and a ring of light), the name of the stratagem sweeps across, then the effect
+  async cast(u, T, k, targets) {
+    const col = { dmg: '#ffb04a', heal: '#8aff9a', confuse: '#d8a0ff', buff: '#ff8a4a', guard: '#8ac8ff', evade: '#e8f4ff' }[T.kind];
+    u.busy = true; this.fx.aura(u.home[0] + 0.5, u.home[1] + 0.5, col);
+    this.tween(0.35, (p) => { u.oy = Math.sin(p * Math.PI) * 0.5; });
+    this.cutin(u, T, col); await wait(650);
+    this.flash(T);
+    const at = (t) => [t.home[0] + 0.5 + (t.ox || 0), t.home[1] + 0.5];
+    const fire = k === 'fire' || k === 'blaze' || k === 'feng';
+    targets.forEach((t, i) => {
+      const [x, z] = at(t);
+      setTimeout(() => {
+        if (fire) { this.fx.flames(x, z, k === 'fire' ? 12 : 9); if (k === 'feng') this.fx.dust(x, z, 6, 1); }
+        else if (k === 'rock') this.fx.rocks(x, z);
+        else if (k === 'flood') this.fx.water(x, z);
+        else if (k === 'lei') this.fx.bolt(x, z);
+        else if (T.kind === 'heal') this.fx.heal(x, z);
+        else if (T.kind === 'confuse') this.fx.stars(x, 1.6, z);
+        else this.fx.aura(x, z, col);
+      }, i * (k === 'lei' ? 180 : 90));
+    });
+    if (k === 'flood' && targets[0]) this.fx.wave(targets[0].side === 'foe' ? -1 : 18, targets[0].side === 'foe' ? 8 : 9, 6.5);
+    if (T.kind === 'dmg') this.game.audio?.sfx(k === 'lei' ? 'clash' : 'fire');
+    await wait(k === 'rock' ? 620 : k === 'lei' ? 300 + targets.length * 180 : k === 'flood' ? 650 : 380);
+    if (T.kind === 'dmg') this.shake(0.3);
+    u.busy = false; u.oy = 0;
+  }
+  cutin(u, T, col) {
+    const el = document.createElement('div'); el.className = 'b-cut' + (u.side === 'party' ? ' r' : ' l');
+    el.innerHTML = `<small>${u.name}</small><b style="color:${col}">${T.n}</b>`; this.ui.appendChild(el);
+    setTimeout(() => el.classList.add('out'), 700); setTimeout(() => el.remove(), 1100);
   }
   flash(T) { const g = this.view.grade.uniforms; g.flashColor.value.set(...(T.kind === 'heal' ? [0.6, 1, 0.6] : T.n.includes('雷') ? [0.9, 0.9, 1] : T.n.includes('水') ? [0.5, 0.7, 1] : [1, 0.6, 0.3])); g.flash.value = 0.45; const f = () => { g.flash.value *= 0.85; if (g.flash.value > 0.01) requestAnimationFrame(f); else g.flash.value = 0; }; requestAnimationFrame(f); }
   async tryFlee() {
@@ -237,8 +331,11 @@ export class Battle {
     const hpOf = (u) => Math.round(100 + u.st.war * 2 + (u.lv || 1) * 2);
     const A = { u: a, hp: hpOf(a), max: hpOf(a), fury: 0 }, B = { u: b, hp: hpOf(b), max: hpOf(b), fury: 0 };
     // bring the two forward
-    const pa = a.actor ? [a.actor.x, a.actor.z] : null, pb = b.actor ? [b.actor.x, b.actor.z] : null;
-    if (a.actor) { a.actor.x = 9.4; a.actor.z = 6.2; this.view.placeActor(a.actor); } if (b.actor) { b.actor.x = 6.6; b.actor.z = 6.2; this.view.placeActor(b.actor); }
+    const pa = a.home, pb = b.home; a.duelist = b.duelist = true;
+    const walk = async (u, to) => { if (!u.actor) return; const from = u.home; u.running = true; await this.tween(0.45, (p) => { const e = ease(p); u.home = [from[0] + (to[0] - from[0]) * e, from[1] + (to[1] - from[1]) * e]; }); u.running = false; };
+    // the camera comes in close on the two
+    const off0 = this.view.camOff.clone(), tgt0 = this.view.camTarget.clone(), zoom = (to, at) => { const f = this.view.camOff.clone(), t0 = this.view.camTarget.clone(); return this.tween(0.5, (p) => { const e = ease(p); this.view.camOff.lerpVectors(f, to, e); this.view.camTarget.lerpVectors(t0, at, e); }); };
+    await Promise.all([walk(a, [9.0, 6.4]), walk(b, [6.4, 6.4]), zoom(new THREE.Vector3(0, 7.2, 9.2), new THREE.Vector3(8.2, 0.2, 6.4))]);
     this.root.classList.add('dueling');
     const box = document.createElement('div'); box.className = 'duel-hud'; this.ui.appendChild(box);
     const draw = () => { box.innerHTML = [B, A].map((S) => `<div class="dh"><b>${S.u.name}</b><span>武力 ${S.u.st.war}</span><i style="--p:${Math.max(0, S.hp / S.max) * 100}%"></i><em style="--p:${S.fury}%"></em></div>`).join('<div class="vs">VS</div>'); };
@@ -258,7 +355,7 @@ export class Battle {
       if (ca === 'ult') A.fury = 0; if (cb === 'ult') B.fury = 0;
       if (ca === 'guard') A.fury = Math.min(100, A.fury + 34); if (cb === 'guard') B.fury = Math.min(100, B.fury + 34);
       A.fury = Math.min(100, A.fury + Math.round(db / A.max * 120)); B.fury = Math.min(100, B.fury + Math.round(da / B.max * 120));
-      if (a.actor && da) await this.lunge(a, b); else if (b.actor && db) await this.lunge(b, a);
+      await this.duelClash(a, b, ca, cb, da, db);
       B.hp -= da + ra * 0; A.hp -= db; A.hp -= ra; B.hp -= rb;
       if (da && b.actor) this.float(b, da, ca === 'ult' ? '#ffd86a' : '#fff', ca === 'ult');
       if (db && a.actor) this.float(a, db, cb === 'ult' ? '#ffd86a' : '#fff', cb === 'ult');
@@ -270,8 +367,33 @@ export class Battle {
     res ||= A.hp / A.max >= B.hp / B.max ? 'win' : 'lose';
     await this.say(res === 'win' ? `${a.name}擊敗了${b.name}！` : res === 'lose' ? `${a.name}敗給了${b.name}……` : '一騎討結束了。');
     box.remove(); this.root.classList.remove('dueling');
-    if (a.actor && pa) { a.actor.x = pa[0]; a.actor.z = pa[1]; this.view.placeActor(a.actor); } if (b.actor && pb) { b.actor.x = pb[0]; b.actor.z = pb[1]; this.view.placeActor(b.actor); }
+    await Promise.all([walk(a, pa), walk(b, pb), zoom(off0, tgt0)]); a.duelist = b.duelist = false;
     return res;
+  }
+  // what a turn of the duel looks like: both charge and meet in the middle, or one strikes and the other guards
+  async duelClash(a, b, ca, cb, da, db) {
+    if (!a.actor || !b.actor) return;
+    for (const [u, k] of [[a, ca], [b, cb]]) if (k === 'ult') { this.cutin(u, { n: '必殺' }, '#ffd86a'); this.flash({ kind: 'dmg', n: '' }); }
+    if (ca === 'ult' || cb === 'ult') await wait(550);
+    const guardA = ca === 'guard', guardB = cb === 'guard', mid = (a.home[0] + b.home[0]) / 2;
+    const ring = (u) => this.fx.aura(u.home[0] + 0.5, u.home[1] + 0.5, '#8ac8ff');
+    if (guardA) ring(a); if (guardB) ring(b);
+    // who runs: whoever attacks; if both do, they meet in the middle
+    const goA = !guardA && ca !== 'flee', goB = !guardB;
+    const dA = goA ? (goB ? mid + 0.55 - a.home[0] : b.home[0] + 1.2 - a.home[0]) : 0, dB = goB ? (goA ? mid - 0.55 - b.home[0] : a.home[0] - 1.2 - b.home[0]) : 0;
+    a.running = goA; b.running = goB;
+    await this.tween(0.24, (p) => { const e = easeIn(p); a.ox = dA * e; b.ox = dB * e; if (Math.random() < 0.4) { if (goA) this.fx.dust(a.home[0] + a.ox + 0.5, a.home[1] + 0.5, 1, -1); if (goB) this.fx.dust(b.home[0] + b.ox + 0.5, b.home[1] + 0.5, 1, 1); } });
+    a.running = b.running = false;
+    const cx = goA && goB ? mid + 0.5 : goA ? b.home[0] + 0.9 : a.home[0] + 0.1, cz = a.home[1] + 0.5, big = ca === 'ult' || cb === 'ult' || ca === 'power' || cb === 'power';
+    this.fx.sparks(cx, 1, cz, big ? 16 : 10); this.fx.slash(cx, 1.05, cz, goB && !goA);
+    if (goA && goB) this.fx.slash(cx, 0.8, cz, true);
+    if (big) this.shake(ca === 'ult' || cb === 'ult' ? 0.45 : 0.25);
+    if (da) { b.flashT = 0.18; b.shk = 0.2; } if (db) { a.flashT = 0.18; a.shk = 0.2; }
+    await this.tween(0.14, (p) => { const k = Math.sin(p * Math.PI) * 0.3; a.ox = dA + (db ? k : 0); b.ox = dB - (da ? k : 0); });
+    await wait(80);
+    const oa = a.ox, ob = b.ox; a.running = !!oa; b.running = !!ob;
+    await this.tween(0.22, (p) => { const e = easeOut(p); a.ox = oa * (1 - e); b.ox = ob * (1 - e); });
+    a.running = b.running = false; a.ox = b.ox = 0;
   }
   duelAI(S, T) {
     if (S.fury >= 100 && Math.random() < 0.8) return 'ult';
