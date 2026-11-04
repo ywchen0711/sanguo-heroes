@@ -91,7 +91,7 @@ export class Screens {
   drawMap(cv, k, big) {
     const G = this.g.G, M = this.g.world, x = cv.getContext('2d');
     // the land itself is drawn once and kept
-    if (!this.base) { const img = new ImageData(W, H), C = { 0: [46, 96, 160], 1: [70, 130, 190], 2: [120, 160, 80], 3: [110, 150, 72], 4: [60, 110, 60], 5: [140, 140, 90], 6: [130, 120, 110], 7: [230, 236, 240], 8: [210, 180, 120], 9: [190, 170, 130], 10: [150, 110, 70], 11: [200, 190, 170], 12: [220, 210, 160], 13: [90, 120, 90], 14: [160, 170, 80] };
+    if (!this.base) { const img = new ImageData(W, H), C = { 0: [46, 96, 160], 1: [70, 130, 190], 2: [120, 160, 80], 3: [110, 150, 72], 4: [60, 110, 60], 5: [140, 140, 90], 6: [130, 120, 110], 7: [230, 236, 240], 8: [210, 180, 120], 9: [190, 170, 130], 10: [150, 110, 70], 11: [200, 190, 170], 12: [220, 210, 160], 13: [90, 120, 90], 14: [160, 170, 80], 15: [230, 220, 200], 16: [200, 150, 90], 17: [40, 30, 30] };
       for (let i = 0; i < W * H; i++) { const c = C[M.t[i]], j = i * 4; img.data[j] = c[0]; img.data[j + 1] = c[1]; img.data[j + 2] = c[2]; img.data[j + 3] = 255; }
       this.base = document.createElement('canvas'); this.base.width = W; this.base.height = H; this.base.getContext('2d').putImageData(img, 0, 0); }
     x.imageSmoothingEnabled = false; x.drawImage(this.base, 0, 0, cv.width, cv.height);
@@ -99,6 +99,7 @@ export class Screens {
     // territory: a soft disc of the owner's colour round each city
     for (const c of CITY_POS) { const o = G.cities[c.id].owner, f = o && G.factions[o]; if (!f) continue; x.fillStyle = f.color + '55'; x.beginPath(); x.arc(c.x * s, c.y * s, (big ? 9 : 7) * s, 0, Math.PI * 2); x.fill(); }
     for (const c of CITY_POS) { const o = G.cities[c.id].owner, f = o && G.factions[o]; x.fillStyle = f ? f.color : '#ddd'; x.strokeStyle = '#000'; x.lineWidth = 1; x.fillRect(c.x * s - 3, c.y * s - 3, 6, 6); x.strokeRect(c.x * s - 3, c.y * s - 3, 6, 6); if (big) { x.fillStyle = '#fff'; x.font = '10px sans-serif'; x.strokeStyle = '#000'; x.lineWidth = 2.5; x.strokeText(G.cities[c.id].name, c.x * s + 5, c.y * s + 4); x.fillText(G.cities[c.id].name, c.x * s + 5, c.y * s + 4); } }
+    if (big) for (const q of M.places) { x.fillStyle = q.kind === 'county' ? '#f0e8d0' : q.kind === 'village' ? '#c8955a' : this.g.H.places?.[q.id]?.boss ? '#6a6a6a' : '#1a1010'; x.strokeStyle = '#000'; x.lineWidth = 1; if (q.kind === 'cave') { x.beginPath(); x.moveTo(q.x * s, q.y * s - 3); x.lineTo(q.x * s + 3, q.y * s + 2); x.lineTo(q.x * s - 3, q.y * s + 2); x.closePath(); x.fill(); x.stroke(); } else { x.beginPath(); x.arc(q.x * s, q.y * s, q.kind === 'county' ? 2.5 : 1.8, 0, Math.PI * 2); x.fill(); x.stroke(); } }
     for (const m of this.g.H.missions.filter((m) => !m.done)) { x.fillStyle = '#111'; x.fillRect(m.x * s - 2, m.z * s - 2, 4, 4); }
     const P = this.g.pos, px = P.town != null ? CITY_POS[P.town].x : P.x, pz = P.town != null ? CITY_POS[P.town].y : P.z;
     x.fillStyle = '#ffec4a'; x.strokeStyle = '#000'; x.lineWidth = 1.5; x.beginPath(); x.arc(px * s, pz * s, big ? 5 : 3.5, 0, Math.PI * 2); x.fill(); x.stroke();

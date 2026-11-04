@@ -4,8 +4,8 @@
 // ends when the years you chose are up, or when one warlord unifies the realm, and then your deeds are reckoned.
 import { View, THREE, personSheet } from './render.js';
 import { buildWorld, T, WALK, ENC, CITY_POS, regionAt, W as WW } from './world.js';
-import { buildTown } from './town.js';
-import { lookFor, LOOKS, soldierSheet } from './sprites.js';
+import { buildTown, buildVillage, buildCave } from './town.js';
+import { lookFor, LOOKS, soldierSheet, beastSheet } from './sprites.js';
 import { newGame, step, rng, citiesOf, gensOf, busy, pickGovernor } from './sim/engine.js';
 import { fmt, dateStr } from './sim/text.js';
 import { newRec, solMax, spMax, bstats, gainExp, rankOf, RANKS, score } from './hero.js';
@@ -51,7 +51,7 @@ class Game {
   loadGame() {
     const d = JSON.parse(localStorage.getItem(SAVE)); const G = this.G = d.G; G.r = rng(G.seed + G.t * 7919 + 1); G.pending = []; G.byName = Object.fromEntries(G.gens.map((g) => [g.name, g]));
     this.H = d.H; this.load2();
-    if (d.pos.town != null) this.enterTown(d.pos.town, true, d.pos); else this.enterWorld(d.pos.x, d.pos.z, d.pos.dir);
+    if (d.pos.place != null) this.enterPlace(this.world.places[d.pos.place], true, d.pos); else if (d.pos.town != null) this.enterTown(d.pos.town, true, d.pos); else this.enterWorld(d.pos.x, d.pos.z, d.pos.dir);
   }
   load2() { this.world ||= buildWorld(); this.mode = 'world'; document.body.classList.add('playing'); }
   get me() { return this.G.gens[this.H.pid]; }
@@ -64,17 +64,55 @@ class Game {
   // ---------------------------------------------------------------- the land
   enterWorld(x, z, dir = 'down') {
     this.mode = 'world'; this.town = null; this.pos = { x, z, dir, town: null };
-    const M = this.world, V = this.view, TT = { 0: [14, 15], 1: [14, 15], 2: [0, 15], 3: [1, 15], 4: [5, 15], 5: [9, 15], 6: [6, 16], 7: [7, 17], 8: [8, 23], 9: [3, 15], 10: [13, 13], 11: [18, 11], 12: [4, 23], 13: [22, 15], 14: [19, 15] };
+    const M = this.world, V = this.view, TT = { 0: [14, 15], 1: [14, 15], 2: [0, 15], 3: [1, 15], 4: [5, 15], 5: [9, 15], 6: [6, 16], 7: [7, 17], 8: [8, 23], 9: [3, 15], 10: [13, 13], 11: [18, 11], 12: [4, 23], 13: [22, 15], 14: [19, 15], 15: [18, 15], 16: [2, 15], 17: [9, 15] };
     V.setMap({ W: M.W, H: M.H, water: -0.24, sky: '#9ac8f0', fog: '#c8dcec', fogNear: 24, fogFar: 52,
       tile: (x, z) => { if (x < 0 || z < 0 || x >= M.W || z >= M.H) return null; const k = M.at(x, z), [top, side] = TT[k]; return { top: k === T.MOUNT && M.hAt(x, z) > 1.8 ? 7 : top, side, side2: k === T.MOUNT || k === T.SNOW ? 16 : side, h: M.hAt(x, z) }; },
       deco: (x, z) => M.deco[z * M.W + x] === 5 && M.at(x, z) === T.SNOW ? 6 : M.deco[z * M.W + x],
-      props: CITY_POS.map((c) => { const C = this.G.cities[c.id], f = C.owner && this.G.factions[C.owner]; return { kind: 'city', x: c.x + 0.5, z: c.y + 0.5, r: c.size >= 3 ? 2 : 1, size: c.size, color: f ? f.color : '#9a9a9a', roofRed: c.size >= 3, label: this.cityLabel(c.id), labelY: c.size >= 3 ? 3.4 : 2.6, labelClass: 'city', cityId: c.id }; }) });
+      props: CITY_POS.map((c) => { const C = this.G.cities[c.id], f = C.owner && this.G.factions[C.owner]; return { kind: 'city', x: c.x + 0.5, z: c.y + 0.5, r: c.size >= 3 ? 2 : 1, size: c.size, color: f ? f.color : '#9a9a9a', roofRed: c.size >= 3, label: this.cityLabel(c.id), labelY: c.size >= 3 ? 3.4 : 2.6, labelClass: 'city', cityId: c.id }; }).concat(this.placeProps()) });
     this.cityProps = V.M.props;
     this.missionMarks();
     this.spawnParty(x, z, dir);
     V.updateChunks(x, z); V.follow(x, this.groundY(x, z), z, true); V.season(this.G.month);
     this.audio.music('field');
     this.hud();
+  }
+  // counties, villages and caves on the land
+  placeProps() {
+    return this.world.places.map((q) => { const C = this.G.cities[q.near], f = C.owner && this.G.factions[C.owner], col = f ? f.color : '#9a9a9a';
+      const st = this.H.places?.[q.id], done = q.kind === 'cave' && st?.boss;
+      return { kind: q.kind, x: q.x + 0.5, z: q.y + 0.5, y: this.world.hAt(q.x, q.y), color: col, placeId: q.id, labelY: q.kind === 'cave' ? 1.5 : 1.3, labelClass: 'place ' + q.kind,
+        label: q.kind === 'county' ? `<b>${q.name}</b>${f ? `<i style="color:${col}">${f.name}</i>` : ''}` : q.kind === 'cave' ? `<b>${q.name}</b><i>${done ? '已平定' : '★'.repeat(q.tier)}</i>` : `<b>${q.name}</b>` }; });
+  }
+  // a county, a village or a cave stands in for a city: its owner is the nearest city's
+  placeC(q) {
+    this.placeCs ||= {}; if (this.placeCs[q.id]) return this.placeCs[q.id];
+    const G = this.G, near = G.cities[q.near];
+    return this.placeCs[q.id] = { id: -1, place: q, name: q.name, size: q.kind === 'county' ? 1 : 0, get owner() { return G.cities[q.near].owner; }, troops: q.kind === 'county' ? 1500 : 300, morale: 60, def: 120, pos: { x: q.x, y: q.y }, adj: near.adj, x: near.x, y: near.y };
+  }
+  enterPlace(q, snap, at) {
+    this.mode = 'town'; const C = this.placeC(q), f = C.owner && this.G.factions[C.owner];
+    const M = this.town = q.kind === 'cave' ? buildCave(q) : q.kind === 'village' ? buildVillage(q.name) : buildTown(q.name, 1, f ? f.color : '#8a8a8a', { county: true });
+    M.city = null; M.C = C; M.place = q;
+    const st = (this.H.places ||= {})[q.id] ||= { chests: [], odd: [], boss: false };
+    if (M.cave) for (const pr of M.props) if (pr.kind === 'chest' && st.chests.includes(pr.chest)) pr.open = true;
+    const [sx, sz] = at && at.place === q.id ? [at.x, at.z] : M.spawn;
+    this.pos = { x: sx, z: sz, dir: at?.dir || 'up', town: null, place: q.id };
+    this.me.city = q.near; for (const id of this.H.party) this.G.gens[id].city = q.near;
+    this.view.setMap({ ...M, water: null });
+    this.view.updateChunks(M.W / 2, M.H / 2);
+    this.townNPCs();
+    if (M.cave) this.caveThings(M, st);
+    this.spawnParty(sx, sz, this.pos.dir);
+    this.camTo(sx, sz, true); this.view.season(this.G.month); if (this.view.torch?.visible) this.view.torch.position.set(sx + 0.5, 1.6, sz + 0.5);
+    this.audio.music(M.cave ? 'field' : 'town');
+    this.hud();
+    if (!snap) { this.ui.toast(`<b>${q.name}</b>　${q.kind === 'county' ? '縣城' : q.kind === 'village' ? '村莊' : '洞穴　危險 ' + '★'.repeat(q.tier)}`); if (!M.cave) setTimeout(() => this.happen('town'), 500); }
+  }
+  // the master of a cave (until beaten) and its strange things
+  caveThings(M, st) {
+    const q = M.place;
+    if (!st.boss) { const B = this.act.caveBoss(q), [bx, by] = M.boss; const sheet = B.beast ? beastSheet(B.beast) : personSheet(B.look); const a = this.view.addActor(sheet, bx, by, { scale: B.beast ? 1.5 : 1.25 }); if (B.beast) { a.tex.repeat.set(1 / 2, 1); this.view.sizeActor(a, 1.9, 1.45); } a.label = this.view.addLabel(`<b style="color:#ff8a6a">${B.name}</b>`, a.sprite, B.beast ? 1.6 : 2, 'npc'); this.npcs.push({ x: bx, z: by, a, home: [bx, by], special: 'boss', boss: B }); }
+    M.odd.forEach((o, i) => { if (o.kind === 'hermit' && !st.odd.includes(i)) { const a = this.view.addActor(personSheet(LOOKS.villager('隱士' + q.name)), o.x, o.z, { scale: 0.95 }); this.npcs.push({ x: o.x, z: o.z, a, home: [o.x, o.z], special: 'odd', odd: i }); } else this.view.addProp({ kind: o.kind, x: o.x, z: o.z, used: st.odd.includes(i) }); });
   }
   cityLabel(id) { const C = this.G.cities[id], f = C.owner && this.G.factions[C.owner]; return `<b>${C.name}</b>${f ? `<i style="color:${f.color}">${f.name}</i>` : '<i>無主</i>'}`; }
   // a city that changed hands gets its new warlord's flag; every label shows who holds it now
@@ -107,7 +145,7 @@ class Game {
   // ---------------------------------------------------------------- a town
   enterTown(cityId, snap, at) {
     this.mode = 'town'; const C = this.G.cities[cityId], f = C.owner && this.G.factions[C.owner];
-    const M = this.town = buildTown(C.name, C.size, f ? f.color : '#8a8a8a'); M.city = cityId;
+    const M = this.town = buildTown(C.name, C.size, f ? f.color : '#8a8a8a'); M.city = cityId; M.C = C;
     const [sx, sz] = at && at.town === cityId ? [at.x, at.z] : M.spawn;
     this.pos = { x: sx, z: sz, dir: at?.dir || 'up', town: cityId };
     this.me.city = cityId; for (const id of this.H.party) this.G.gens[id].city = cityId;
@@ -129,7 +167,7 @@ class Game {
     if (where === 'month') await this.story.check('month');
   }
   townNPCs() {
-    const M = this.town, C = this.G.cities[M.city]; this.npcs = [];
+    const M = this.town, C = M.C; this.npcs = [];
     for (const n of M.npcs) { const a = this.view.addActor(personSheet(n.look), n.x, n.z, { scale: 0.95 }); this.npcs.push({ ...n, a, home: [n.x, n.z], t: Math.random() * 3 }); }
     // the generals in this city: those who serve here wait before the hall, the free ones by the tavern
     const here = this.G.gens.filter((g) => !busy(g) && (g.status === 'serving' || g.status === 'free') && g.city === C.id && !g.held);
@@ -151,7 +189,7 @@ class Game {
     if (P.moving) {
       P.mt += dt * (this.mode === 'world' ? (this.onRoad ? 7.5 : 6) : 5.5); const p = Math.min(1, P.mt);
       P.fx = P.from[0] + (P.x - P.from[0]) * p; P.fz = P.from[1] + (P.z - P.from[1]) * p;
-      this.place(p); this.camTo(P.fx, P.fz);
+      this.place(p); this.camTo(P.fx, P.fz); if (this.view.torch?.visible) this.view.torch.position.set(P.fx + 0.5, 1.6, P.fz + 0.5);
       this.animWalk(dt, true);
       if (p >= 1) { const over = P.mt - 1; P.moving = false; P.fx = P.x; P.fz = P.z; const at = this.mode; this.arrived(); if (this.mode === at && !this.ui.busy && !this.locked && this.held()) { this.tryStep(); if (P.moving) P.mt = Math.min(0.5, over); } }
       return;
@@ -178,7 +216,9 @@ class Game {
     const P = this.pos;
     if (this.mode === 'town') {
       if (P.z >= this.town.H - 1) { this.leaveTown(); return; }
-      this.townSteps = (this.townSteps || 0) + 1; if (this.townSteps % 20 === 0) this.happen('walk');
+      this.townSteps = (this.townSteps || 0) + 1;
+      if (this.town.cave) { if (this.townSteps > 6 && Math.random() < 0.07) { this.townSteps = 0; this.act.caveFight(this.town.place); } return; }
+      if (this.townSteps % 20 === 0) this.happen('walk');
       const door = this.town.doors.find((d) => d.x === P.x && d.z === P.z); if (door) { this.act.building(door); return; }
       return;
     }
@@ -187,24 +227,28 @@ class Game {
     this.steps = (this.steps || 0) + 1; this.H.walk = (this.H.walk || 0) + 1;
     if (this.H.walk % 10 === 0) { this.H.days++; if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; } }
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
+    if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
     if (this.steps > 5 && Math.random() < (ENC[k] || 0)) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); return; }
     if (this.H.walk % 10 === 0) this.happen('field');
     if (this.H.walk % 10 === 0) this.hud();
   }
+  thingAt(x, z) { const M = this.town; if (!M?.cave) return null; return M.chests.find((c) => c.x === x && c.z === z) || M.odd.find((o) => o.x === x && o.z === z && o.kind !== 'hermit') || null; }
   bump(x, z) {
     if (this.mode !== 'town' || this.ui.busy || this.ui.settling) return;
+    const th = this.thingAt(x, z); if (th) { const key = `t${x},${z}`; if (this.bumped === key) return; this.bumped = key; this.act.caveThing(th); return; }
     const n = this.npcs.find((n) => Math.round(n.a.x) === x && Math.round(n.a.z) === z), key = `${x},${z}`;
     if (!n || this.bumped === key) return;
     this.bumped = key; this.act.talk(n);
   }
   interact() {
     const P = this.pos; if (!P || P.moving || this.ui.busy || this.ui.settling) return; const [dx, dz] = DIRS[P.dir];
-    if (this.mode === 'town') { const n = this.npcs.find((n) => Math.round(n.a.x) === P.x + dx && Math.round(n.a.z) === P.z + dz); if (n) return this.act.talk(n); const door = this.town.doors.find((d) => d.x === P.x && d.z === P.z) || this.town.doors.find((d) => d.x === P.x + dx && d.z === P.z + dz); if (door) return this.act.building(door); }
+    if (this.mode === 'town') { const th = this.thingAt(P.x + dx, P.z + dz); if (th) return this.act.caveThing(th); const n = this.npcs.find((n) => Math.round(n.a.x) === P.x + dx && Math.round(n.a.z) === P.z + dz); if (n) return this.act.talk(n); const door = this.town.doors.find((d) => d.x === P.x && d.z === P.z) || this.town.doors.find((d) => d.x === P.x + dx && d.z === P.z + dz); if (door) return this.act.building(door); }
   }
   leaveTown() {
-    const c = CITY_POS[this.town.city], R = c.size >= 3 ? 2 : 1;
     for (const n of this.npcs) this.view.removeActor(n.a);
+    const q = this.town.place; if (q) { this.enterWorld(q.x, q.y + 1, 'down'); return; }
+    const c = CITY_POS[this.town.city], R = c.size >= 3 ? 2 : 1;
     this.enterWorld(c.x, c.y + R + 2, 'down');
   }
   npcTick(dt) {

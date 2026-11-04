@@ -164,7 +164,7 @@ class Kit {
   inParty(g) { return this.H.party.includes(g.id); }
   fac(id) { const f = this.G.factions[id]; return f && f.alive && citiesOf(this.G, id).length > 0; }
   factionLord(id) { const f = this.G.factions[id]; return f && f.alive ? this.G.gens[f.lord].name : null; }
-  inCity(n) { return this.g.town && this.G.cities[this.g.town.city].name === n; }
+  inCity(n) { return !!this.g.town && this.g.town.C.name === n && this.g.town.city != null; }
   near(n, d) { const c = this.G.cities.find((x) => x.name === n), q = CITY_POS[c.id], P = this.g.pos, x = P.town != null ? CITY_POS[P.town].x : P.x, z = P.town != null ? CITY_POS[P.town].y : P.z; return Math.hypot(q.x - x, q.y - z) < d; }
   check(k, v) { return this.me[k] >= v || Math.random() < 0.15; }
   look(x) { return typeof x === 'string' ? (this.gen(x) ? this.g.lookOf(this.gen(x)) : LOOKS.villager(x)) : x?.name ? this.g.lookOf(x) : x; }

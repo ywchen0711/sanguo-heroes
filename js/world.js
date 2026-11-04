@@ -5,11 +5,11 @@
 import { CITIES, ROADS } from './data/world.js';
 
 export const W = 200, H = 200, SCALE = 2;
-export const T = { SEA: 0, RIVER: 1, PLAIN: 2, MEADOW: 3, FOREST: 4, HILL: 5, MOUNT: 6, SNOW: 7, DESERT: 8, ROAD: 9, BRIDGE: 10, CITY: 11, BEACH: 12, MARSH: 13, FIELD: 14 };
+export const T = { SEA: 0, RIVER: 1, PLAIN: 2, MEADOW: 3, FOREST: 4, HILL: 5, MOUNT: 6, SNOW: 7, DESERT: 8, ROAD: 9, BRIDGE: 10, CITY: 11, BEACH: 12, MARSH: 13, FIELD: 14, COUNTY: 15, VILLAGE: 16, CAVE: 17 };
 // height of the ground, whether you can walk on it, and the chance a step brings a fight
-export const HEIGHT = { 0: -0.45, 1: -0.4, 2: 0, 3: 0, 4: 0.05, 5: 0.5, 6: 1.3, 7: 2.0, 8: 0, 9: 0.02, 10: 0.08, 11: 0.04, 12: -0.05, 13: -0.08, 14: 0 };
-export const WALK = { 0: 0, 1: 0, 2: 1, 3: 1, 4: 1, 5: 1, 6: 0, 7: 0, 8: 1, 9: 1, 10: 1, 11: 1, 12: 1, 13: 1, 14: 1 };
-export const ENC = { 2: 0.06, 3: 0.06, 4: 0.1, 5: 0.09, 8: 0.08, 9: 0.015, 10: 0.01, 11: 0, 12: 0.04, 13: 0.09, 14: 0.03 };
+export const HEIGHT = { 0: -0.45, 1: -0.4, 2: 0, 3: 0, 4: 0.05, 5: 0.5, 6: 1.3, 7: 2.0, 8: 0, 9: 0.02, 10: 0.08, 11: 0.04, 12: -0.05, 13: -0.08, 14: 0, 15: 0.04, 16: 0.02, 17: 0.5 };
+export const WALK = { 0: 0, 1: 0, 2: 1, 3: 1, 4: 1, 5: 1, 6: 0, 7: 0, 8: 1, 9: 1, 10: 1, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1, 16: 1, 17: 1 };
+export const ENC = { 2: 0.06, 3: 0.06, 4: 0.1, 5: 0.09, 8: 0.08, 9: 0.015, 10: 0.01, 11: 0, 12: 0.04, 13: 0.09, 14: 0.03, 15: 0, 16: 0, 17: 0 };
 
 // ---------------------------------------------------------------- noise
 function hash2(x, y, s) { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 2147483647); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
@@ -119,7 +119,8 @@ export function buildWorld(seed = 7) {
     else if (k === T.HILL && v < 0.12) deco[i] = 5;
     else if (k === T.MARSH && v < 0.3) deco[i] = 2;
   }
-  return { t, hgt, cityOf, deco, roads, W, H, at: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? T.SEA : t[id(x, y)]), hAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? -0.45 : hgt[id(x, y)]), cityAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? -1 : cityOf[id(x, y)]) };
+  const places = placePlaces(t, hgt, deco, seed);
+  return { t, hgt, cityOf, deco, roads, places, placeAt: (x, y) => places.find((q) => q.x === x && q.y === y) || null, W, H, at: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? T.SEA : t[id(x, y)]), hAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? -0.45 : hgt[id(x, y)]), cityAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? -1 : cityOf[id(x, y)]) };
 }
 
 // A* on the tile grid (8 directions)
@@ -153,4 +154,47 @@ export function regionAt(x, y) {
   if (v > 82 || (u < 20 && v > 78)) return 'south';
   if (u > 76 && v > 55) return 'coast';
   return 'central';
+}
+
+// ---------------------------------------------------------------- counties, villages and caves
+// Counties are real Han counties, put near where they were (in the simulation's 100x100 units); villages are scattered
+// over the farmland; caves open in the hills at the foot of the mountains. None of them is part of the simulation:
+// each belongs to whoever holds the nearest city.
+const COUNTIES = [['涿縣', 68, 18], ['易京', 65, 21], ['鉅鹿', 64, 31], ['廣宗', 67, 34], ['邯鄲', 58, 32], ['白馬', 63, 39], ['官渡', 57, 45], ['虎牢', 54, 43],
+  ['滎陽', 55, 47], ['潁川', 54, 52], ['博望', 52, 59], ['樊城', 47, 64], ['麥城', 48, 70], ['當陽', 44, 70], ['夷陵', 38, 72], ['涪城', 19, 66], ['雒城', 17, 67],
+  ['劍閣', 22, 59], ['陽平關', 23, 51], ['街亭', 23, 38], ['祁山', 17, 46], ['陳倉', 28, 45], ['五丈原', 31, 47], ['潼關', 38, 41], ['河內', 55, 37], ['上黨', 55, 25],
+  ['雁門', 48, 12], ['漁陽', 75, 13], ['柳城', 86, 7], ['臨淄', 80, 31], ['琅邪', 85, 40], ['廣陵', 82, 54], ['曲阿', 85, 61], ['丹陽', 78, 66], ['鄱陽', 70, 72],
+  ['豫章', 63, 79], ['合肥', 74, 63], ['皖城', 67, 63], ['濡須', 77, 61], ['夏口', 59, 67], ['赤壁', 53, 74], ['華容', 49, 75], ['公安', 44, 77], ['益陽', 49, 81],
+  ['臨沅', 41, 83], ['牂牁', 22, 84], ['越嶲', 10, 79], ['武都', 21, 49], ['金城', 14, 33], ['西平', 8, 36], ['臨洮', 15, 38], ['平陽', 46, 27], ['九原', 44, 7]];
+const VNAME = ['杏花村', '桃花塢', '柳樹屯', '白石村', '黃泥崗', '石橋鎮', '青龍集', '臥牛村', '清水灣', '落鳳坡', '老鴉嶺', '八里莊', '十里鋪', '雙溪村', '梅花村', '牛家莊', '張家村', '李家屯', '王家集', '趙家堡', '劉家莊', '陳家村', '孫家屯', '周家集', '吳家村', '鄭家莊', '馮家堡', '褚家村', '衛家集', '蔣家莊', '沈家村', '韓家屯', '楊家莊', '朱家集', '秦家村', '許家堡', '何家莊', '呂家村', '施家屯', '孔家集', '曹家莊', '嚴家村', '華家堡', '金家莊', '魏家村', '陶家屯', '姜家集', '謝家村', '鄒家莊', '喻家堡', '蘇家村', '潘家屯', '葛家集', '范家莊', '彭家村', '魯家堡', '馬家屯', '苗家集', '鳳家村', '方家莊', '俞家村', '任家屯', '袁家集', '柳家莊', '鮑家村'];
+const CNAME = ['黑風洞', '臥龍洞', '水簾洞', '白骨洞', '盤蛇洞', '藏兵洞', '仙人洞', '青牛洞', '蝙蝠洞', '火雲洞', '冰魄洞', '古墓穴', '黃巾密窟', '熊王洞', '虎嘯洞', '鬼哭洞', '百寶洞', '天書洞', '雷音洞', '幽冥洞', '玉泉洞', '金蠶洞', '飛狐洞', '千佛洞', '赤焰洞', '寒潭洞', '狼牙洞', '迷魂洞'];
+function placePlaces(t, hgt, deco, seed) {
+  const id = (x, y) => y * W + x, r = (() => { let a = (seed * 2654435761) >>> 0 || 7; return () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; }; })();
+  // what can be reached on foot from the first city
+  const seen = new Uint8Array(W * H), q = [id(cityAt[0].x, cityAt[0].y)]; seen[q[0]] = 1;
+  for (let k = 0; k < q.length; k++) { const i = q[k], x = i % W, y = (i - x) / W; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue; const j = id(nx, ny); if (seen[j] || !WALK[t[j]]) continue; seen[j] = 1; q.push(j); } }
+  const places = [], far = (x, y, dc, dp) => cityAt.every((c) => Math.hypot(c.x - x, c.y - y) >= dc) && places.every((p) => Math.hypot(p.x - x, p.y - y) >= dp);
+  const nearCity = (x, y) => { let b = 0, d = 1e9; for (const c of cityAt) { const e = Math.hypot(c.x - x, c.y - y); if (e < d) { d = e; b = c.id; } } return b; };
+  // the tile south of a place must be walkable too (that is where you come out)
+  const ok = (x, y, kinds) => x > 1 && y > 1 && x < W - 2 && y < H - 2 && seen[id(x, y)] && kinds.includes(t[id(x, y)]) && WALK[t[id(x, y + 1)]] && t[id(x, y + 1)] < 15;
+  const add = (kind, name, x, y, extra = {}) => { const k = id(x, y); t[k] = kind === 'county' ? T.COUNTY : kind === 'village' ? T.VILLAGE : T.CAVE; deco[k] = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0, 2]]) deco[id(x + dx, y + dy)] = 0; places.push({ id: places.length, kind, name, x, y, near: nearCity(x, y), ...extra }); };
+  const land = [T.PLAIN, T.MEADOW, T.FIELD, T.FOREST, T.DESERT, T.HILL, T.ROAD];
+  for (const [name, u, v] of COUNTIES) {
+    let best = null, bd = 1e9; const cx = Math.round(u * SCALE), cy = Math.round(v * SCALE);
+    for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) { const x = cx + dx, y = cy + dy; if (!ok(x, y, land.filter((k) => k !== T.ROAD)) || !far(x, y, 6, 5)) continue; const d = dx * dx + dy * dy - (t[id(x, y + 1)] === T.ROAD || t[id(x - 1, y)] === T.ROAD || t[id(x + 1, y)] === T.ROAD ? 10 : 0); if (d < bd) { bd = d; best = [x, y]; } }
+    if (best) add('county', name, ...best);
+  }
+  for (let k = 0, n = 0; k < 6000 && n < 62; k++) {
+    const x = 3 + Math.floor(r() * (W - 6)), y = 3 + Math.floor(r() * (H - 6));
+    if (!ok(x, y, [T.PLAIN, T.MEADOW, T.FIELD, T.FOREST, T.DESERT]) || !far(x, y, 7, 6)) continue;
+    add('village', VNAME[n % VNAME.length], x, y); n++;
+  }
+  for (let k = 0, n = 0; k < 20000 && n < CNAME.length; k++) {
+    const x = 3 + Math.floor(r() * (W - 6)), y = 3 + Math.floor(r() * (H - 6));
+    if (!ok(x, y, [T.HILL]) || !far(x, y, 8, 7)) continue;
+    const rocky = [[0, -1], [1, -1], [-1, -1], [0, -2]].some(([dx, dy]) => [T.MOUNT, T.SNOW].includes(t[id(x + dx, y + dy)]));
+    if (!rocky) continue;
+    add('cave', CNAME[n], x, y, { tier: 1 + Math.floor(r() * 3) }); n++;
+  }
+  return places;
 }

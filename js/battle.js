@@ -13,7 +13,7 @@ import { FX } from './fx.js';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ease = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2), easeIn = (p) => p * p * p, easeOut = (p) => 1 - (1 - p) ** 3;
-const GROUND = { plain: [0, 1], forest: [5, 0], hill: [9, 6], desert: [8, 2], snow: [7, 6], city: [18, 10], marsh: [22, 0], coast: [4, 0] };
+const GROUND = { cave: [2, 6], plain: [0, 1], forest: [5, 0], hill: [9, 6], desert: [8, 2], snow: [7, 6], city: [18, 10], marsh: [22, 0], coast: [4, 0] };
 
 export class Battle {
   constructor(game) { this.game = game; this.root = document.getElementById('battle'); this.ui = this.root.querySelector('.b-ui'); }
@@ -32,9 +32,9 @@ export class Battle {
   stage(terrain, siege) {
     const v = this.view, [top, alt] = GROUND[terrain] || GROUND.plain, W = 18, H = 12;
     const rnd = (x, z) => ((x * 73 + z * 151) % 17) / 17;
-    v.setMap({ W, H, water: terrain === 'coast' ? -0.2 : null, sky: { snow: '#c8d8e8', desert: '#e8c890', city: '#b8c8d8' }[terrain] || '#a8d0f0', fogNear: 18, fogFar: 40,
-      tile: (x, z) => { if (x < 0 || z < 0 || x >= W || z >= H) return null; const back = z < 3; return { top: back && siege ? 11 : rnd(x, z) < 0.18 ? alt : top, side: siege && back ? 11 : 15, h: back ? (siege ? 1.6 : terrain === 'hill' ? 0.9 : 0.3) : 0 }; },
-      deco: (x, z) => (z === 1 || z === 2) && !siege && rnd(x, z) < 0.45 ? (terrain === 'forest' ? 2 : terrain === 'hill' ? 5 : terrain === 'snow' ? 6 : terrain === 'desert' ? (rnd(z, x) < 0.5 ? 5 : 0) : 1 + Math.floor(rnd(z, x) * 3)) : 0,
+    v.setMap({ W, H, water: terrain === 'coast' ? -0.2 : null, sky: { snow: '#c8d8e8', desert: '#e8c890', city: '#b8c8d8', cave: '#120c08' }[terrain] || '#a8d0f0', fogNear: terrain === 'cave' ? 12 : 18, fogFar: terrain === 'cave' ? 30 : 40, dark: terrain === 'cave',
+      tile: (x, z) => { if (x < 0 || z < 0 || x >= W || z >= H) return null; const back = z < 3; return { top: back && siege ? 11 : terrain === 'cave' && back ? 16 : rnd(x, z) < 0.18 ? alt : top, side: siege && back ? 11 : terrain === 'cave' ? 16 : 15, h: back ? (siege ? 1.6 : terrain === 'cave' ? 2.4 : terrain === 'hill' ? 0.9 : 0.3) : 0 }; },
+      deco: (x, z) => (z === 1 || z === 2) && !siege && terrain !== 'cave' && rnd(x, z) < 0.45 ? (terrain === 'forest' ? 2 : terrain === 'hill' ? 5 : terrain === 'snow' ? 6 : terrain === 'desert' ? (rnd(z, x) < 0.5 ? 5 : 0) : 1 + Math.floor(rnd(z, x) * 3)) : 0,
       props: siege ? [{ kind: 'banner', x: 3, y: 1.6, z: 1, color: siege.color }, { kind: 'banner', x: 13, y: 1.6, z: 1, color: siege.color }] : [] });
     v.updateChunks(9, 6); v.follow(7.6, 0, 5.2, true);
   }

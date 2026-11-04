@@ -5,7 +5,7 @@ import { lookFor, LOOKS } from './sprites.js';
 import { CITY_POS, T } from './world.js';
 import { BUILDINGS } from './town.js';
 import { serve, die, record, pickGovernor, destroy, give, hostile, allied, citiesOf, gensOf, lordOf, busy, power } from './sim/engine.js';
-import { itemName } from './sim/text.js';
+import { itemName, spellName } from './sim/text.js';
 import { EQUIP, WEAPONS, ARMORS, HORSES, ITEMS, RANKS, rankOf, newRec, solMax, spMax, bstats, gainExp, startLv, STAT_N, expNeed } from './hero.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -20,7 +20,7 @@ const FOES = {
   south: [['南蠻兵', 'barbarian'], ['猛虎', 'tiger'], ['山豬', 'boar'], ['山越賊', 'barbarian']],
   coast: [['海賊', 'pirate'], ['山賊', 'bandit'], ['錦帆賊', 'pirate']],
 };
-const BEASTS = ['wolf', 'tiger', 'bear', 'boar'];
+const BEASTS = ['wolf', 'tiger', 'bear', 'boar', 'bat', 'snake', 'whitetiger'];
 
 export class Actions {
   constructor(game) { this.g = game; }
@@ -37,6 +37,102 @@ export class Actions {
     await this.ui.say(g.name, text, look);
     await this.ui.say('', '【操作】方向鍵移動，Z 確認／對話，X 取消，C 打開選單。\n走到門前就能進入建築。和城裡的武將對話，可以招募、切磋或挑戰。\n在大地圖上走十步是一天，三十天就是一個月，天下也會跟著變化。');
   }
+  // ---------------------------------------------------------------- counties, villages and caves
+  async placeGate(q) {
+    if (q.kind === 'cave') {
+      const st = this.H.places?.[q.id];
+      const c = await this.ui.ask(`${q.name}　危險 ${'★'.repeat(q.tier)}${st?.boss ? '（洞主已被打倒）' : ''}\n洞裡黑漆漆的，深處傳來奇怪的聲音……`, [{ k: true, n: '進去探險' }, { k: false, n: '離開' }]);
+      if (!c) { this.stepOff(q); return; }
+    }
+    await this.ui.fade(1, 200); this.g.enterPlace(q); await this.ui.fade(0, 200);
+  }
+  stepOff(q) { const P = this.g.pos; P.x = q.x; P.z = q.y + 1; this.g.tiles = this.g.tiles.map(() => [P.x, P.z]); this.g.prevTiles = null; this.g.place(1); this.g.camTo(P.x, P.z, true); }
+  // the master of a cave, the same every time: a bandit king, a great beast, or a sorcerer
+  caveBoss(q) {
+    const lv = this.avgLv() + q.tier * 2 + 1, k = (q.id * 7 + q.x) % 6;
+    const kinds = [['山大王', 'bandit'], ['黑熊精', 'bear'], ['白額虎', 'whitetiger'], ['妖道', 'turban'], ['巨蟒', 'snake'], ['蝠王', 'bat']];
+    const [name, kind] = kinds[k], u = this.foe(name, kind, lv, null, true);
+    u.solMax = u.sol = Math.round(u.solMax * (1.2 + q.tier * 0.35));
+    if (kind === 'turban') { u.look = LOOKS.turbanBoss(); u.int = Math.min(98, 60 + q.tier * 10); u.spells = ['lei', 'yao']; u.sp = 80; }
+    return u;
+  }
+  avgLv() { const l = this.g.partyList(); return Math.round(l.reduce((t, p) => t + p.rec.lv, 0) / l.length); }
+  caveFoes(q) {
+    const lv = this.avgLv() + q.tier - 2, pool = [['蝙蝠', 'bat'], ['蝙蝠', 'bat'], ['毒蛇', 'snake'], ['野狼', 'wolf'], ['棕熊', 'bear'], ['山賊', 'bandit']];
+    const n = 1 + Math.floor(Math.random() * Math.min(4, this.H.party.length + 2)), [name, kind] = pick(pool);
+    return Array.from({ length: n }, () => this.foe(name, kind, Math.max(1, lv + Math.round(Math.random() * 2 - 1))));
+  }
+  async caveFight(q) { this.g.audio.sfx('encounter'); await this.fight(this.caveFoes(q), { terrain: 'cave' }); }
+  // a chest or a strange thing in a cave
+  async caveThing(th) {
+    const M = this.g.town, q = M.place, st = this.H.places[q.id], c = this.g.events.ctx('t');
+    if (th.i != null) { // a chest
+      if (st.chests.includes(th.i)) { await this.ui.say('', '寶箱已經空了。'); return; }
+      st.chests.push(th.i); const pr = this.g.view.M.props.find((p) => p.kind === 'chest' && p.chest === th.i); if (pr?.obj?.userData.lid) this.g.battle.ensureView && this.lidOpen(pr.obj.userData.lid);
+      this.g.audio.sfx('coin');
+      // now and then a famous treasure hidden near here
+      const hid = this.G.items.filter((it) => it.city === q.near);
+      if (hid.length && Math.random() < 0.35) { const it = pick(hid); give(this.G, it, this.me); this.H.fame += 40; record(this.G, 'item', 'itemFind', { g: this.me.name, c: q.name, it: it.key }, this.g.myFaction(), 2, { g: this.me.id }); await this.ui.say('', `寶箱裡竟然是傳說中的「${itemName(it.key)}」！\n${Object.entries(it.fx).map(([k, v]) => `${STAT_N[k]} +${v}`).join('　')}`); return; }
+      const t = q.tier, opts = [`gold+${60 + t * 70 + rint(0, 60)}`, `gold+${40 + t * 40} item:med2`, `item:med*2 item:book`, `eq:w${Math.min(7, 2 + t + rint(0, 1))}`, `eq:a${Math.min(7, 2 + t + rint(0, 1))}`, `gold+${30 + t * 30} item:rice item:wine`];
+      const notes = await this.g.events.effects(pick(opts).split(' '), c, {});
+      await this.ui.say('', '打開了寶箱！\n' + notes.join('　')); this.g.hud(); return;
+    }
+    const i = M.odd.indexOf(th); await this.caveOdd(th.kind, i, st, q, c);
+  }
+  lidOpen(lid) { let k = 0; const f = () => { k++; lid.rotation.x = -1.9 * Math.min(1, k / 14); if (k < 14) requestAnimationFrame(f); }; requestAnimationFrame(f); }
+  async caveOdd(kind, i, st, q, c) {
+    if (st.odd.includes(i)) { await this.ui.say('', { stele: '石碑上的字已經看熟了。', spring: '泉水已經不再發光了。', bones: '只剩下一堆白骨。', shrine: '小祠裡的燈已經熄了。', hermit: '隱士已經離開了。' }[kind]); return; }
+    const me = this.me, fx = async (toks, text, who, look) => { st.odd.push(i); const notes = await this.g.events.effects(toks.split(' ').filter(Boolean), c, {}); await this.ui.say(who || '', [text, notes.join('　')].filter(Boolean).join('\n'), look); this.g.hud(); };
+    if (kind === 'stele') {
+      const learnable = ['dun', 'huan', 'feng', 'zhi', 'zhen', 'yao', 'lei'].filter((x) => !me.spells.includes(x));
+      if (me.int >= 50 && learnable.length && Math.random() < 0.6) { const sp = pick(learnable); me.spells.push(sp); st.odd.push(i); await this.ui.say('', `石碑上刻著古老的文字。你讀了一整夜，終於參透了其中的奧秘——\n學會了法術「${spellName(sp)}」！（戰鬥中的策略可以使用）`); this.g.audio.sfx('level'); return; }
+      return fx('stat:int exp+40', '石碑上刻著一篇兵法。你仔細研讀，獲益良多。');
+    }
+    if (kind === 'spring') return fx('heal sp+40', '洞中有一眼發著微光的泉水。喝了一口，全身的傷痛都消失了。');
+    if (kind === 'bones') return fx(`gold+${50 + q.tier * 40} hint:treasure`, '一具白骨靠在石壁上，手裡緊緊抓著一個錢袋和一封信。');
+    if (kind === 'shrine') return fx('fame+15 stat:cha sp+20', '一座供奉山神的小祠。你恭敬地上了一炷香。');
+    if (kind === 'hermit') {
+      const look = LOOKS.villager('隱士' + q.name), stat = pick(['war', 'int', 'lead']);
+      const ok = await this.ui.ask(`一位白髮蒼蒼的老人坐在石床上閉目養神。\n「年輕人，能走到這裡，也算有緣。想學點本事嗎？」`, [{ k: true, n: '拜師學藝（十天）' }, { k: false, n: '不打擾了' }], '隱士', look);
+      if (!ok) return;
+      await fx(`days+10 stat:${stat} stat:${stat} exp+${60 * q.tier}`, `老人傳授了你${STAT_N[stat]}上的心得。十天之後，你覺得自己脫胎換骨了。`, '隱士', look);
+      const n = this.g.npcs.find((x) => x.odd === i); if (n) { this.g.view.removeActor(n.a); this.g.npcs = this.g.npcs.filter((x) => x !== n); }
+    }
+  }
+  // the people who live in villages and counties, and the master of a cave
+  async special(n) {
+    const C = this.g.town?.C, q = this.g.town?.place, look = n.look;
+    if (n.special === 'odd') return this.caveOdd('hermit', n.odd, this.H.places[q.id], q, this.g.events.ctx('t'));
+    if (n.special === 'boss') {
+      const B = n.boss;
+      await this.ui.say(B.name, pick(['什麼人敢闖進我的地盤？', '又有送死的來了！', '這洞裡的寶貝，全都是我的！', '哈哈哈，好久沒有開葷了！']), B.look);
+      const r = await this.fight([B, ...this.caveFoes(q).slice(0, 2)], { terrain: 'cave', title: `${B.name}現身了！`, noFlee: false });
+      if (r !== 'win') return;
+      this.H.places[q.id].boss = true; this.g.view.removeActor(n.a); this.g.npcs = this.g.npcs.filter((x) => x !== n);
+      const t = q.tier, notes = await this.g.events.effects([`gold+${150 + t * 150}`, `fame+${30 + t * 25}`, `eq:${pick(['w', 'a'])}${Math.min(7, 3 + t)}`, ...(t >= 2 ? ['eq:h' + (t >= 3 ? 3 : 2)] : [])], this.g.events.ctx('t'), {});
+      if (this.me.status === 'serving') { this.me.merit += 10 * t; this.promote(); }
+      this.H.st.missions++;
+      await this.ui.say('', `打倒了${q.name}的${B.name}！\n${notes.join('　')}`); this.g.hud(); return;
+    }
+    if (n.special === 'elder') {
+      if (await this.g.events.maybe('t', 0.5, n)) return;
+      const cave = this.g.world.places.filter((p) => p.kind === 'cave' && !this.H.places?.[p.id]?.boss).sort((a, b) => Math.hypot(a.x - q.x, a.y - q.y) - Math.hypot(b.x - q.x, b.y - q.y))[0];
+      const c = await this.ui.ask(`我是${q.name}的村長。小地方，難得有英雄路過。`, [{ k: 'cave', n: '附近有什麼地方可以探險？' }, { k: 'mission', n: '村子有什麼困難嗎？' }, { k: 'rest', n: '在村子裡歇歇腳（一天）' }, { k: null, n: '告辭' }], '村長', look);
+      if (c === 'cave') await this.ui.say('村長', cave ? `往${this.dirTo(q, cave)}走大約 ${Math.round(Math.hypot(cave.x - q.x, cave.y - q.y))} 里，有一個叫「${cave.name}」的洞穴（危險 ${'★'.repeat(cave.tier)}）。聽說裡面有寶貝，也有吃人的東西。` : '附近的洞穴都被英雄們平定了。', look);
+      if (c === 'mission') await this.missionOffer(C, null);
+      if (c === 'rest') { for (const p of this.g.partyList()) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * 0.15)); await this.passDays(1, '村民們熱情地招待了你們。'); }
+      return;
+    }
+    if (n.special === 'magistrate') {
+      if (await this.g.events.maybe('t', 0.35, n)) return;
+      const mine = this.g.myFaction(), own = mine && C.owner === mine;
+      const c = await this.ui.ask(`本官是${q.name}的縣令。${own ? '將軍來巡視，有失遠迎。' : '有何貴幹？'}`, [{ k: 'mission', n: '縣裡有沒有盜匪需要討伐？' }, { k: 'news', n: '打聽消息' }, { k: 'donate', n: '捐錢修路（100 金）', off: this.H.gold < 100 }, { k: null, n: '告辭' }], '縣令', look);
+      if (c === 'mission') await this.missionOffer(C, own ? this.G.factions[mine] : null);
+      if (c === 'news') await this.rumor(C);
+      if (c === 'donate') { this.H.gold -= 100; this.H.fame += 20; if (own) { this.me.merit += 3; this.promote(); } await this.ui.say('縣令', '將軍高義！縣裡的百姓都會記得您的恩情。', look); }
+    }
+  }
+  dirTo(a, b) { const dx = b.x - a.x, dz = b.y - a.y; return (Math.abs(dz) > Math.abs(dx) / 2 ? (dz < 0 ? '北' : '南') : '') + (Math.abs(dx) > Math.abs(dz) / 2 ? (dx < 0 ? '西' : '東') : ''); }
   // ---------------------------------------------------------------- the menu
   async menu() {
     if (this.ui.busy) return;
@@ -75,6 +171,7 @@ export class Actions {
   }
   // ---------------------------------------------------------------- talking
   async talk(n) {
+    if (n.special) return this.special(n);
     if (n.gen == null) { n.a.dir = this.faceTo(n.a); this.g.view.placeActor(n.a); if (await this.g.events.maybe('t', n.guard ? 0.25 : 0.4, n)) return; await this.ui.say(n.guard ? '守城士兵' : '百姓', n.line, n.look); return; }
     const G = this.G, x = G.gens[n.gen], f = x.status === 'serving' && G.factions[x.fac], me = this.me, mine = this.g.myFaction();
     n.a.dir = this.faceTo(n.a); this.g.view.placeActor(n.a);
@@ -150,7 +247,7 @@ export class Actions {
   }
   // ---------------------------------------------------------------- buildings
   async building(door) {
-    const C = this.G.cities[this.g.town.city];
+    const C = this.g.town.C;
     this.g.locked = true;
     try {
       if (door.id === 'gov') await this.gov(C);
@@ -330,11 +427,11 @@ export class Actions {
     if (open.length >= 3) { await this.ui.say('', '你手上的任務已經夠多了。先完成它們吧。'); return; }
     const m = this.newMission(C, !!f);
     if (!m) { await this.ui.say('', '附近很太平，沒有需要討伐的賊寇。'); return; }
-    const dir = (() => { const c = CITY_POS[C.id], dx = m.x - c.x, dz = m.z - c.y; return (Math.abs(dz) > Math.abs(dx) / 2 ? (dz < 0 ? '北' : '南') : '') + (Math.abs(dx) > Math.abs(dz) / 2 ? (dx < 0 ? '西' : '東') : ''); })();
-    if (await this.ui.yesno(`${C.name}${dir}方約 ${Math.round(Math.hypot(m.x - CITY_POS[C.id].x, m.z - CITY_POS[C.id].y))} 里處，「${m.boss}」率領賊眾作亂。\n報酬：${m.gold} 金${f ? `、功績 ${m.merit}` : ''}、名聲 ${m.fame}\n要接下這個任務嗎？`)) { H.missions.push(m); this.ui.toast('接下了任務。（地圖上以黑旗標示）'); }
+    const dir = (() => { const c = C.pos || CITY_POS[C.id], dx = m.x - c.x, dz = m.z - c.y; return (Math.abs(dz) > Math.abs(dx) / 2 ? (dz < 0 ? '北' : '南') : '') + (Math.abs(dx) > Math.abs(dz) / 2 ? (dx < 0 ? '西' : '東') : ''); })();
+    if (await this.ui.yesno(`${C.name}${dir}方約 ${Math.round(Math.hypot(m.x - (C.pos || CITY_POS[C.id]).x, m.z - (C.pos || CITY_POS[C.id]).y))} 里處，「${m.boss}」率領賊眾作亂。\n報酬：${m.gold} 金${f ? `、功績 ${m.merit}` : ''}、名聲 ${m.fame}\n要接下這個任務嗎？`)) { H.missions.push(m); this.ui.toast('接下了任務。（地圖上以黑旗標示）'); }
   }
   newMission(C, official) {
-    const W = this.g.world, c = CITY_POS[C.id], lv = Math.round(this.g.partyList().reduce((s, p) => s + p.rec.lv, 0) / (this.H.party.length + 1)) + 2;
+    const W = this.g.world, c = C.pos || CITY_POS[C.id], lv0 = 0, lv = Math.round(this.g.partyList().reduce((s, p) => s + p.rec.lv, 0) / (this.H.party.length + 1)) + 2;
     for (let k = 0; k < 80; k++) {
       const a = Math.random() * Math.PI * 2, d = 8 + Math.random() * 12, x = Math.round(c.x + Math.cos(a) * d), z = Math.round(c.y + Math.sin(a) * d);
       const t = W.at(x, z); if (![T.PLAIN, T.MEADOW, T.FOREST, T.HILL, T.DESERT].includes(t)) continue;

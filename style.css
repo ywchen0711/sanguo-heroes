@@ -113,3 +113,7 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 .b-cut.out { opacity: 0; transform: scaleY(0.2); }
 @keyframes cutin { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
 @media (max-width: 640px) { .b-cut b { font-size: 32px; } .b-cut { height: 66px; } }
+
+/* counties, villages and caves on the land */
+.lbl.place b { display: block; font-size: 11px; color: #f4ead2; letter-spacing: 1px; } .lbl.place i { font-style: normal; font-size: 10px; font-weight: 700; padding: 0 4px; border-radius: 3px; background: rgba(0, 0, 0, 0.45); }
+.lbl.place.village b { color: #e8d0a8; font-size: 10px; } .lbl.place.cave b { color: #ffb08a; } .lbl.place.cave i { color: #ffd86a; }

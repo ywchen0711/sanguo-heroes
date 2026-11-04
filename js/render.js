@@ -78,6 +78,9 @@ export class View {
     this.clearMap(); this.M = M;
     this.scene.background = new THREE.Color(M.sky || '#9ac8f0'); this.scene.fog.color.set(M.fog || M.sky || '#c8d8e8');
     this.scene.fog.near = M.fogNear || 26; this.scene.fog.far = M.fogFar || 60;
+    this.hemi.intensity = M.dark ? 0.75 : 1.35; this.sun.intensity = M.dark ? 0.45 : 2.1; this.hemi.color.set(M.dark ? '#d8b898' : '#dfefff');
+    // the party carries a torch in the dark
+    if (M.dark && !this.torch) { this.torch = new THREE.PointLight('#ffb070', 3.2, 11, 1.4); this.scene.add(this.torch); } if (this.torch) this.torch.visible = !!M.dark;
     this.mapGroup = new THREE.Group(); this.scene.add(this.mapGroup);
     if (M.water != null) {
       const g = new THREE.PlaneGeometry(M.W + 80, M.H + 80, 1, 1); g.rotateX(-Math.PI / 2);
@@ -175,15 +178,47 @@ export class View {
     if (p.kind === 'house') {
       box(p.w - 0.2, p.h, p.d - 0.2, 'wall', p.w / 2, p.h / 2, p.d / 2);
       for (let i = 0; i < p.w - 1; i++) box(0.12, p.h, 0.05, 'wood', 0.6 + i, p.h / 2, p.d - 0.08);
-      this.roof(g, p.w / 2, p.h, p.d / 2, p.w + 0.35, p.d + 0.35, p.roofH || 0.8, p.red);
+      const rf = this.roof(g, p.w / 2, p.h, p.d / 2, p.w + 0.35, p.d + 0.35, p.roofH || 0.8, p.red); if (p.straw) rf.material = this.strawMat ||= new THREE.MeshLambertMaterial({ color: '#c8a868', side: THREE.DoubleSide });
       if (p.floors === 2) { box(p.w - 0.7, 0.7, p.d - 0.7, 'wall', p.w / 2, p.h + 0.75, p.d / 2); this.roof(g, p.w / 2, p.h + 1.1, p.d / 2, p.w - 0.1, p.d - 0.1, 0.7, p.red); }
       if (p.sign) { const c = document.createElement('canvas'); c.width = 32; c.height = 16; const x = c.getContext('2d'); x.fillStyle = '#3a2a1a'; x.fillRect(0, 0, 32, 16); x.fillStyle = '#e8c860'; x.fillRect(1, 1, 30, 14); x.fillStyle = '#3a2a1a'; x.fillRect(2, 2, 28, 12); x.fillStyle = '#f0e0b0'; x.font = 'bold 11px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(p.sign, 16, 8.5);
         const s = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), new THREE.MeshBasicMaterial({ map: tex(c) })); s.position.set(p.door + 0.5, p.h - 0.25, p.d + 0.02); g.add(s); }
       if (p.door != null) box(0.8, 0.95, 0.06, 'door', p.door + 0.5, 0.48, p.d - 0.07, '#3a2418');
     }
+    // a county town on the land: a small walled square with one hall and a flag
+    if (p.kind === 'county') {
+      const R = 0.75, hg = 0.5, th = 0.18;
+      box(R * 2, hg, th, 'brick', 0, hg / 2, -R); box(th, hg, R * 2, 'brick', -R, hg / 2, 0); box(th, hg, R * 2, 'brick', R, hg / 2, 0);
+      box(R - 0.3, hg, th, 'brick', -R / 2 - 0.15, hg / 2, R); box(R - 0.3, hg, th, 'brick', R / 2 + 0.15, hg / 2, R);
+      box(0.8, 0.4, 0.7, 'wall', 0, 0.2, -0.15); this.roof(g, 0, 0.4, -0.15, 1.15, 1.0, 0.3, true);
+      const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(flagCanvas(p.color || '#888')), alphaTest: 0.5 })); fl.center.set(0.1, 0); fl.scale.set(0.45, 0.75, 1); fl.position.set(0.55, 0.3, -0.55); g.add(fl);
+    }
+    // a village: three farmhouses with straw roofs round a haystack
+    if (p.kind === 'village') {
+      for (const [x, z, w] of [[-0.55, -0.35, 0.6], [0.5, -0.45, 0.55], [0.05, 0.45, 0.65]]) { box(w, 0.32, 0.45, 'wall', x, 0.16, z); const rf = this.roof(g, x, 0.32, z, w + 0.2, 0.6, 0.28, false); rf.material = this.strawMat ||= new THREE.MeshLambertMaterial({ color: '#c8a868', side: THREE.DoubleSide }); }
+      const hay = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.4, 8), this.strawMat); hay.position.set(-0.6, 0.2, 0.5); hay.castShadow = true; g.add(hay);
+    }
+    // the mouth of a cave: a heap of rock with a black opening
+    if (p.kind === 'cave') {
+      const rock = this.propMat('stone', '#8a8478');
+      for (const [x, y, z, sx, sy, sz] of [[0, 0.45, -0.1, 1.3, 0.9, 0.9], [-0.45, 0.3, 0.1, 0.5, 0.6, 0.6], [0.45, 0.32, 0.12, 0.5, 0.64, 0.6], [0, 0.85, -0.05, 0.8, 0.35, 0.7]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), rock); m.position.set(x, y, z); m.rotation.y = x * 0.6; m.castShadow = m.receiveShadow = true; g.add(m); }
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.28, 12, 0, Math.PI), new THREE.MeshBasicMaterial({ color: '#050302' })); hole.position.set(0, 0.02, 0.37); g.add(hole);
+      const hole2 = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.3), hole.material); hole2.position.set(0, -0.12, 0.37); g.add(hole2);
+    }
+    // a chest in a cave; opened, its lid stands up
+    if (p.kind === 'chest') {
+      box(0.62, 0.36, 0.42, 'wood', 0.5, 0.18, 0.5, '#a06a3a'); box(0.66, 0.05, 0.08, 'lamp', 0.5, 0.2, 0.72, '#e8c860');
+      const lid = new THREE.Group(); lid.position.set(0.5, 0.36, 0.29); g.add(lid);
+      const l = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.12, 0.44), this.propMat('wood', '#b07a44')); l.position.set(0, 0.06, 0.22); l.castShadow = true; lid.add(l);
+      g.userData.lid = lid; if (p.open) lid.rotation.x = -1.9;
+    }
+    if (p.kind === 'stele') { box(0.5, 1.3, 0.2, 'stone', 0.5, 0.65, 0.5, p.used ? '#7a7a7a' : '#c8c0b0'); box(0.6, 0.15, 0.3, 'stone', 0.5, 0.07, 0.5, '#8a8478'); }
+    if (p.kind === 'spring') { const w = new THREE.Mesh(new THREE.CircleGeometry(0.45, 16).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: p.used ? '#2a4a6a' : '#5ac8ff' })); w.position.set(0.5, 0.03, 0.5); g.add(w); for (const [x, z] of [[0.05, 0.5], [0.95, 0.5], [0.5, 0.05], [0.5, 0.95]]) box(0.22, 0.2, 0.22, 'stone', x, 0.1, z, '#8a8478'); }
+    if (p.kind === 'bones') { for (const [x, z, r] of [[0.35, 0.5, 0.3], [0.6, 0.45, -0.6], [0.5, 0.7, 1.2]]) { const b = box(0.4, 0.06, 0.07, 'wall', x, 0.04, z, '#e8e0d0'); b.rotation.y = r; } box(0.16, 0.14, 0.16, 'wall', 0.62, 0.08, 0.62, '#e8e0d0'); }
+    if (p.kind === 'shrine') { box(0.6, 0.5, 0.45, 'wood', 0.5, 0.25, 0.5, '#8a3a2a'); this.roof(g, 0.5, 0.5, 0.5, 0.8, 0.65, 0.25, true); box(0.2, 0.18, 0.06, 'lamp', 0.5, 0.3, 0.74, p.used ? '#5a5a5a' : '#ffd86a'); }
     if (p.kind === 'tree') { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(treeCanvas(p.t || 0)), alphaTest: 0.5 })); s.center.set(0.5, 0.02); s.scale.set(1.3, 1.7, 1); g.add(s); }
     if (p.kind === 'well') { box(0.8, 0.4, 0.8, 'brick', 0.5, 0.2, 0.5); box(0.06, 0.8, 0.06, 'wood', 0.15, 0.6, 0.5); box(0.06, 0.8, 0.06, 'wood', 0.85, 0.6, 0.5); this.roof(g, 0.5, 1, 0.5, 1, 0.6, 0.25, true); }
-    if (p.kind === 'lantern') { box(0.1, 0.9, 0.1, 'wood', 0.5, 0.45, 0.5); const l = box(0.28, 0.32, 0.28, 'lamp', 0.5, 1.05, 0.5, '#ff8a4a'); l.material = new THREE.MeshBasicMaterial({ color: '#ffb060' }); }
+    if (p.kind === 'lantern' && p.wall) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.3, 0.22), new THREE.MeshBasicMaterial({ color: '#ffb060' })); l.position.set(0.5, 1.3, 0.5); g.add(l); const pl = new THREE.PointLight('#ff9a50', 2.2, 7, 1.6); pl.position.set(0.5, 1.3, 0.5); g.add(pl); }
+    else if (p.kind === 'lantern') { box(0.1, 0.9, 0.1, 'wood', 0.5, 0.45, 0.5); const l = box(0.28, 0.32, 0.28, 'lamp', 0.5, 1.05, 0.5, '#ff8a4a'); l.material = new THREE.MeshBasicMaterial({ color: '#ffb060' }); }
     if (p.kind === 'banner') { const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(flagCanvas(p.color)), alphaTest: 0.5 })); fl.center.set(0.1, 0); fl.scale.set(0.9, 1.5, 1); fl.position.set(0.5, 0, 0.5); g.add(fl); }
     this.mapGroup.add(g); p.obj = g;
     if (p.label) this.addLabel(p.label, g, p.labelY ?? 2.4, p.labelClass);

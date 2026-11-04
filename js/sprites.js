@@ -245,10 +245,15 @@ export function beastSheet(kind) {
   const cv = px(32 * 2, 24);
   for (let f = 0; f < 2; f++) {
     const { P } = cv, o = f * 32, p = (i, j, c) => P(o + i, j, c), r = (i, j, a, b, c) => { for (let u = 0; u < a; u++) for (let v = 0; v < b; v++) p(i + u, j + v, c); };
-    const T = { tiger: ['#e8962a', '#1a1410', '#f8f0e0'], wolf: ['#8a8a98', '#4a4a58', '#d8d8e0'], bear: ['#5a3a2a', '#3a2418', '#8a6a4a'], boar: ['#6a4a3a', '#3a2a1a', '#e8e0c8'] }[kind];
+    // a bat: wings up and down; a snake: a coil with its head raised
+    if (kind === 'bat') { const up = f === 0; r(13, 9, 6, 6, '#3a2a3a'); r(14, 8, 1, 2, '#3a2a3a'); r(17, 8, 1, 2, '#3a2a3a'); p(14, 11, '#ff3a2a'); p(17, 11, '#ff3a2a');
+      for (let k = 0; k < 10; k++) { const h = up ? Math.round(k * 0.6) : -Math.round(k * 0.3); r(12 - k, 10 - h, 1, 3 + (k % 3 === 0 ? 1 : 0), k % 3 ? '#5a3a5a' : '#2a1a2a'); r(19 + k, 10 - h, 1, 3 + (k % 3 === 0 ? 1 : 0), k % 3 ? '#5a3a5a' : '#2a1a2a'); } continue; }
+    if (kind === 'snake') { for (let k = 0; k < 22; k++) { const x = 6 + k, y = 18 + Math.round(Math.sin(k / 2.5 + f) * 2); r(x, y, 1, 3, k % 4 < 2 ? '#4a8a3a' : '#2a5a2a'); p(x, y + 2, '#c8c060'); }
+      for (let j = 0; j < 9; j++) r(5 - Math.round(Math.sin(j / 3) * 1), 9 + j, 3, 1, j % 3 ? '#4a8a3a' : '#2a5a2a'); r(2, 7, 5, 3, '#4a8a3a'); p(3, 8, '#ffe040'); p(1, 9, '#e83a2a'); p(0, 10, '#e83a2a'); continue; }
+    const T = { tiger: ['#e8962a', '#1a1410', '#f8f0e0'], wolf: ['#8a8a98', '#4a4a58', '#d8d8e0'], bear: ['#5a3a2a', '#3a2418', '#8a6a4a'], boar: ['#6a4a3a', '#3a2a1a', '#e8e0c8'], whitetiger: ['#f0f0f0', '#2a2a3a', '#ffffff'] }[kind];
     const [c, d, l] = T, lg = f ? 1 : 0;
     r(8, 8, 18, 9, c); r(8, 15, 18, 2, d); r(10, 9, 14, 2, shade(c, 1.15));
-    if (kind === 'tiger') for (let k = 0; k < 5; k++) r(11 + k * 3, 8, 1, 6, d);
+    if (kind === 'tiger' || kind === 'whitetiger') for (let k = 0; k < 5; k++) r(11 + k * 3, 8, 1, 6, d);
     r(2, 5, 9, 8, c); r(1, 9, 3, 3, l); p(4, 7, '#1a1410'); p(5, 7, '#fff'); r(3, 3, 2, 3, c); r(8, 3, 2, 3, c); p(1, 10, '#1a1410');
     if (kind === 'boar') { p(1, 12, '#fff'); p(2, 13, '#fff'); }
     r(9, 17, 3, 5 - lg, d); r(14, 17, 3, 5 - (1 - lg), d); r(19, 17, 3, 5 - lg, d); r(23, 17, 3, 5 - (1 - lg), d);

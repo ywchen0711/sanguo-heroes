@@ -41,8 +41,8 @@ export class Events {
   get G() { return this.g.G; } get H() { return this.g.H; } get ui() { return this.g.ui; }
   // the situation an event is judged against
   ctx(where, npc) {
-    const G = this.G, g = this.g.me, town = this.g.town ? G.cities[this.g.town.city] : null, mine = this.g.myFaction();
-    const P = this.g.pos, region = town ? regionAt(CITY_POS[town.id].x, CITY_POS[town.id].y) : regionAt(P.x, P.z);
+    const G = this.G, g = this.g.me, town = this.g.town ? this.g.town.C : null, mine = this.g.myFaction();
+    const P = this.g.pos, tp = town ? town.pos || CITY_POS[town.id] : null, region = tp ? regionAt(tp.x, tp.y) : regionAt(P.x, P.z);
     return { where, npc, g, town, mine, region, season: SEASON(G.month),
       own: !!town && !!mine && town.owner === mine, none: !!town && !town.owner, enemy: !!town && !!town.owner && town.owner !== mine };
   }
