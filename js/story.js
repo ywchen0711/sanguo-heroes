@@ -7,6 +7,8 @@ import { newRec, bstats, gainExp } from './hero.js';
 import { itemName } from './sim/text.js';
 import { LOOKS } from './sprites.js';
 import { CITY_POS } from './world.js';
+import { changed, deed } from './deeds.js';
+import { swear, addBond } from './bonds.js';
 
 const STORIES = [
   // ---------------------------------------------------------------- 桃園結義
@@ -17,18 +19,18 @@ const STORIES = [
       await s.say('張飛', '我家莊後有一座桃園，花開正盛。明日我們在園中祭告天地，結為兄弟，同心協力，然後再圖大事！', '張飛');
       await s.say('劉備', '念劉備、關羽、張飛，雖然異姓，既結為兄弟，則同心協力，救困扶危；上報國家，下安黎庶。', '劉備');
       await s.say('關羽', '不求同年同月同日生，但願同年同月同日死。皇天后土，實鑒此心！', '關羽');
-      for (const x of [a, b]) s.join(x, 100);
+      for (const x of [a, b]) { s.join(x, 100); await swear(s.g, x, true); }
       s.fame(60); s.toast(`${a.name}、${b.name}加入了隊伍！三兄弟桃園結義。`);
     } },
   // ---------------------------------------------------------------- 虎牢關
-  { id: 'hulao', when: 'month', ok: (s) => s.year <= 191 && s.alive('呂布') && s.gen('呂布').fac === 'dong' && s.me.fac !== 'dong' && s.near('洛陽', 30) && !s.isOne('呂布'),
+  { id: 'hulao', when: 'month', yr: [190, 191], hint: '洛陽附近的虎牢關，將有天下無雙的猛將出陣叫戰。', ok: (s) => s.year <= 191 && s.alive('呂布') && s.gen('呂布').fac === 'dong' && s.me.fac !== 'dong' && s.near('洛陽', 30) && !s.isOne('呂布'),
     async run(s) {
       const lb = s.gen('呂布');
       await s.say('', '虎牢關前，一員大將頭戴紫金冠，身披百花袍，手持方天畫戟，坐下赤兔馬，耀武揚威——正是呂布！\n「人中呂布，馬中赤兔」，諸侯的將領一個個敗下陣來。');
       const c = await s.ask(`${lb.name}在關前叫陣：「誰敢與我一戰！」`, [{ k: 'duel', n: '出陣迎戰呂布' }, { k: 'watch', n: '在陣中觀戰' }], lb);
       if (c !== 'duel') { await s.say('', '最後是劉備、關羽、張飛三人一起上陣，才把呂布逼回關內。'); s.exp(30); return; }
       const r = await s.duel(lb);
-      if (r === 'win') { s.fame(150); s.merit(30); s.toast('你擊敗了天下無雙的呂布！名震天下。'); if (await s.yes('呂布落馬，要斬殺他嗎？（歷史將會改變）')) { s.kill(lb, 'duel'); s.fame(80); await s.say('', '一代飛將呂布，竟死在你的手中！'); } }
+      if (r === 'win') { s.fame(150); s.merit(30); s.toast('你擊敗了天下無雙的呂布！名震天下。'); if (await s.yes('呂布落馬，要斬殺他嗎？（歷史將會改變）')) { s.kill(lb, 'duel'); s.fame(80); s.changed('呂布死在虎牢關前，沒有活到白門樓'); await s.say('', '一代飛將呂布，竟死在你的手中！'); } }
       else { s.fame(30); await s.say('呂布', '哼，還算有點本事。', lb); }
     } },
   // ---------------------------------------------------------------- 連環計
@@ -57,14 +59,14 @@ const STORIES = [
       s.exp(20);
     } },
   // ---------------------------------------------------------------- 三顧茅廬 (anyone famous enough can try)
-  { id: 'sangu', when: 'town', repeat: true, ok: (s) => s.free('諸葛亮') && s.gen('諸葛亮').city === s.cityId && !s.inParty(s.gen('諸葛亮')) && s.H.fame >= 250 && s.H.party.length < 4 && (s.H.sangu || 0) < 3,
+  { id: 'sangu', when: 'town', repeat: true, yr: [200, 215], hint: '襄陽附近的隆中，住著一位臥龍先生。名聲夠響亮的人，去三次就能請他出山。', ok: (s) => s.free('諸葛亮') && s.gen('諸葛亮').city === s.cityId && !s.inParty(s.gen('諸葛亮')) && s.H.fame >= 250 && s.H.party.length < 4 && (s.H.sangu || 0) < 3,
     async run(s) {
       const kl = s.gen('諸葛亮'); s.H.sangu = (s.H.sangu || 0) + 1;
       if (s.H.sangu === 1) { await s.say('書童', '先生今早出門了，不知道什麼時候回來。', LOOKS.villager('書童')); await s.say('', '第一次拜訪，沒有見到諸葛亮。（再來兩次吧）'); return; }
       if (s.H.sangu === 2) { await s.say('', '大雪紛飛，你又來到隆中。'); await s.say('書童', '先生昨天和朋友出遊去了……', LOOKS.villager('書童')); await s.say('', '第二次拜訪，又沒有見到。'); s.fame(10); return; }
       await s.say('', '第三次來到隆中。諸葛亮正在草堂午睡，你在階下靜靜等候，一直等到他醒來。');
       await s.say('諸葛亮', '將軍三顧茅廬，誠意感人。天下三分之勢，亮已看清……願效犬馬之勞！', kl);
-      s.join(kl, 95); s.fame(100); s.toast('諸葛亮加入了隊伍！');
+      s.join(kl, 95); s.fame(100); s.toast('諸葛亮加入了隊伍！'); if (!s.isOne('劉備')) s.changed(`諸葛亮沒有輔佐劉備，而是跟隨了${s.me.name}`);
     } },
   // ---------------------------------------------------------------- 官渡・烏巢
   { id: 'wuchao', when: 'month', ok: (s) => s.year >= 199 && s.year <= 202 && s.fac('cao') && s.fac('yuanshao') && s.me.fac === 'cao' && s.alive('淳于瓊') && s.gen('淳于瓊').fac === 'yuanshao',
@@ -89,7 +91,7 @@ const STORIES = [
       if (r === 'win') { s.fame(200); s.stat('war'); s.stat('lead'); await s.say('', '趙雲懷抱阿斗，在曹軍中七進七出，斬將五十餘員！\n曹操在山上看見，讚嘆道：「真虎將也！」'); }
     } },
   // ---------------------------------------------------------------- 赤壁・借東風
-  { id: 'chibi', when: 'town', ok: (s) => s.year >= 208 && s.year <= 210 && s.fac('cao') && citiesOf(s.G, 'cao').length >= 8 && (s.me.fac === 'sun' || s.me.fac === 'liubei') && (s.inCity('江夏') || s.inCity('柴桑') || s.inCity('江陵')),
+  { id: 'chibi', when: 'town', yr: [208, 210], hint: '曹操的大軍將會南下。若在江陵、江夏或柴桑，或許能借到東風。', ok: (s) => s.year >= 208 && s.year <= 210 && s.fac('cao') && citiesOf(s.G, 'cao').length >= 8 && (s.me.fac === 'sun' || s.me.fac === 'liubei') && (s.inCity('江夏') || s.inCity('柴桑') || s.inCity('江陵')),
     async run(s) {
       await s.say('', '曹操率八十萬大軍南下，戰船連成一片，停在赤壁江面上。\n周瑜定下火攻之計，萬事俱備，只欠東風——冬天只吹西北風。');
       const wise = s.check('int', 80) || s.H.party.some((id) => ['諸葛亮', '周瑜', '龐統'].includes(s.G.gens[id].name)) || s.isOne('諸葛亮', '周瑜');
@@ -149,6 +151,132 @@ const STORIES = [
       if (mine) { for (const c of citiesOf(s.G, f.id)) c.owner = mine; for (const g of s.G.gens.filter((x) => x.status === 'serving' && x.fac === f.id)) serve(s.G, g, mine, g.city, 80); f.alive = false; s.record('fall', 'surrender', { g: mh.name, x: s.me.name, o: f.name, f: s.G.factions[mine].name }, mine); }
       s.fame(200); s.toast('南中歸順了！');
     } },
+
+  // ================================================================ turning points: take part, and history goes another way
+  // ---------------------------------------------------------------- 宛城：典韋死守營門
+  { id: 'wancheng', when: 'month', yr: [197, 198], hint: '宛城的張繡投降了曹操，但他的心裡並不服氣……要小心夜裡。',
+    ok: (s) => s.year >= 197 && s.year <= 198 && s.alive('張繡', '典韋') && s.gen('典韋').status === 'serving' && s.me.fac && s.me.fac === s.gen('典韋').fac && s.near('宛', 40) && !s.isOne('張繡'),
+    async run(s) {
+      const zx = s.gen('張繡'), dw = s.gen('典韋');
+      await s.say('', '宛城的夜裡，營外忽然火光沖天。張繡降而復叛，率兵殺進了曹營！\n典韋提著雙戟擋在營門前，但他的戟早被人偷走了……');
+      if (s.isOne('典韋')) { const r = await s.battle([s.foeGen(zx, 1400), s.foe('張繡軍', 'soldier', '#8a6a4a', 1), s.foe('張繡軍', 'soldier', '#8a6a4a', 1)], { title: '宛城夜襲！死守營門！', terrain: 'city' }); if (r === 'win') { s.fame(150); s.changed('典韋在宛城殺退張繡，曹操和曹昂都平安無事'); } return; }
+      if (!await s.yes('要衝到營門和典韋一起死守嗎？')) return;
+      const r = await s.battle([s.foeGen(zx, 1400), s.foe('張繡軍', 'soldier', '#8a6a4a', 1), s.foe('張繡軍', 'soldier', '#8a6a4a', 1)], { title: '宛城夜襲！', terrain: 'city' });
+      if (r !== 'win') { await s.say('', '你沒能擋住張繡……典韋身中數十槍，至死仍站在營門前。'); return; }
+      s.extend('典韋', 18); s.extend('曹昂', 30); s.fame(120); s.merit(30); s.bond(dw, 40);
+      await s.say('典韋', '好兄弟！今天要不是你，主公就危險了！', dw);
+      s.changed('典韋沒有戰死在宛城，曹昂也活了下來');
+    } },
+  // ---------------------------------------------------------------- 白門樓：守住下邳
+  { id: 'xiapi', when: 'month', yr: [198, 199], hint: '曹操和劉備正在聯手，要把呂布困死在下邳。',
+    ok: (s) => s.year >= 198 && s.year <= 199 && s.alive('呂布') && s.gen('呂布').status === 'serving' && s.lordOf(s.gen('呂布')) && s.me.fac === s.gen('呂布').fac && s.near('下邳', 45) && s.fac('cao'),
+    async run(s) {
+      const lb = s.gen('呂布'), cc = s.gen('曹操');
+      await s.say('陳宮', '曹操決泗水、沂水灌城，下邳已經被圍了三個月。再這樣下去，將士們要叛變了！', s.gen('陳宮') || '陳宮');
+      if (!await s.yes('要率軍出城，突破曹軍的包圍嗎？')) return;
+      const foes = [cc && cc.status === 'serving' && !s.isOne('曹操') ? s.foeGen(cc, 1800) : s.foe('曹軍大將', 'soldier', '#2a5ad8', 3), s.foe('曹軍', 'soldier', '#2a5ad8', 2), s.foe('劉備軍', 'soldier', '#3aa85a', 2)];
+      const r = await s.battle(foes, { title: '突破下邳之圍！', terrain: 'river' });
+      if (r !== 'win') { await s.say('', '突圍失敗了……'); return; }
+      if (!s.isOne('呂布')) s.extend('呂布', 10); s.extend('陳宮', 10); s.extend('高順', 10);
+      for (const c of citiesOf(s.G, 'cao')) c.troops = Math.round(c.troops * 0.8);
+      s.fame(150); s.merit(40);
+      s.changed('呂布守住了下邳，沒有在白門樓殞命');
+    } },
+  // ---------------------------------------------------------------- 官渡：袁紹的一方
+  { id: 'guandu', when: 'month', yr: [199, 201], hint: '官渡對峙之際，袁紹的謀士許攸對主公心懷不滿。',
+    ok: (s) => s.year >= 199 && s.year <= 201 && s.me.fac === 'yuanshao' && s.fac('cao') && s.fac('yuanshao') && s.alive('袁紹'),
+    async run(s) {
+      await s.say('', '官渡前線。袁紹的謀士許攸因為家人犯法被抓，正氣沖沖地要去投奔曹操。\n他知道烏巢的糧草佈置——要是讓他到了曹營，後果不堪設想。');
+      const c = await s.ask('要怎麼辦？', [{ k: 'talk', n: '勸許攸留下（魅力）' }, { k: 'guard', n: '派兵加強烏巢的守備' }, { k: 'no', n: '不關我的事' }]);
+      if (c === 'no') return;
+      if (c === 'talk' && !s.check('cha', 65)) { await s.say('許攸', '袁本初不聽我的，我又何必留在這裡！', '許攸'); return; }
+      await s.say('', c === 'talk' ? '你好說歹說，許攸終於留了下來，還獻上一計：「曹操的大軍都在官渡，許昌空虛，可以奇襲！」' : '烏巢的守備加強了。曹軍夜裡果然來偷襲，被打了回去。\n接下來，就是反攻的時候了！');
+      const cr = s.gen('曹仁'), r = await s.battle([cr && cr.status === 'serving' && cr.fac === 'cao' ? s.foeGen(cr, 1500) : s.foe('曹軍大將', 'soldier', '#2a5ad8', 3), s.foe('曹軍', 'soldier', '#2a5ad8', 2), s.foe('曹軍', 'soldier', '#2a5ad8', 2)], { title: '官渡決戰！', terrain: 'plain' });
+      if (r !== 'win') return;
+      for (const cc of citiesOf(s.G, 'cao')) cc.troops = Math.round(cc.troops * 0.55);
+      s.G.factions.cao.food = Math.round(s.G.factions.cao.food * 0.4);
+      s.record('war', 'warWin', { f: s.G.factions.yuanshao.name, g: s.me.name, c: '官渡', o: s.G.factions.cao.name, notes: [] }, 'yuanshao');
+      s.extend('袁紹', 10); s.fame(200); s.merit(60);
+      s.changed('袁紹在官渡擊敗了曹操');
+    } },
+  // ---------------------------------------------------------------- 孫策遇刺
+  { id: 'sunce', when: 'month', yr: [199, 200], hint: '小霸王孫策殺了吳郡太守許貢，許貢的門客發誓要報仇。',
+    ok: (s) => s.year >= 199 && s.year <= 200 && s.alive('孫策') && s.gen('孫策').status === 'serving' && (s.isOne('孫策') || s.me.fac === s.gen('孫策').fac) && (s.near('吳', 40) || s.near('建業', 40) || s.near('會稽', 40)),
+    async run(s) {
+      const sc = s.gen('孫策');
+      await s.say('', `${s.isOne('孫策') ? '你' : '孫策'}獨自騎馬到丹徒山打獵，在林子裡遇到三個陌生人，自稱是韓當的部下。\n他們的眼神不太對勁……`);
+      if (!s.isOne('孫策') && !await s.yes('要追上去保護孫策嗎？')) return;
+      const r = await s.battle([s.foe('許貢門客', 'bandit', null, 3), s.foe('許貢門客', 'bandit', null, 3), s.foe('許貢門客', 'bandit', null, 3)], { title: '許貢的門客行刺！', terrain: 'forest', noFlee: true });
+      if (r !== 'win') return;
+      if (!s.isOne('孫策')) { s.extend('孫策', 25); s.bond(sc, 40); await s.say('孫策', '多虧了你！這份恩情，孫伯符記下了。', sc); }
+      s.fame(120); s.merit(30);
+      s.changed('孫策沒有在丹徒遇刺，小霸王繼續稱雄江東');
+    } },
+  // ---------------------------------------------------------------- 赤壁：曹操的一方
+  { id: 'chibi_cao', when: 'town', yr: [208, 210], hint: '曹操南下之際，江東的老將黃蓋似乎有投降的意思……',
+    ok: (s) => s.year >= 208 && s.year <= 210 && s.me.fac === 'cao' && s.fac('cao') && citiesOf(s.G, 'cao').length >= 8 && s.fac('sun') && (s.inCity('江陵') || s.inCity('江夏') || s.inCity('襄陽')),
+    async run(s) {
+      await s.say('', '曹軍的戰船用鐵索連在一起，士兵再也不會暈船了。\n這時江東老將黃蓋派人送來降書，說要帶著糧船來投降。');
+      const wise = s.check('int', 75) || s.H.party.some((id) => ['程昱', '賈詡', '荀攸', '郭嘉'].includes(s.G.gens[id].name));
+      const c = await s.ask('黃蓋的降書擺在桌上。', [{ k: 'warn', n: '「這是詐降！而且連環船怕火攻！」' }, { k: 'no', n: '黃蓋都快七十了，應該是真心的吧' }]);
+      if (c !== 'warn') return;
+      if (!wise) { await s.say('曹操', '隆冬時節只有西北風，他們要放火，只會燒到自己。不必多慮！', '曹操'); return; }
+      await s.say('', '曹操聽了你的話，連夜解開鐵索，在船上堆滿沙土。\n黃蓋的火船衝過來時，曹軍萬箭齊發，火船在江心燒成一片——燒的是江東的船。');
+      for (const id of ['sun', 'liubei']) if (s.fac(id)) for (const cc of citiesOf(s.G, id)) cc.troops = Math.round(cc.troops * 0.6);
+      s.record('war', 'warWin', { f: s.G.factions.cao.name, g: s.me.name, c: '赤壁', o: s.G.factions.sun.name, notes: [{ who: s.me.name, tac: 'ambush' }] }, 'cao');
+      s.fame(220); s.merit(60);
+      s.changed('曹操識破了黃蓋的詐降，赤壁沒有起火');
+    } },
+  // ---------------------------------------------------------------- 麥城
+  { id: 'maicheng', when: 'month', yr: [219, 220], hint: '關羽北伐樊城，荊州的後方卻空虛了。江東的呂蒙正在等待機會。',
+    ok: (s) => s.year >= 219 && s.year <= 220 && s.alive('關羽') && s.gen('關羽').status === 'serving' && (s.isOne('關羽') || s.me.fac === s.gen('關羽').fac) && (s.near('江陵', 45) || s.near('襄陽', 45)),
+    async run(s) {
+      const gy = s.gen('關羽'), lm = s.gen('呂蒙');
+      await s.say('', '呂蒙白衣渡江，偷襲了荊州。關羽腹背受敵，退守麥城，城中只剩幾百人……');
+      if (!s.isOne('關羽') && !await s.yes('要殺進重圍，救出關羽嗎？')) return;
+      const r = await s.battle([lm && lm.status === 'serving' && lm.fac !== s.me.fac ? s.foeGen(lm, 1800) : s.foe('吳軍大將', 'soldier', '#d84a3a', 3), s.foe('吳軍', 'soldier', '#d84a3a', 2), s.foe('吳軍伏兵', 'soldier', '#d84a3a', 2)], { title: '麥城突圍！', terrain: 'forest' });
+      if (r !== 'win') { await s.say('', '吳軍的伏兵太多了……'); return; }
+      if (!s.isOne('關羽')) { s.extend('關羽', 12); s.extend('關平', 20); s.extend('周倉', 15); s.bond(gy, 50); await s.say('關羽', '大丈夫恩怨分明。今日救命之恩，關某永世不忘！', gy); }
+      s.fame(220); s.merit(50);
+      s.changed('關羽沒有敗走麥城');
+    } },
+  // ---------------------------------------------------------------- 夷陵
+  { id: 'yiling', when: 'month', yr: [221, 223], hint: '劉備要為關羽報仇，御駕東征。陸遜正在等著他在山林裡紮營。',
+    ok: (s) => s.year >= 221 && s.year <= 223 && s.alive('劉備') && s.gen('劉備').status === 'serving' && s.lordOf(s.gen('劉備')) && !s.isOne('劉備') && (s.me.fac === s.gen('劉備').fac || s.me.fac === 'sun') && (s.near('永安', 50) || s.near('江陵', 50)),
+    async run(s) {
+      const lb = s.gen('劉備');
+      if (s.me.fac === 'sun') {
+        await s.say('', '劉備的大軍在夷陵連營七百里，正是盛夏，營寨都紮在樹林裡。');
+        if (!await s.yes('要向陸遜建議火燒連營嗎？')) return;
+        if (!s.check('int', 65) && !s.H.party.some((id) => s.G.gens[id].name === '陸遜')) { await s.say('', '時機還沒到，你的建議被擱置了。'); return; }
+        for (const c of citiesOf(s.G, lb.fac)) c.troops = Math.round(c.troops * 0.55);
+        s.record('war', 'warWin', { f: s.G.factions.sun.name, g: s.me.name, c: '夷陵', o: s.G.factions[lb.fac].name, notes: [{ who: s.me.name, tac: 'fire' }] }, 'sun');
+        s.fame(180); s.merit(50); await s.say('', '大火從一座營燒到另一座營，七百里連營化為灰燼！'); return;
+      }
+      await s.say('', '大軍在夷陵連營七百里。天氣炎熱，主公下令把營寨都移到樹林裡乘涼。');
+      const c = await s.ask('這樣紮營……', [{ k: 'warn', n: '勸主公：「樹林裡紮營，怕敵人火攻！」' }, { k: 'no', n: '主公自有打算' }], lb);
+      if (c !== 'warn') return;
+      const wise = s.check('int', 70) || s.check('cha', 80) || s.H.party.some((id) => ['諸葛亮', '馬良', '黃權'].includes(s.G.gens[id].name));
+      if (!wise) { await s.say('劉備', '我用兵多年，難道還要你來教？', lb); return; }
+      await s.say('劉備', '……你說得對。傳令下去，全軍移營到平地，連夜挖好防火溝！', lb);
+      s.extend('劉備', 8); s.fame(150); s.merit(40);
+      s.changed('劉備沒有在夷陵被火燒連營，也沒有在白帝城託孤');
+    } },
+  // ---------------------------------------------------------------- 五丈原：七星燈
+  { id: 'wuzhang', when: 'month', yr: [232, 235], hint: '丞相積勞成疾。據說點起七星燈祈禳，七天燈不滅，就能延壽一紀。',
+    ok: (s) => s.year >= 232 && s.year <= 235 && s.alive('諸葛亮') && s.gen('諸葛亮').status === 'serving' && (s.isOne('諸葛亮') || s.me.fac === s.gen('諸葛亮').fac) && s.gen('諸葛亮').died <= s.year + 1,
+    async run(s) {
+      const kl = s.gen('諸葛亮');
+      await s.say('', '五丈原的軍帳裡，丞相病得很重。他在帳中點起七盞大燈，中間一盞是本命燈：\n「七天之內主燈不滅，我的壽命就能再延長一紀（十二年）。」');
+      if (!await s.yes('要在帳外守護七星燈七天嗎？')) return;
+      await s.say('', '第七天的夜裡，魏延忽然慌慌張張地衝進帳來：「魏兵殺來了！」');
+      const c = await s.ask('魏延就要踩到燈了——', [{ k: 'stop', n: '一把攔住魏延（武力）' }, { k: 'shield', n: '用身體護住主燈（統率）' }]);
+      const ok = c === 'stop' ? s.check('war', 75) : s.check('lead', 75);
+      if (!ok) { await s.say('諸葛亮', '死生有命，不可得而禳也……', kl); return; }
+      if (!s.isOne('諸葛亮')) s.extend('諸葛亮', 12); s.fame(200); s.merit(50);
+      await s.say('', '主燈的火苗搖了幾搖，又亮了起來。\n七天七夜過去，丞相的氣色一天天好轉了。');
+      s.changed('諸葛亮在五丈原祈禳成功，沒有「出師未捷身先死」');
+    } },
 ];
 
 // a small toolkit for the stories
@@ -178,6 +306,10 @@ class Kit {
   stat(k) { if (this.me.base[k] < 100) { this.me.base[k]++; this.me[k]++; } }
   heal() { for (const p of this.g.partyList()) { p.rec.sol = p.solMax; p.rec.sp = p.spMax; } }
   record(kind, key, p, fac) { record(this.G, kind, key, p, fac, 3, {}); }
+  changed(t) { changed(this.g, t); }
+  extend(n, y) { const x = this.gen(n); if (x && x.status !== 'dead') x.died = Math.max(x.died, this.year + y); }
+  lordOf(x) { const f = x.status === 'serving' && this.G.factions[x.fac]; return !!f && f.lord === x.id; }
+  bond(x, n) { addBond(this.g, x.id, n); }
   kill(x, cause, by = this.me) { const had = this.G.items.filter((it) => it.holder === x.id); die(this.G, x, cause, by); if (by === this.me) { this.H.st.kills.push(x.name); for (const it of had) if (it.holder !== this.me.id && it.holder == null) { give(this.G, it, this.me); this.toast(`得到了「${itemName(it.key)}」！`); } } }
   join(x, loyalty) {
     if (this.H.party.length >= 4 || this.H.party.includes(x.id)) return;
@@ -201,6 +333,11 @@ class Kit {
 
 export class Story {
   constructor(game) { this.g = game; this.kit = new Kit(game); this.busy = false; }
+  upcoming() {
+    const y = this.g.G.year, done = this.g.H.storyDone || [];
+    const st = STORIES.find((x) => x.hint && x.yr && !done.includes(x.id) && y <= x.yr[1] && y >= x.yr[0] - 2);
+    return st ? `${st.yr[0] > y ? `再過${st.yr[0] - y}年，` : '最近'}${st.hint}` : '';
+  }
   async check(when) {
     if (this.busy || this.g.ui.busy || !this.g.G) return false;
     const H = this.g.H; H.storyDone ||= [];

@@ -29,6 +29,7 @@ import { itemName } from './sim/text.js';
 import { citiesOf, power, busy } from './sim/engine.js';
 import { regionAt, CITY_POS } from './world.js';
 import { LOOKS } from './sprites.js';
+import { checkTitles } from './deeds.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -117,6 +118,10 @@ export class Events {
     } else toks = good;
     const text = (win ? mGood : mBad ?? mGood) || '';
     const notes = await this.effects(toks.split(/\s+/).filter(Boolean), c, vars);
+    // giving to win a good name is kindness; taking at the cost of one's name is cruelty (for the titles)
+    if (/(^|\s)[$&]\S+/.test(toks) && /fame\+/.test(toks)) { this.H.st.ren = (this.H.st.ren || 0) + 1; }
+    if (/gold\+/.test(toks) && /fame-/.test(toks)) { this.H.st.cruel = (this.H.st.cruel || 0) + 1; }
+    checkTitles(this.g);
     if (text || notes.length) await this.ui.say(who && text ? who : '', [text, notes.join('　')].filter(Boolean).join('\n'), text ? look : null);
     this.g.hud();
   }

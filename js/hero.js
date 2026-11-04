@@ -13,7 +13,73 @@ export const ITEMS = {
   rice: { n: '兵糧', d: '全隊回復 30% 兵力', price: 180, healAll: 0.3 },
   book: { n: '竹簡', d: '一名武將回復 30 策略點', price: 80, sp: 30 },
   wine: { n: '美酒', d: '送給在野武將，招募更容易', price: 200, gift: true },
+  // materials for the smith: found in caves, never sold
+  ore: { n: '鐵礦石', d: '鐵匠用來鍛造強化武器和防具（+1～+3）', price: 0, mat: true },
+  ore2: { n: '玄鐵', d: '罕見的黑鐵，鍛造 +4、+5 時需要', price: 0, mat: true },
+  pill: { n: '仙丹', d: '一名武將回復全部兵力和策略點', price: 0, heal: 1, full: true, rare: true },
 };
+export const shopItems = () => Object.entries(ITEMS).filter(([, I]) => !I.mat && !I.rare);
+export const usable = (k) => ITEMS[k] && !ITEMS[k].gift && !ITEMS[k].mat;
+
+// ---------------------------------------------------------------- the smith: each level adds to a weapon's attack or an armour's defence.
+// [gold, ore, black iron, chance of success]
+export const FORGE = [null, [150, 1, 0, 1], [400, 2, 0, 0.9], [900, 3, 0, 0.75], [2000, 2, 1, 0.6], [4000, 3, 2, 0.45]];
+export const forgeOf = (r, k) => (r.forge && r.forge[k]) || 0;
+export const eqName = (r, k) => (r.eq?.[k] ? EQUIP[r.eq[k]].n + (forgeOf(r, k) ? '+' + forgeOf(r, k) : '') : '—');
+
+// ---------------------------------------------------------------- the famous horses and weapons do more than add to the numbers
+export const ARMS = {
+  chitu: { n: '赤兔馬', d: '日行千里：每回合必定最先行動，騎兵威力上升', first: true, cav: 1.15 },
+  dilu: { n: '的盧', d: '躍過檀溪：撤退必定成功', flee: true },
+  jueying: { n: '絕影', d: '來去如影：兩成五的機會閃過攻擊', dodge: 0.25 },
+  zhuahuang: { n: '爪黃飛電', d: '疾如閃電：速度大幅上升', spd: 30 },
+  qinglong: { n: '青龍偃月刀', d: '一刀斬：會心一擊的機會大增', crit: 0.14 },
+  shemao: { n: '丈八蛇矛', d: '連刺：三成的機會連擊', combo: 0.3 },
+  huaji: { n: '方天畫戟', d: '橫掃千軍：攻擊時波及相鄰的敵軍', sweep: 0.45 },
+  yitian: { n: '倚天劍', d: '削鐵如泥：無視四成防禦', pierce: 0.4 },
+  qinggang: { n: '青釭劍', d: '削鐵如泥：無視四成防禦', pierce: 0.4 },
+  guding: { n: '古錠刀', d: '會心一擊的機會上升', crit: 0.08 },
+  shuanggu: { n: '雌雄雙股劍', d: '雙劍：兩成的機會連擊', combo: 0.2 },
+  shuangji: { n: '雙鐵戟', d: '雙戟：兩成五的機會連擊', combo: 0.25 },
+  qixing: { n: '七星寶刀', d: '會心一擊的機會上升', crit: 0.06 },
+};
+// what the famous things a general carries add up to
+export function armsOf(G, g) {
+  const o = { crit: 0, combo: 0, sweep: 0, pierce: 0, dodge: 0, spd: 0, cav: 1, first: false, flee: false, list: [] };
+  for (const it of G.items) if (it.holder === g.id && ARMS[it.key]) { const A = ARMS[it.key]; o.list.push(A); for (const k of ['crit', 'combo', 'sweep', 'pierce', 'dodge', 'spd']) o[k] += A[k] || 0; if (A.cav) o.cav *= A.cav; if (A.first) o.first = true; if (A.flee) o.flee = true; }
+  return o;
+}
+export const hasHorse = (G, g, r) => !!(r?.eq?.h) || G.items.some((it) => it.holder === g.id && it.slot === 'h');
+
+// ---------------------------------------------------------------- troops: cavalry beats foot, foot beats bows, bows beat cavalry; sailors
+// rule the water and flounder on land. Terrain favours some: horses on open ground, bows on the heights, foot in the woods.
+export const TROOPS = {
+  cav: { n: '騎兵', d: '克制步兵；平原、沙漠威力大，森林、山地、沼澤、城內吃虧（需要坐騎）', beats: 'inf' },
+  inf: { n: '步兵', d: '克制弓兵；森林、山地稍強', beats: 'bow' },
+  bow: { n: '弓兵', d: '克制騎兵；山地、攻守城時稍強', beats: 'cav' },
+  navy: { n: '水軍', d: '水邊、沼澤威力大增；在陸地上稍弱', beats: null },
+};
+export const WATER = ['coast', 'marsh', 'river'];
+export function troopMul(a, b, terrain) {
+  let m = 1;
+  if (a && b && TROOPS[a]?.beats === b) m *= 1.25; else if (a && b && TROOPS[b]?.beats === a) m *= 0.82;
+  const wet = WATER.includes(terrain);
+  if (a === 'cav') m *= ['plain', 'desert', 'snow'].includes(terrain) ? 1.15 : ['forest', 'hill', 'marsh', 'cave', 'city'].includes(terrain) ? 0.85 : 1;
+  if (a === 'bow') m *= ['hill', 'city'].includes(terrain) ? 1.12 : 1;
+  if (a === 'inf') m *= ['forest', 'hill'].includes(terrain) ? 1.1 : 1;
+  if (a === 'navy') m *= wet ? 1.35 : 0.88; else if (wet && a) m *= 0.85;   // northerners on the water
+  return m;
+}
+// formations, chosen before a battle: each has its strengths, and one it overwhelms
+export const FORMS = {
+  yulin: { n: '魚鱗', d: '穩紮穩打：攻防皆略升。克制雁行', atk: 1.05, def: 1.05, spd: 1, beats: 'yanxing' },
+  heyi: { n: '鶴翼', d: '兩翼包抄：策略威力上升。克制鋒矢', atk: 1, def: 1, spd: 1, tac: 1.2, beats: 'fengshi' },
+  fengshi: { n: '鋒矢', d: '中央突破：攻擊大升、防禦下降。克制方圓', atk: 1.25, def: 0.85, spd: 1.05, beats: 'fangyuan' },
+  fangyuan: { n: '方圓', d: '圓陣固守：防禦大升、攻擊下降。克制鶴翼', atk: 0.88, def: 1.3, spd: 0.95, beats: 'heyi' },
+  yanxing: { n: '雁行', d: '弓弩齊發：弓兵威力大升。克制魚鱗', atk: 1, def: 0.95, spd: 1, bow: 1.3, beats: 'yulin' },
+  changshe: { n: '長蛇', d: '首尾相應：速度上升，撤退容易', atk: 1, def: 0.95, spd: 1.2, flee: 0.2, beats: null },
+};
+
 export const EQUIP = Object.fromEntries([...WEAPONS.map((w) => [w[0], { kind: 'w', n: w[1], v: w[2], price: w[3], tier: w[4] }]), ...ARMORS.map((w) => [w[0], { kind: 'a', n: w[1], v: w[2], price: w[3], tier: w[4] }]), ...HORSES.map((w) => [w[0], { kind: 'h', n: w[1], v: w[2], price: w[3], tier: w[4] }])]);
 
 // ---------------------------------------------------------------- stratagems: who can use them (智力), their cost and what they do
@@ -51,7 +117,7 @@ export const solMax = (g, r) => Math.round(150 + g.lead * 6 + r.lv * 40 + (r.eq?
 export const spMax = (g, r) => Math.round(g.int * 0.9 + r.lv * 2);
 // battle numbers
 export function bstats(g, r) {
-  const w = r.eq?.w ? EQUIP[r.eq.w].v : 0, a = r.eq?.a ? EQUIP[r.eq.a].v : 0, h = r.eq?.h ? EQUIP[r.eq.h].v : 0;
+  const w = (r.eq?.w ? EQUIP[r.eq.w].v : 0) + forgeOf(r, 'w') * 3, a = (r.eq?.a ? EQUIP[r.eq.a].v : 0) + forgeOf(r, 'a') * 2.5, h = r.eq?.h ? EQUIP[r.eq.h].v : 0;
   return { atk: g.war + w, def: g.lead * 0.6 + a * 1.6 + r.lv, int: g.int, spd: (g.war + g.lead) / 2 + h * 2 + r.lv * 0.3, lead: g.lead, war: g.war };
 }
 // experience: returns the levels gained and the stats that grew (a level-up adds a point to 武力, 統率 or 智力 now and then)
@@ -86,6 +152,11 @@ export function score(G, H) {
     ['寶物', G.items.filter((it) => it.holder === g.id).length, G.items.filter((it) => it.holder === g.id).length * 100],
   ];
   if (lord) rows.push(['統治城池', cities, cities * 150]);
+  const ts = (H.titles || []).length, sw = (H.sworn || []).length, dex = Object.keys(H.dex || {}).length, ch = (H.changed || []).length;
+  if (ts) rows.push(['稱號', ts, ts * 100]);
+  if (sw) rows.push(['結義兄弟', sw, sw * 120]);
+  if (dex) rows.push(['武將圖鑑', `${dex} 人`, dex * 2]);
+  if (ch) rows.push(['改寫歷史', `${ch} 件`, ch * 400]);
   if (G.over && G.over !== 'time') {
     if (myF && G.over === myF) rows.push(['天下統一', lord ? '親手統一天下' : '輔佐主公統一天下', lord ? 6000 : 2000]);
   }

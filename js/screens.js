@@ -5,7 +5,10 @@ import { newGame, citiesOf, gensOf, power } from './sim/engine.js';
 import { fmt, dateStr, itemName } from './sim/text.js';
 import { CITY_POS, W, H, T } from './world.js';
 import { personSheet, frameCanvas, lookFor } from './sprites.js';
-import { RANKS, rankOf, solMax, spMax, bstats, EQUIP, score, expNeed, tacticsOf, TACTICS, STAT_N } from './hero.js';
+import { RANKS, rankOf, solMax, spMax, bstats, EQUIP, score, expNeed, tacticsOf, TACTICS, STAT_N, eqName, armsOf, TROOPS } from './hero.js';
+import { biography, rewritten, knownAs, titleName } from './deeds.js';
+import { isSworn, bondOf } from './bonds.js';
+import { dexCount } from './dex.js';
 
 const BEST = 'sanguo-heroes-best';
 export class Screens {
@@ -29,6 +32,11 @@ export class Screens {
       <p>🏯 <b>城裡</b>：太守府（仕官、內政、徵兵、任務）、武具店、道具店、客棧（休息、存檔）、酒館（招募在野武將、打聽消息、尋寶、懸賞、募兵）、練兵場。和城裡的武將對話可以招募、切磋或挑戰生死決鬥。</p>
       <p>⚔ <b>戰鬥</b>：兵力就是武將的體力。攻擊、策略（看智力）、道具、一騎討（看武力）、撤退。</p>
       <p>👑 <b>改變歷史</b>：投靠明主立功升官，升為校尉就能率軍攻城；在野時名聲夠高，也能攻下城池自立為王。斬殺名將、攻陷城池、滅掉勢力，歷史就會改變。</p>
+      <p>🤝 <b>人物</b>：和同伴並肩作戰、一起喝酒，好感到 100 就能結為兄弟。被同一個人打敗三次（或打敗他三次），他就是你的宿敵。你的所作所為會讓人們給你稱號，例如「萬人敵」「仁義之士」「三姓家奴」，稱號會改變別人對你的態度。</p>
+      <p>⚔ <b>兵種與陣型</b>：騎兵克步兵、步兵克弓兵、弓兵克騎兵；水軍在水邊最強。地形也有影響。戰鬥中第一位武將的指令可以變換陣型，陣型之間也有相剋。名馬和神兵各有特殊能力；鐵匠可以用洞穴裡找到的礦石強化裝備。</p>
+      <p>🌾 <b>天災</b>：蝗災、水災、瘟疫和地震會讓城池陷入困境。你可以開倉賑災、施粥救人，也可以趁機攻城。</p>
+      <p>🧙 <b>奇人異士</b>：左慈、管輅、南華老仙四處雲遊，華佗和于吉也能幫你。酒館裡能打聽到他們的下落。</p>
+      <p>📜 <b>史書</b>：歷史轉折點（宛城、下邳、官渡、孫策遇刺、赤壁、麥城、夷陵、五丈原……）你都可以插手。遊戲結束時，史官會為你寫一篇列傳。</p>
       <p>🏁 <b>結束</b>：選定的年數到了、天下統一、或是提前結算時，計算你一生的功績。</p>
       <p>操作：方向鍵／WASD 移動，Z／Enter 確認，X／Esc 取消，C 選單。手機用畫面上的按鈕。</p>`, { title: '遊戲說明' });
   }
@@ -68,8 +76,11 @@ export class Screens {
         <div class="st-grid"><span>統率 <b>${g.lead}</b></span><span>武力 <b>${g.war}</b></span><span>智力 <b>${g.int}</b></span><span>政治 <b>${g.pol}</b></span><span>魅力 <b>${g.cha}</b></span></div>
         <div>兵力 ${r.sol}/${solMax(g, r)}　策略 ${r.sp}/${spMax(g, r)}　經驗 ${r.exp}/${expNeed(r.lv)}</div>
         <div>攻擊 ${Math.round(st.atk)}　防禦 ${Math.round(st.def)}　速度 ${Math.round(st.spd)}</div>
-        <div>裝備：${['w', 'a', 'h'].map((k) => r.eq[k] ? EQUIP[r.eq[k]].n : '—').join('／')}</div>
+        <div>裝備：${['w', 'a', 'h'].map((k) => eqName(r, k)).join('／')}　兵種：${TROOPS[this.g.act.troopOf({ g, rec: r, look })].n}</div>
+        ${armsOf(G, g).list.map((A) => `<div class="arms">✦ ${A.n}：${A.d}</div>`).join('')}
         ${items.length ? `<div>寶物：${items.join('、')}</div>` : ''}<div class="dim">策略：${tac.join('、') || '無'}</div>
+        ${gid !== H.pid ? `<div>${isSworn(H, gid) ? '<b style="color:#ffd86a">結義兄弟</b>' : `好感 ${bondOf(H, gid)}／100`}</div>` : ''}
+        ${gid === H.pid && (H.titles || []).length ? `<div>稱號：${H.titles.map((t) => `「${titleName(t)}」`).join('')}</div>` : ''}${gid === H.pid && H.wound > G.t ? '<div style="color:#ff8a6a">負傷中（攻擊、防禦 -15%）</div>' : ''}
         ${gid === H.pid ? `<div>功績 ${g.merit}　名聲 ${H.fame}　${this.g.rank()}　戰績 ${H.st.wins} 勝／一騎討 ${H.st.duels} 勝／討取 ${H.st.kills.length} 將／攻城 ${H.st.cities.length}</div>` : ''}</div></div>`;
     }).join('');
     await this.ui.panel(html, { title: '狀態', cls: 'wide' });
@@ -117,7 +128,11 @@ export class Screens {
     let best = null; try { best = JSON.parse(localStorage.getItem(BEST) || 'null'); } catch (e) {}
     if (!best || sc.total > best.total) { try { localStorage.setItem(BEST, JSON.stringify({ name: g.name, total: sc.total, title: sc.title })); } catch (e) {} }
     try { localStorage.removeItem('sanguo-heroes-save-v1'); } catch (e) {}
-    await this.ui.panel(`${realm}<h3>${g.name}的一生</h3><table class="score">${rows}<tr class="tot"><td>總計</td><td></td><td>${sc.total}</td></tr></table><p class="big">評價：「${sc.title}」</p>${kills}${cities}<p class="dim">按確定回到標題畫面。</p>`, { title: '功績結算', cls: 'wide' });
+    const bio = biography(this.g, sc), rw = rewritten(G, H);
+    const bioHTML = `<div class="bio-scroll"><h3>《${g.name}傳》</h3>${bio.map((l) => `<p>${l}</p>`).join('')}</div>`;
+    const rwHTML = rw.length ? `<h3>改寫的歷史</h3>${rw.map((t) => `<p>✦ ${t}</p>`).join('')}` : '<p class="dim">這一生沒有改變歷史的大勢。</p>';
+    await this.ui.panel(`${realm}${bioHTML}${rwHTML}<h3>${g.name}的一生</h3><table class="score">${rows}<tr class="tot"><td>總計</td><td></td><td>${sc.total}</td></tr></table><p class="big">評價：「${sc.title}」</p>${kills}${cities}<p>武將圖鑑：${dexCount(H)} 人</p><p><button class="copy-bio">複製列傳文字</button></p><p class="dim">按確定回到標題畫面。</p>`, { title: '功績結算', cls: 'wide',
+      onOpen: (box) => { const b = box.querySelector('.copy-bio'); b.onclick = () => { navigator.clipboard?.writeText(`《${g.name}傳》\n` + bio.join('\n') + (rw.length ? '\n\n改寫的歷史：\n' + rw.join('\n') : '')).then(() => { b.textContent = '已複製！'; }, () => { b.textContent = '無法複製'; }); }; } });
     location.reload();
   }
 }

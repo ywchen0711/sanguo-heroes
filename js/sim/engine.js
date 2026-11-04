@@ -466,6 +466,18 @@ function absorb(G, f, o, envoy) {
 
 // ---------------------------------------------------------------- 戰爭
 const wallBonus = (c) => 1.2 + Math.min(c.def, 1100) / 1600;
+// the ground of a campaign: on the Yangtze the southern navies are at home and northern armies flounder; the horsemen
+// of the west and the north are at their best on open ground. Returns [attacker, defender] multipliers.
+const RIVER_CITIES = new Set(['江陵', '江夏', '柴桑', '建業', '廬江', '吳', '永安', '江州']), HILL_CITIES = new Set(['漢中', '梓潼', '成都', '上庸', '永安', '江州', '建寧', '雲南', '武陵', '交趾']);
+const homeOf = (G, fid) => { const f = fid && G.factions[fid]; return f ? G.cities[f.capital] || null : null; };
+function fieldMul(G, fid, city, from) {
+  const a = homeOf(G, fid), d = homeOf(G, city.owner), south = (c) => !!c && c.y >= 60, horse = (c) => !!c && ((c.x < 35 && c.y < 48) || c.y < 25);
+  const water = RIVER_CITIES.has(city.name) || (from && (from.y < 60) !== (city.y < 60) && city.x > 38);
+  let am = 1, dm = 1;
+  if (water) { am *= south(a) ? 1.1 : 0.82; dm *= south(d) ? 1.1 : 0.92; }
+  else if (!HILL_CITIES.has(city.name) && horse(a)) am *= 1.12;
+  return [am, dm];
+}
 const armyPower = (gs, troops, train) => { const lead = gs.length ? Math.max(...gs.map((g) => g.lead)) : 30, war = gs.length ? Math.max(...gs.map((g) => g.war)) : 30; return troops * (0.55 + train / 220) * (0.6 + lead / 160 + war / 400); };
 function war(G, f) {
   const r = G.r, lord = lordOf(G, f.id), cs = citiesOf(G, f.id);
@@ -485,7 +497,7 @@ function war(G, f) {
     const army = pool.sort((x, y) => y.lead + y.war - (x.lead + x.war)).slice(0, 5);
     if (!army.length || troops < 6000) continue;
     const train = sum(from, (c) => c.train * c.troops) / Math.max(1, sum(from, (c) => c.troops));
-    const atk = armyPower(army, troops, train), def = armyPower(gensIn(G, t), t.troops, t.train) * wallBonus(t);
+    const [fa, fd] = fieldMul(G, f.id, t, from[0]), atk = armyPower(army, troops, train) * fa, def = armyPower(gensIn(G, t), t.troops, t.train) * wallBonus(t) * fd;
     // commanders misjudge the enemy a little (fog of war), so some risky attacks happen
     const ratio = atk / Math.max(1, def) * (0.85 + r() * 0.3), want = ratio * f.aggr * (t.owner === null ? 1.3 : 1) * (1 + (f.rel[t.owner] || 0) / -300) * (t.size / 2 + 0.5);
     // a realm far stronger overall can afford riskier sieges (this is what ends long stalemates)
@@ -527,7 +539,7 @@ function siege(G, f, srcs, city, army, troops, sent, train) {
   const home = (n) => srcs.forEach((c, i) => { c.troops += Math.round(n * sent[i] / troops); });
   let a = troops, d = city.troops, aMor = 70 + Math.max(...army.map((g) => g.lead)) / 5, dMor = 60 + (city.morale + city.def / 20) / 3;
   const atkLead = maxBy(army, (g) => g.lead), aInt = maxBy(army, (g) => g.int), dInt = maxBy(defGens, (g) => g.int);
-  const startA = a, startD = d, notes = [];
+  const startA = a, startD = d, notes = [], [fa, fd] = fieldMul(G, f.id, city, from);
   const caster = (gs) => maxBy(gs.filter((g) => g.spells.length && g.status === 'serving'), (g) => g.int), cA = caster(army), cD = caster(defGens);
   let castA = 0, castD = 0;
   // a duel before the walls
@@ -544,7 +556,7 @@ function siege(G, f, srcs, city, army, troops, sent, train) {
   // the siege, in rounds
   for (let round = 0; round < 12 && a > 0 && d > 0; round++) {
     const liveA = army.filter((g) => g.status === 'serving'), liveD = defGens.filter((g) => g.status === 'serving');
-    const pa = armyPower(liveA, a, train) * (aMor / 80), pd = armyPower(liveD, d, city.train) * (dMor / 80) * wallBonus(city);
+    const pa = armyPower(liveA, a, train) * (aMor / 80) * fa, pd = armyPower(liveD, d, city.train) * (dMor / 80) * wallBonus(city) * fd;
     let dmgD = pa * (0.07 + r() * 0.05), dmgA = pd * (0.08 + r() * 0.05);
     // stratagems: the cleverer side may set fires, lay ambushes or sow confusion
     let stratA = false, stratD = false;

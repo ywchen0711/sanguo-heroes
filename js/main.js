@@ -16,6 +16,11 @@ import { Actions } from './actions.js';
 import { Screens } from './screens.js';
 import { Events } from './events.js';
 import { Story } from './story.js';
+import { deed, histDeaths, checkTitles, hasT, knownAs } from './deeds.js';
+import { mourn } from './bonds.js';
+import { mark } from './dex.js';
+import { sagesHere, SAGES } from './sages.js';
+import { noteDisasters, enterStricken, disasterAt, DIS_N } from './disaster.js';
 
 const SAVE = 'sanguo-heroes-save-v1';
 const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 3] };
@@ -40,6 +45,8 @@ class Game {
     this.H = { pid: g.id, gold: lord ? 1500 : f ? 500 : 300, fame: Math.round((g.lead + g.war + g.int + g.pol + g.cha) / 4) + (lord ? 200 : 0), items: { med: 3, rice: 1 }, party: [], rec: { [g.id]: newRec(g) },
       st: { wins: 0, battles: 0, bandits: 0, duels: 0, kills: [], cities: [], missions: 0, bestRank: 0 }, endYear: G.year + o.years, years: o.years, days: 0, missions: [], seenLog: G.log.length, scenario: o.scenario, startYear: G.year, news: [] };
     this.H.rec[g.id].eq = { w: 'w2', a: 'a2', h: null };
+    this.H.hist = histDeaths(G); this.H.startFac = f ? f.name : null; this.H.st.lastFac = f ? f.id : null;
+    for (const [n, d] of Object.entries(this.H.hist)) if (n === g.name) delete this.H.hist[n];
     // the companions history gave them: the sworn brothers, and a lord's best generals
     this.load2();
     this.enterTown(g.city, true);
@@ -156,7 +163,7 @@ class Game {
     this.camTo(sx, sz, true); this.view.season(this.G.month);
     this.audio.music('town');
     this.hud();
-    if (!snap) { this.ui.toast(`<b>${C.name}</b>　${f ? f.name + '軍' : '無主之城'}　兵 ${C.troops}`); setTimeout(() => this.happen('town'), 500); }
+    if (!snap) { const dz = disasterAt(this, cityId); this.ui.toast(`<b>${C.name}</b>　${f ? f.name + '軍' : '無主之城'}　兵 ${C.troops}${dz ? `　<b style="color:#ff9a6a">${DIS_N[dz.k]}</b>` : ''}`); setTimeout(async () => { if (this.ui.busy || this.locked) return; if (dz) { this.locked = true; try { if (await enterStricken(this, C)) return; } finally { this.locked = false; this.hud(); } } this.happen('town'); }, 500); }
   }
   // stories first, then the random events of the place
   async happen(where) {
@@ -164,7 +171,7 @@ class Game {
     if (where === 'town') { if (await this.story.check('town')) return; await this.events.maybe('w', 0.3); }
     if (where === 'walk') await this.events.maybe('w', 0.15);
     if (where === 'field') await this.events.maybe('f', 0.1);
-    if (where === 'month') await this.story.check('month');
+    if (where === 'month') { if ((this.H.sworn || []).some((id) => this.G.gens[id].status === 'dead' && !(this.H.mourned || []).includes(id))) { await mourn(this); return; } await this.story.check('month'); }
   }
   townNPCs() {
     const M = this.town, C = M.C; this.npcs = [];
@@ -174,7 +181,17 @@ class Game {
     const serving = here.filter((g) => g.status === 'serving').sort((a, b) => (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, 6), free = here.filter((g) => g.status === 'free').slice(0, 4);
     const spots = [[11, 7], [18, 7], [12, 8], [17, 8], [10, 8], [19, 8]], fspots = [[22, 10], [25, 10], [23, 14], [26, 14]];
     serving.forEach((g, i) => { const [x, z] = spots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
+    for (const g of [...serving, ...free]) mark(this, g.id, 1);
+    for (const id of sagesHere(this)) {
+      const [x, z] = M.cave ? this.freeSpot(M.boss[0], M.boss[1] + 3) : this.freeSpot(M.spawn[0], Math.max(2, M.spawn[1] - 4)); const S = SAGES[id], a = this.view.addActor(personSheet(S.look()), x, z, { scale: 0.95 });
+      a.label = this.view.addLabel(`<b style="color:#c8b8ff">${S.n}</b>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, home: [x, z], special: 'sage', sage: id });
+    }
     free.forEach((g, i) => { const [x, z] = fspots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b><i>在野</i>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
+  }
+  // a walkable tile near (x, z) that nobody stands on
+  freeSpot(x0, z0) {
+    for (let r = 0; r < 8; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) { const x = x0 + dx, z = z0 + dz; if (this.town.walkable(x, z) && !this.npcs.some((n) => n.x === x && n.z === z) && !(this.town.doors || []).some((d) => d.x === x && d.z === z)) return [x, z]; }
+    return [x0, z0];
   }
   // ---------------------------------------------------------------- the frame
   frame(t) {
@@ -229,7 +246,7 @@ class Game {
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
-    if (this.steps > 5 && Math.random() < (ENC[k] || 0)) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); return; }
+    if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (hasT(this.H, 'canbao') ? 0.6 : 1)) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); return; }
     if (this.H.walk % 10 === 0) this.happen('field');
     if (this.H.walk % 10 === 0) this.hud();
   }
@@ -281,11 +298,17 @@ class Game {
     if (before.fac && !now) { this.ui.toast(`<b style="color:#ff8a6a">${G.factions[before.fac]?.name || ''}軍滅亡了，你成了在野之身。</b>`, 5000); for (const id of this.H.party) { const m = G.gens[id]; if (m.status === 'serving') { m.status = 'free'; m.fac = null; } } }
     else if (before.fac && now && before.fac !== now) this.ui.toast(`<b>你所屬的勢力併入了${G.factions[now].name}軍。</b>`, 5000);
     if (!before.lord && this.isLord()) this.ui.toast(`<b style="color:#ffd86a">你繼承了${G.factions[now].name}軍之主的地位！</b>`, 5000);
+    noteDisasters(this, logs);
+    if (!before.lord && this.isLord()) deed(this, `繼${G.factions[now].name}之位`, true);
+    if (before.fac && !now) deed(this, `${G.factions[before.fac]?.name || ''}亡，${g.name}流落在野`);
+    if (hasT(this.H, 'bazhu')) this.H.fame += 3;
+    if (this.H.wound && this.H.wound <= G.t) { this.H.wound = 0; this.ui.toast('傷勢痊癒了。', 3000); }
+    checkTitles(this);
     // armies on the march: this month's campaigns, walking from city to city
     for (const e of logs) if (e.kind === 'war' && e.from != null && e.city != null) this.march(e.from, e.city, G.factions[e.fac]?.color || '#888', e.win);
     this.view.season(G.month); this.refreshCities(); this.hud();
     // the end: the years are up, the realm is one, or the player's general has died
-    if (G.over || G.year >= this.H.endYear || g.status === 'dead') { this.screens.ending(); return; }
+    if (G.over || G.year >= this.H.endYear || g.status === 'dead') { if (G.over && G.over === this.myFaction()) deed(this, this.isLord() ? '一統天下' : `助${G.factions[G.over].name}一統天下`, true); this.screens.ending(); return; }
     if (G.month === 1) this.ui.toast(`<b>${G.year}年</b>　距離結束還有 ${this.H.endYear - G.year} 年`, 3000);
     setTimeout(() => this.happen('month'), 300);
   }
@@ -305,7 +328,8 @@ class Game {
     const G = this.G, g = this.me, f = this.myFaction() && G.factions[this.myFaction()], el = document.getElementById('hud');
     if (!G) { el.innerHTML = ''; return; }
     const sol = this.partyList().reduce((s, p) => s + p.rec.sol, 0), max = this.partyList().reduce((s, p) => s + p.solMax, 0);
-    el.innerHTML = `<div class="h-name"><b>${g.name}</b><span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍・' + this.rank() : '在野'}</span></div>
+    const tt = knownAs(this.H), hurt = this.H.wound > G.t;
+    el.innerHTML = `<div class="h-name"><b>${g.name}</b>${tt ? `<em class="h-title">「${tt}」</em>` : ''}<span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍・' + this.rank() : '在野'}</span>${hurt ? '<em class="h-hurt">負傷</em>' : ''}</div>
       <div class="h-row"><span>${dateStr(G.year, G.month)}${this.H.days % 30 + 1}日</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span></div>
       <div class="h-row"><span>兵力 ${sol}/${max}</span><span>Lv ${this.H.rec[this.H.pid].lv}</span><span>隊伍 ${this.H.party.length + 1}</span></div>`;
     this.screens.minimap();
