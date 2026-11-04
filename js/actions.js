@@ -55,7 +55,7 @@ export class Actions {
     }
     await this.ui.fade(1, 200); this.g.enterPlace(q); await this.ui.fade(0, 200);
   }
-  stepOff(q) { const P = this.g.pos; P.x = q.x; P.z = q.y + 1; this.g.tiles = this.g.tiles.map(() => [P.x, P.z]); this.g.prevTiles = null; this.g.place(1); this.g.camTo(P.x, P.z, true); }
+  stepOff(q) { const P = this.g.pos; [P.x, P.z] = this.g.landNear(q.x, q.y + 1, q.x, q.y); this.g.tiles = this.g.tiles.map(() => [P.x, P.z]); this.g.prevTiles = null; this.g.place(1); this.g.camTo(P.x, P.z, true); }
   // the master of a cave, the same every time: a bandit king, a great beast, or a sorcerer
   caveBoss(q) {
     const lv = this.avgLv() + q.tier * 2 + 1, k = (q.id * 7 + q.x) % 6;
@@ -646,7 +646,7 @@ export class Actions {
     }
     await this.ui.fade(1, 200); this.g.enterTown(cid); await this.ui.fade(0, 200);
   }
-  stepBack() { const P = this.g.pos, c = CITY_POS[this.world().cityAt(P.x, P.z)], R = c && c.size >= 3 ? 2 : 1; if (c) { P.x = c.x; P.z = c.y + R + 2; } this.g.tiles = this.g.tiles.map(() => [P.x, P.z]); this.g.prevTiles = null; this.g.place(1); this.g.camTo(P.x, P.z, true); }
+  stepBack() { const P = this.g.pos, c = CITY_POS[this.world().cityAt(P.x, P.z)], R = c && c.size >= 3 ? 2 : 1; if (c) { [P.x, P.z] = this.g.cityExit(c.id); } this.g.tiles = this.g.tiles.map(() => [P.x, P.z]); this.g.prevTiles = null; this.g.place(1); this.g.camTo(P.x, P.z, true); }
   world() { return this.g.world; }
   // the defenders of a city: its best generals with the garrison shared between them, or the garrison alone
   // (six in ten of the city's soldiers man the walls; the rest are held back)

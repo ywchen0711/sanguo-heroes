@@ -77,6 +77,7 @@ class Game {
   rank() { const g = this.me; if (this.isLord()) return '君主'; if (g.status !== 'serving') return '在野'; return RANKS[rankOf(g.merit)][0]; }
   // ---------------------------------------------------------------- the land
   enterWorld(x, z, dir = 'down') {
+    if (this.world && !WALK[this.world.at(x, z)]) [x, z] = this.ashore(x, z);
     this.mode = 'world'; this.town = null; this.pos = { x, z, dir, town: null };
     const M = this.world, V = this.view, TT = { 0: [14, 15], 1: [14, 15], 2: [0, 15], 3: [1, 15], 4: [5, 15], 5: [9, 15], 6: [6, 16], 7: [7, 17], 8: [8, 23], 9: [3, 15], 10: [13, 13], 11: [18, 11], 12: [4, 23], 13: [22, 15], 14: [19, 15], 15: [18, 15], 16: [2, 15], 17: [9, 15] };
     V.setMap({ W: M.W, H: M.H, water: -0.24, sky: '#9ac8f0', fog: '#c8dcec', fogNear: 30, fogFar: 64,
@@ -284,9 +285,22 @@ class Game {
   }
   leaveTown() {
     for (const n of this.npcs) this.view.removeActor(n.a);
-    const q = this.town.place; if (q) { this.enterWorld(q.x, q.y + 1, 'down'); return; }
-    const c = CITY_POS[this.town.city], R = c.size >= 3 ? 2 : 1;
-    this.enterWorld(c.x, c.y + R + 2, 'down');
+    const q = this.town.place; if (q) { const [x, z] = this.landNear(q.x, q.y + 1, q.x, q.y); this.enterWorld(x, z, 'down'); return; }
+    const [x, z] = this.cityExit(this.town.city); this.enterWorld(x, z, 'down');
+  }
+  ashore(x, z) { const M = this.world; for (let r = 1; r < 12; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) { const t = M.at(x + dx, z + dz); if (WALK[t] && t !== T.CITY && t < 15) return [x + dx, z + dz]; } return [x, z]; }
+  // where one comes out of a city: two steps south of its gate as before, unless that is water - then the nearest land
+  // that joins the city (廬江's south gate opens onto the river)
+  cityExit(id) { const c = CITY_POS[id], R = c.size >= 3 ? 2 : 1; return this.landNear(c.x, c.y + R + 2, c.x, c.y); }
+  landNear(x, z, fromX = x, fromZ = z) {
+    const M = this.world, ok = (a, b) => !!WALK[M.at(a, b)] && M.at(a, b) !== T.CITY && M.at(a, b) < 15;
+    if (ok(x, z)) return [x, z];
+    // walk out from the city (or the place) itself, over land, to the first open tile nearest the wanted spot
+    const seen = new Set([fromZ * M.W + fromX]), q = [[fromX, fromZ]], found = [];
+    for (let h = 0; h < q.length && h < 4000; h++) { const [a, b] = q[h]; if (ok(a, b)) { found.push([a, b]); if (found.length > 12) break; continue; }
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const na = a + dx, nb = b + dz, k = nb * M.W + na; if (seen.has(k) || !WALK[M.at(na, nb)]) continue; seen.add(k); q.push([na, nb]); } }
+    found.sort((p1, p2) => Math.hypot(p1[0] - x, p1[1] - z) - Math.hypot(p2[0] - x, p2[1] - z));
+    return found[0] || [x, z];
   }
   npcTick(dt) {
     if (this.mode !== 'town') return;
