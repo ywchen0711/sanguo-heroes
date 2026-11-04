@@ -45,7 +45,7 @@ export class View {
   constructor(host) {
     this.host = host;
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1)); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1)); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap; r.shadowMap.autoUpdate = false; // see follow()
     r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
     host.appendChild(r.domElement);
     this.scene = new THREE.Scene(); this.scene.fog = new THREE.Fog('#c8d8e8', 26, 60);
@@ -75,7 +75,7 @@ export class View {
   }
   // ---------------------------------------------------------------- a map: M = { W, H, tile(x,y) -> { top, side, h }, deco(x,y), water: level|null, fog, sky }
   setMap(M) {
-    this.clearMap(); this.M = M;
+    this.clearMap(); this.M = M; this.shadowDirty = true;
     this.scene.background = new THREE.Color(M.sky || '#9ac8f0'); this.scene.fog.color.set(M.fog || M.sky || '#c8d8e8');
     this.scene.fog.near = M.fogNear || 26; this.scene.fog.far = M.fogFar || 60;
     this.hemi.intensity = M.dark ? 0.75 : 1.35; this.sun.intensity = M.dark ? 0.45 : 2.1; this.hemi.color.set(M.dark ? '#d8b898' : '#dfefff');
@@ -93,6 +93,7 @@ export class View {
       const water = new THREE.Mesh(g, this.waterMat); water.position.set(M.W / 2, M.water, M.H / 2); water.renderOrder = 1; this.mapGroup.add(water);
     }
     for (const p of M.props || []) this.addProp(p);
+    setTimeout(() => this.warm(), 0);
   }
   clearMap() {
     for (const c of this.chunks.values()) { c.mesh.geometry.dispose(); }
@@ -111,8 +112,8 @@ export class View {
       const k = x + ',' + z; want.add(k); if (!this.chunks.has(k)) need.push([dx * dx + dz * dz, k, x, z]);
     }
     need.sort((a, b) => a[0] - b[0]);
-    for (const [, k, x, z] of need.slice(0, budget)) this.chunks.set(k, this.buildChunk(x * S, z * S, S));
-    for (const [k, c] of this.chunks) if (!want.has(k)) { this.mapGroup.remove(c.mesh); c.mesh.geometry.dispose(); for (const s of c.deco) this.mapGroup.remove(s); this.chunks.delete(k); }
+    for (const [, k, x, z] of need.slice(0, budget)) { this.chunks.set(k, this.buildChunk(x * S, z * S, S)); this.shadowDirty = true; }
+    for (const [k, c] of this.chunks) if (!want.has(k)) { this.mapGroup.remove(c.mesh); c.mesh.geometry.dispose(); for (const s of c.deco) { this.mapGroup.remove(s); s.dispose?.(); } this.chunks.delete(k); }
   }
   buildChunk(x0, z0, S) {
     const M = this.M, A = this.atlas, pos = [], uv = [], col = [], nor = [], idx = [];
@@ -135,30 +136,45 @@ export class View {
           else quad([x, y1, z, x, y1, z + 1, x, y, z + 1, x, y, z], n, side, c, false); }
       }
       const d = M.deco ? M.deco(x, z) : 0;
-      if (d) for (const s of this.decoSprites(d, x, z, h)) { deco.push(s); this.mapGroup.add(s); }
+      if (d) for (const s of this.decoSpots(d, x, z, h)) deco.push(s);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
     const mesh = new THREE.Mesh(g, this.groundMat); mesh.receiveShadow = true; mesh.castShadow = true; this.mapGroup.add(mesh);
-    return { mesh, deco };
+    return { mesh, deco: this.decoBatch(deco) };
   }
-  // trees (1-3 kinds, 4 a blossom), 5 a rock, 6 a snowy rock
-  decoSprites(d, x, z, h) {
-    this.decoMats ||= {};
-    const mat = (k) => this.decoMats[k] ||= new THREE.SpriteMaterial({ map: tex(k >= 5 ? rockCanvas(k === 6) : treeCanvas(k - 1)), alphaTest: 0.5, fog: true });
+  // trees (1-3 kinds, 4 a blossom), 5 a rock, 6 a snowy rock: where they stand in a tile
+  decoSpots(d, x, z, h) {
     const out = [], n = d <= 4 ? (((x * 31 + z * 17) % 3) ? 2 : 1) : 1;
     for (let i = 0; i < n; i++) {
-      const s = new THREE.Sprite(mat(d)); s.center.set(0.5, 0.02);
       const k = d >= 5 ? 0.9 : 1.25 + ((x + z * 3 + i) % 4) * 0.12;
-      s.scale.set(k * (d >= 5 ? 0.9 : 0.75), k, 1);
       const ox = n > 1 ? (i ? 0.72 : 0.3) : 0.5, oz = n > 1 ? (i ? 0.35 : 0.75) : 0.55;
-      s.position.set(x + ox, h, z + oz); out.push(s);
+      out.push({ d, x: x + ox, y: h, z: z + oz, sx: k * (d >= 5 ? 0.9 : 0.75), sy: k });
+    }
+    return out;
+  }
+  // all the trees and rocks of a chunk as a few instanced boards (upright, stretched like the actors to read right from
+  // the tilted camera) - one draw call per kind instead of one per tree
+  decoBatch(spots) {
+    if (!spots.length) return [];
+    this.decoMats ||= {};
+    const mat = (k) => this.decoMats[k] ||= new THREE.MeshBasicMaterial({ map: tex(k >= 5 ? rockCanvas(k === 6) : treeCanvas(k - 1)), alphaTest: 0.5, fog: true, side: THREE.DoubleSide });
+    const geo = this.decoGeo ||= new THREE.PlaneGeometry(1, 1).translate(0, 0.49, 0);
+    const o = this.camOff, up = Math.min(1.5, (Math.hypot(o.y, o.z) / Math.max(0.001, o.z)) * 0.82);
+    const byKind = new Map(); for (const s of spots) { if (!byKind.has(s.d)) byKind.set(s.d, []); byKind.get(s.d).push(s); }
+    const out = [], m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    for (const [k, list] of byKind) {
+      const im = new THREE.InstancedMesh(geo, mat(k), list.length);
+      list.forEach((s, i) => { m.compose(v.set(s.x, s.y, s.z), q, sc.set(s.sx, s.sy * up, 1)); im.setMatrixAt(i, m); });
+      im.instanceMatrix.needsUpdate = true; if (im.computeBoundingSphere) im.computeBoundingSphere(); else im.frustumCulled = false;
+      this.mapGroup.add(im); out.push(im);
     }
     return out;
   }
   // ---------------------------------------------------------------- props: cities on the land, houses in a town
   addProp(p) {
+    this.shadowDirty = true;
     const g = new THREE.Group(); g.position.set(p.x, p.y || 0, p.z);
     const box = (w, h, d, n, x, y, z, color = '#ffffff') => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), this.propMat(n, color)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
     if (p.kind === 'city') {
@@ -272,22 +288,44 @@ export class View {
   }
   // ---------------------------------------------------------------- the frame
   follow(x, y, z, snap) {
-    const tgt = new THREE.Vector3(x + 0.5, y, z + 0.5);
+    const tgt = (this._tgt ||= new THREE.Vector3()).set(x + 0.5, y, z + 0.5);
     this.camTarget = snap || !this.camTarget ? tgt.clone() : this.camTarget.lerp(tgt, 0.12);
     this.camera.position.copy(this.camTarget).add(this.camOff); this.camera.lookAt(this.camTarget.x, this.camTarget.y + 0.6, this.camTarget.z);
-    this.sun.position.set(this.camTarget.x - 12, this.camTarget.y + 22, this.camTarget.z + 6); this.sun.target.position.copy(this.camTarget);
+    // only the scenery casts into the shadow map (the people have blob shadows), so it is drawn again only when the view
+    // has moved a few tiles or the scenery has changed - not every frame (it was some three hundred draw calls a frame)
+    const st = this.sun.target.position;
+    if (this.shadowDirty || Math.abs(st.x - this.camTarget.x) > 3 || Math.abs(st.z - this.camTarget.z) > 3) {
+      this.sun.position.set(this.camTarget.x - 12, this.camTarget.y + 22, this.camTarget.z + 6); st.copy(this.camTarget); this.sun.target.updateMatrixWorld();
+      this.renderer.shadowMap.needsUpdate = true; this.shadowDirty = false;
+    }
   }
   render(dt) {
     this.t += dt; if (this.waterMat) this.waterMat.uniforms.t.value = this.t;
     this.composer.render();
     // labels
-    const v = new THREE.Vector3();
+    const v = this._lv ||= new THREE.Vector3(), cam = this.camera.position, far = 34 + Math.hypot(this.camOff.y, this.camOff.z) - 16;
     for (const l of this.labels) {
-      l.obj.getWorldPosition(v); v.y += l.dy; const d = v.distanceTo(this.camera.position); v.project(this.camera);
-      const vis = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1 && d < 34;
-      l.el.style.display = vis ? '' : 'none'; if (vis) l.el.style.transform = `translate(${(v.x * 0.5 + 0.5) * this.W}px, ${(-v.y * 0.5 + 0.5) * this.H}px) translate(-50%, -100%)`;
+      l.obj.getWorldPosition(v); v.y += l.dy; const d = v.distanceTo(cam);
+      let vis = d < far, tr = '';
+      if (vis) { v.project(this.camera); vis = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1; if (vis) tr = `translate(${Math.round((v.x * 0.5 + 0.5) * this.W)}px, ${Math.round((-v.y * 0.5 + 0.5) * this.H)}px) translate(-50%, -100%)`; }
+      if (l.vis !== vis) { l.el.style.display = vis ? '' : 'none'; l.vis = vis; }
+      if (vis && l.tr !== tr) { l.el.style.transform = tr; l.tr = tr; }
+    }
+    this.quality(dt);
+  }
+  quality(dt) {
+    const Q = this._q ||= { t: 0, n: 0, sum: 0, level: 0 }; Q.t += dt; Q.n++; Q.sum += dt;
+    if (Q.t < 3) return; const avg = Q.sum / Q.n; Q.t = Q.n = Q.sum = 0;
+    if (avg > 1 / 28 && Q.level < 3) {
+      Q.level++;
+      if (Q.level === 1) this.renderer.setPixelRatio(Math.min(1.2, window.devicePixelRatio || 1));
+      if (Q.level === 2) { this.renderer.setPixelRatio(1); this.bloom.enabled = false; }
+      if (Q.level === 3) { this.renderer.setPixelRatio(0.85); this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; }
+      this.resize();
     }
   }
+  // compile every material on the map now, so nothing stalls the first time it comes into view
+  warm() { try { this.renderer.compile(this.scene, this.camera); } catch (e) {} }
   // the season tints the grade a little: spring green, summer warm, autumn gold, winter cold
   season(month) {
     const T = { 1: [0.96, 0.99, 1.06], 2: [0.98, 1, 1.04], 3: [1.0, 1.02, 0.96], 4: [1.01, 1.02, 0.95], 5: [1.02, 1.01, 0.94], 6: [1.04, 1.0, 0.92], 7: [1.05, 1.0, 0.9], 8: [1.05, 0.99, 0.9], 9: [1.06, 0.99, 0.88], 10: [1.07, 0.98, 0.86], 11: [1.0, 0.98, 0.98], 12: [0.95, 0.98, 1.08] }[month];

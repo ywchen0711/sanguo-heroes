@@ -31,11 +31,14 @@ export class UI {
         const de = box.querySelector('.m-desc'); if (de) de.innerHTML = opts[sel]?.d || (o.info ? o.info(sel) || '' : '');
         box.querySelector('.m-it.sel')?.scrollIntoView({ block: 'nearest' });
         // the menu only grows, never shrinks, and stays where it opened: an item cannot slide under a resting cursor
-        const hgt = box.offsetHeight; if (hgt > (box._h || 0)) { box._h = hgt; box.style.minHeight = hgt + 'px'; }
+        const hgt = box.offsetHeight, wid = box.offsetWidth; if (hgt > (box._h || 0)) { box._h = hgt; box.style.minHeight = hgt + 'px'; } if (wid > (box._w || 0)) { box._w = wid; box.style.minWidth = wid + 'px'; }
         if (box.isConnected && getComputedStyle(box).position === 'fixed') { const r = box.getBoundingClientRect(); box.style.transform = 'none'; box.style.bottom = 'auto'; box.style.top = Math.max(4, Math.min(r.top, innerHeight - r.height - 4)) + 'px'; if (getComputedStyle(box).right === 'auto' || box.classList.contains('yn')) { box.style.left = r.left + 'px'; box.style.right = 'auto'; } }
       };
       const pick = (i) => { if (i === sel || opts[i].off) return; sel = i; draw(); o.hover?.(sel); };
       box.innerHTML = list();
+      // try every description once before showing the menu: the box opens at the size of the longest, and stays there
+      const de0 = box.querySelector('.m-desc');
+      if (de0 && opts.length > 1) { box.style.visibility = 'hidden'; host.appendChild(box); let mh = 0, mw = 0; for (let i = 0; i < Math.min(opts.length, 60); i++) { de0.innerHTML = opts[i]?.d || (o.info ? o.info(i) || '' : ''); mh = Math.max(mh, box.offsetHeight); mw = Math.max(mw, box.offsetWidth); } box.style.minHeight = mh + 'px'; box.style.minWidth = mw + 'px'; box._h = mh; box._w = mw; box.remove(); box.style.visibility = ''; }
       box.querySelectorAll('.m-it').forEach((el) => {
         const i = +el.dataset.i;
         el.onclick = () => { if (opts[i].off) return; if (sel === i || !o.info) done(opts[i].k); else pick(i); };
