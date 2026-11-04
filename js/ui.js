@@ -14,7 +14,9 @@ export class UI {
   }
   get busy() { return this.stack.length > 0; }
   push(fn) { this.stack.push(fn); }
-  pop(fn) { this.stack = this.stack.filter((x) => x !== fn); }
+  pop(fn) { this.stack = this.stack.filter((x) => x !== fn); if (!this.stack.length) this.closedAt = performance.now(); }
+  // just closed: the key that closed a dialogue (or its auto-repeat) must not open it again
+  get settling() { return performance.now() - (this.closedAt || 0) < 600; }
   key(k) { const top = this.stack[this.stack.length - 1]; if (top) top(k); }
   // ---------------------------------------------------------------- a list to choose from: opts [{ k, n, sub, d, off }]; resolves k (or null for back)
   choose(opts, o = {}) {

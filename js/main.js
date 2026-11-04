@@ -23,7 +23,7 @@ class Game {
     this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
-    addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
+    addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
     addEventListener('keyup', (e) => this.keys.delete(e.key));
     addEventListener('blur', () => this.keys.clear());
     this.touchPad();
@@ -150,13 +150,13 @@ class Game {
   }
   tryStep() {
     const P = this.pos, d = this.held();
-    if (!d) return;
+    if (!d) { this.bumped = null; return; }
     const [dx, dz, di] = DIRS[d]; P.dir = d; this.actors[0].dir = di;
     const nx = P.x + dx, nz = P.z + dz;
     if (!this.canWalk(nx, nz)) { this.place(1); this.bump(nx, nz); return; }
     // the party follows in the leader's footsteps
     this.prevTiles = this.tiles.map((t) => [...t]); this.tiles = [[nx, nz], ...this.prevTiles.slice(0, this.actors.length - 1)];
-    P.from = [P.x, P.z]; P.x = nx; P.z = nz; P.mt = 0; P.moving = true;
+    this.bumped = null; P.from = [P.x, P.z]; P.x = nx; P.z = nz; P.mt = 0; P.moving = true;
   }
   animWalk(dt, walking) { this.wt = (this.wt || 0) + dt; const f = walking ? (Math.floor(this.wt * 8) % 2 ? 0 : 2) : 1; for (const a of this.actors || []) { a.frame = f; this.view.placeActor(a); } }
   canWalk(x, z) {
@@ -179,9 +179,14 @@ class Game {
     if (this.steps > 5 && Math.random() < (ENC[k] || 0)) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); }
     if (this.H.days % 3 === 0) this.hud();
   }
-  bump(x, z) { if (this.mode === 'town') { const n = this.npcs.find((n) => Math.round(n.a.x) === x && Math.round(n.a.z) === z); if (n && !this.ui.busy) this.act.talk(n); } }
+  bump(x, z) {
+    if (this.mode !== 'town' || this.ui.busy || this.ui.settling) return;
+    const n = this.npcs.find((n) => Math.round(n.a.x) === x && Math.round(n.a.z) === z), key = `${x},${z}`;
+    if (!n || this.bumped === key) return;
+    this.bumped = key; this.act.talk(n);
+  }
   interact() {
-    const P = this.pos; if (!P || P.moving || this.ui.busy) return; const [dx, dz] = DIRS[P.dir];
+    const P = this.pos; if (!P || P.moving || this.ui.busy || this.ui.settling) return; const [dx, dz] = DIRS[P.dir];
     if (this.mode === 'town') { const n = this.npcs.find((n) => Math.round(n.a.x) === P.x + dx && Math.round(n.a.z) === P.z + dz); if (n) return this.act.talk(n); const door = this.town.doors.find((d) => d.x === P.x && d.z === P.z) || this.town.doors.find((d) => d.x === P.x + dx && d.z === P.z + dz); if (door) return this.act.building(door); }
   }
   leaveTown() {
