@@ -425,12 +425,13 @@ export class Actions {
   stepBack() { const P = this.g.pos, c = CITY_POS[this.world().cityAt(P.x, P.z)], R = c && c.size >= 3 ? 2 : 1; if (c) { P.x = c.x; P.z = c.y + R + 2; } this.g.tiles = this.g.tiles.map(() => [P.x, P.z]); this.g.prevTiles = null; this.g.place(1); this.g.camTo(P.x, P.z, true); }
   world() { return this.g.world; }
   // the defenders of a city: its best generals with the garrison shared between them, or the garrison alone
+  // (six in ten of the city's soldiers man the walls; the rest are held back)
   defenders(C) {
     const G = this.G, f = C.owner && G.factions[C.owner];
     const gs = G.gens.filter((x) => x.status === 'serving' && x.city === C.id && x.fac === C.owner && !busy(x)).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
-    if (!gs.length) { const n = C.troops > 6000 ? 3 : 2, lv = Math.round(this.g.partyList()[0].rec.lv); return Array.from({ length: n }, (_, i) => { const u = this.foe(i ? '守備兵' : '守備隊長', 'soldier', lv, f ? f.color : '#8a7a6a', !i); u.sol = u.solMax = Math.max(200, Math.round(Math.min(C.troops, 8000) / n)); return u; }); }
+    if (!gs.length) { const n = C.troops > 6000 ? 3 : 2, lv = Math.round(this.g.partyList()[0].rec.lv); return Array.from({ length: n }, (_, i) => { const u = this.foe(i ? '守備兵' : '守備隊長', 'soldier', lv, f ? f.color : '#8a7a6a', !i); u.sol = u.solMax = Math.max(200, Math.round(Math.min(C.troops * 0.6, 7000) / n)); return u; }); }
     const lead = gs.reduce((s, x) => s + x.lead, 0);
-    return gs.map((x) => { const lv = this.lvOf(x), rec = { lv, eq: {} }, max = solMax(x, rec), sol = Math.max(200, Math.min(Math.round(max * 2), Math.round(C.troops * x.lead / lead)));
+    return gs.map((x) => { const lv = this.lvOf(x), rec = { lv, eq: {} }, max = solMax(x, rec), sol = Math.max(200, Math.min(Math.round(max * 1.6), Math.round(C.troops * 0.6 * x.lead / lead)));
       return { name: x.name, look: this.g.lookOf(x), lv, war: x.war, lead: x.lead, int: x.int, sol, solMax: sol, sp: Math.round(spMax(x, rec)), spells: x.spells, gid: x.id, color: f.color, wpn: Math.round(lv / 4), arm: Math.round(lv / 4) }; });
   }
   async siege(C) {

@@ -31,14 +31,14 @@ export class Battle {
       props: siege ? [{ kind: 'banner', x: 3, y: 1.6, z: 1, color: siege.color }, { kind: 'banner', x: 13, y: 1.6, z: 1, color: siege.color }] : [] });
     v.updateChunks(9, 6); v.follow(7.6, 0, 5.2, true);
   }
-  unitActor(u, x, z, face) {
+  unitActor(u, x, z, face, noSquad) {
     const v = this.view, sheet = u.beast ? beastSheet(u.beast) : personSheet(u.look);
     const a = v.addActor(sheet, x, z, { scale: u.beast ? 1.3 : 1.2 });
     if (u.beast) { a.tex.repeat.set(1 / 2, 1); a.beast = true; a.sprite.scale.set(1.75, 1.3, 1); }
     a.face = face; this.setFrame(a, 1);
     // the squad: a few soldiers behind the general
     u.squad = [];
-    if (!u.beast) for (let k = 0; k < 6; k++) { const sx = x + (face === 1 ? 1 : -1) * (0.85 + (k % 3) * 0.5), sz = z - 0.75 + Math.floor(k / 3) * 0.6 + (k % 3) * 0.08;
+    if (!u.beast && !noSquad) for (let k = 0; k < 6; k++) { const sx = x + (face === 1 ? 1 : -1) * (0.85 + (k % 3) * 0.5), sz = z - 0.75 + Math.floor(k / 3) * 0.6 + (k % 3) * 0.08;
       const s = v.addActor(personSheet(u.side === 'party' ? LOOKS.soldier(this.partyColor) : u.solLook), sx, sz, { scale: 0.52 }); s.face = face; this.setFrame(s, 1); u.squad.push(s); }
     u.actor = a; u.home = [x, z];
     u.bar = v.addLabel('', a.sprite, u.beast ? 1.5 : 2.0, 'u-bar'); this.drawBar(u);
@@ -282,7 +282,7 @@ export class Battle {
     this.ensureView(); this.root.classList.add('on'); this.stage(o.terrain || 'city', null); this.o = o;
     this.party = [a]; this.foes = [b];
     a.side = 'party'; b.side = 'foe'; a.status = {}; b.status = {}; a.sol = a.solMax = 1; b.sol = b.solMax = 1;
-    this.unitActor(a, 10, 6.2, 1); this.unitActor(b, 6, 6.2, 2); for (const u of [a, b]) { u.squad.forEach((s) => { s.sprite.visible = s.shadow.visible = false; }); this.view.removeLabel(u.bar); u.bar = { el: document.createElement('div') }; }
+    this.unitActor(a, 9.4, 6.2, 1, true); this.unitActor(b, 5.8, 6.2, 2, true); for (const u of [a, b]) { this.view.removeLabel(u.bar); u.bar = { el: document.createElement('div') }; }
     this.loop = true; const tick = (t) => { if (!this.loop) return; const dt = Math.min(0.05, (t - (this.lt || t)) / 1000); this.lt = t; this.anim(dt); this.view.render(dt); requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     const r = await this.duel(a, b, o);
     return r;

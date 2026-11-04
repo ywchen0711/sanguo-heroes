@@ -85,7 +85,7 @@ class Game {
     }
   }
   // the camera follows the leader; in a town it stays inside the walls
-  camTo(x, z, snap) { if (this.mode === 'town') { x = Math.max(7, Math.min(this.town.W - 8, x)); z = Math.max(5, Math.min(this.town.H - 7, z)); } this.view.follow(x, this.mode === 'town' ? 0 : this.groundY(Math.round(x), Math.round(z)), z, snap); }
+  camTo(x, z, snap) { if (this.mode === 'town') { x = Math.max(7, Math.min(this.town.W - 8, x)); z = Math.max(5, Math.min(this.town.H - 5, z)); } this.view.follow(x, this.mode === 'town' ? 0 : this.groundY(Math.round(x), Math.round(z)), z, snap); }
   groundY(x, z) { if (this.mode === 'town') return 0; const h = this.world.hAt(x, z); return Math.max(h, -0.05); }
   spawnParty(x, z, dir) {
     this.actors = []; const list = this.partyList();
@@ -239,7 +239,7 @@ class Game {
     const G = this.G, g = this.me, f = this.myFaction() && G.factions[this.myFaction()], el = document.getElementById('hud');
     if (!G) { el.innerHTML = ''; return; }
     const sol = this.partyList().reduce((s, p) => s + p.rec.sol, 0), max = this.partyList().reduce((s, p) => s + p.solMax, 0);
-    el.innerHTML = `<div class="h-name"><b>${g.name}</b><span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍' : '在野'}・${this.rank()}</span></div>
+    el.innerHTML = `<div class="h-name"><b>${g.name}</b><span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍・' + this.rank() : '在野'}</span></div>
       <div class="h-row"><span>${dateStr(G.year, G.month)}</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span></div>
       <div class="h-row"><span>兵力 ${sol}/${max}</span><span>Lv ${this.H.rec[this.H.pid].lv}</span><span>隊伍 ${this.H.party.length + 1}</span></div>`;
     this.screens.minimap();
