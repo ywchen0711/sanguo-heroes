@@ -125,7 +125,16 @@ class Game {
   // a city that changed hands gets its new warlord's flag; every label shows who holds it now
   refreshCities() {
     if (this.mode !== 'world') return;
+    const places = this.placeProps();
     for (const p of this.cityProps || []) {
+      // counties, villages and caves follow the city they belong to; their labels are their own
+      if (p.placeId != null) {
+        const q = places[p.placeId], l = this.view.labels.find((l) => l.obj === p.obj);
+        if (p.color !== q.color) { this.view.mapGroup.remove(p.obj); if (l) this.view.removeLabel(l); p.color = q.color; p.label = q.label; this.view.addProp(p); }
+        else if (l) l.el.innerHTML = q.label;
+        continue;
+      }
+      if (p.cityId == null) continue;
       const C = this.G.cities[p.cityId], f = C.owner && this.G.factions[C.owner], col = f ? f.color : '#9a9a9a';
       if (p.color !== col) { this.view.mapGroup.remove(p.obj); const l = this.view.labels.find((l) => l.obj === p.obj); if (l) this.view.removeLabel(l); p.color = col; p.label = this.cityLabel(p.cityId); this.view.addProp(p); }
       else { const l = this.view.labels.find((l) => l.obj === p.obj); if (l) l.el.innerHTML = this.cityLabel(p.cityId); }
@@ -196,9 +205,12 @@ class Game {
   // ---------------------------------------------------------------- the frame
   frame(t) {
     const dt = Math.min(0.05, (t - this.last) / 1000); this.last = t;
-    if (this.mode === 'world' || this.mode === 'town') { this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); }
-    if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
+    // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
+    try {
+      if (this.mode === 'world' || this.mode === 'town') { this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); }
+      if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
+    } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
   held() { const k = this.keys, tp = this.tpad; if (k.has('ArrowUp') || k.has('w') || k.has('W') || tp === 'up') return 'up'; if (k.has('ArrowDown') || k.has('s') || k.has('S') || tp === 'down') return 'down'; if (k.has('ArrowLeft') || k.has('a') || k.has('A') || tp === 'left') return 'left'; if (k.has('ArrowRight') || k.has('d') || k.has('D') || tp === 'right') return 'right'; return null; }
   move(dt) {

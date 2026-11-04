@@ -518,7 +518,12 @@ export class Actions {
     if (r === 'win' && !BEASTS.includes(kind)) this.H.st.bandits += foes.length;
   }
   // run a battle and hand out the spoils; returns the result
+  // a battle that goes wrong must not leave the game locked: back to the map, as if the party had withdrawn
   async fight(foes, o = {}) {
+    try { return await this.fight0(foes, o); }
+    catch (e) { console.error(e); const g = this.g; try { g.battle.close(); } catch (e2) {} g.mode = g.town ? 'town' : 'world'; g.locked = false; await this.ui.fade(0, 100); g.hud(); return 'flee'; }
+  }
+  async fight0(foes, o = {}) {
     const g = this.g, G = this.G; g.mode = 'battle'; g.locked = true;
     await this.ui.fade(1, 250);
     const party = g.partyList(), f = g.myFaction() && G.factions[g.myFaction()];
