@@ -16,6 +16,7 @@ import { FX } from './fx.js';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ease = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2), easeIn = (p) => p * p * p, easeOut = (p) => 1 - (1 - p) ** 3;
+const SQUADS = false; // the little soldiers behind each general
 const OX = 3, OZ = 2; // the field is bigger than it was by this much on each side (so the further camera sees no edge)
 const GROUND = { river: [0, 1], cave: [2, 6], plain: [0, 1], forest: [5, 0], hill: [9, 6], desert: [8, 2], snow: [7, 6], city: [18, 10], marsh: [22, 0], coast: [4, 0] };
 
@@ -44,13 +45,14 @@ export class Battle {
   }
   unitActor(u, x, z, face, noSquad) {
     const v = this.view, sheet = u.beast ? beastSheet(u.beast) : personSheet(u.look);
-    const a = v.addActor(sheet, x, z, { scale: u.beast ? 1.3 : 1.2 });
+    const a = v.addActor(sheet, x, z, { scale: u.beast ? 1.3 : 1.35 });
     if (u.beast) { a.beast = true; v.sizeActor(a, 2.3, 1.55); }
     a.face = face; this.setFrame(a, 1);
     // the squad: a few soldiers behind the general
     u.squad = [];
     const kind = u.side === 'party' ? 'soldier' : u.solKind || 'soldier', col = u.side === 'party' ? this.partyColor : u.color || '#8a4a3a';
-    if (!u.beast && !noSquad) for (let k = 0; k < 6; k++) { const sx = x + (face === 1 ? 1 : -1) * (0.8 + (k % 3) * 0.55), sz = z - 0.8 + Math.floor(k / 3) * 0.65 + (k % 3) * 0.08;
+    // no squads of soldiers behind the generals any more (the field read as clutter); the numbers are on the bar
+    if (SQUADS && !u.beast && !noSquad) for (let k = 0; k < 6; k++) { const sx = x + (face === 1 ? 1 : -1) * (0.8 + (k % 3) * 0.55), sz = z - 0.8 + Math.floor(k / 3) * 0.65 + (k % 3) * 0.08;
       const cav = u.troop === 'cav' && (kind === 'soldier' || kind === 'nomad' || kind === 'turban'), role = cav ? 'cav' : kind === 'nomad' || u.troop === 'bow' ? 'bow' : k === 1 && kind === 'soldier' ? 'flag' : k === 5 && (kind === 'soldier' || kind === 'turban') ? 'bow' : 'spear';
       const sh = soldierSheet(kind, col, role), s = v.addActor(sh, sx, sz, { scale: 0.76 }); if (sh.rider) v.sizeActor(s, 1.53 * 0.76 * 1.05, 1.53 * 0.76 * 1.05); s.face = face; s.home = [sx, sz]; s.ph = Math.random() * 6; this.setFrame(s, 1); u.squad.push(s); }
     u.actor = a; u.home = [x, z]; u.ox = 0; u.oz = 0; u.oy = 0; u.sx = 0; u.alive0 = true; u.shown = u.squad.length;
