@@ -16,6 +16,7 @@ import { FX } from './fx.js';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ease = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2), easeIn = (p) => p * p * p, easeOut = (p) => 1 - (1 - p) ** 3;
+const OX = 3, OZ = 2; // the field is bigger than it was by this much on each side (so the further camera sees no edge)
 const GROUND = { river: [0, 1], cave: [2, 6], plain: [0, 1], forest: [5, 0], hill: [9, 6], desert: [8, 2], snow: [7, 6], city: [18, 10], marsh: [22, 0], coast: [4, 0] };
 
 export class Battle {
@@ -23,7 +24,7 @@ export class Battle {
   ensureView() {
     if (this.view) return;
     this.view = new View(this.root.querySelector('.b-stage'));
-    this.view.camOff.set(0, 13.4, 13.4); this.view.camera.fov = 37; this.view.camera.updateProjectionMatrix();
+    this.view.camOff.set(0, 16.1, 16.1); this.view.camera.fov = 37; this.view.camera.updateProjectionMatrix();
     this.view.tsH.uniforms.band.value = this.view.tsV.uniforms.band.value = 0.24;
     this.fx = new FX(this.view.scene); this.tw = [];
     this.view.sun.shadow.mapSize.set(1024, 1024); // the small stage does not need the land's big shadow map
@@ -33,13 +34,13 @@ export class Battle {
   shake(k = 0.25) { this.shakeT = Math.max(this.shakeT || 0, k); }
   // ---------------------------------------------------------------- the stage
   stage(terrain, siege) {
-    const v = this.view, [top, alt] = GROUND[terrain] || GROUND.plain, W = 18, H = 12;
+    const v = this.view, [top, alt] = GROUND[terrain] || GROUND.plain, W = 18 + OX * 2, H = 12 + OZ * 2;
     const rnd = (x, z) => ((x * 73 + z * 151) % 17) / 17;
     v.setMap({ W, H, water: terrain === 'coast' || terrain === 'river' ? -0.2 : null, sky: { snow: '#c8d8e8', desert: '#e8c890', city: '#b8c8d8', cave: '#120c08' }[terrain] || '#a8d0f0', fogNear: terrain === 'cave' ? 17 : 24, fogFar: terrain === 'cave' ? 36 : 50, dark: terrain === 'cave',
-      tile: (x, z) => { if (x < 0 || z < 0 || x >= W || z >= H) return null; const back = z < 3; return { top: back && siege ? 11 : terrain === 'cave' && back ? 16 : rnd(x, z) < 0.18 ? alt : top, side: siege && back ? 11 : terrain === 'cave' ? 16 : 15, h: back ? (siege ? 1.6 : terrain === 'cave' ? 2.4 : terrain === 'hill' ? 0.9 : terrain === 'river' ? -0.5 : 0.3) : 0 }; },
-      deco: (x, z) => (z === 1 || z === 2) && !siege && terrain !== 'cave' && rnd(x, z) < 0.45 ? (terrain === 'forest' ? 2 : terrain === 'hill' ? 5 : terrain === 'snow' ? 6 : terrain === 'desert' ? (rnd(z, x) < 0.5 ? 5 : 0) : 1 + Math.floor(rnd(z, x) * 3)) : 0,
-      props: siege ? [{ kind: 'banner', x: 3, y: 1.6, z: 1, color: siege.color }, { kind: 'banner', x: 13, y: 1.6, z: 1, color: siege.color }] : [] });
-    v.updateChunks(9, 6); v.follow(7.6, 0, 5.2, true);
+      tile: (x, z) => { if (x < 0 || z < 0 || x >= W || z >= H) return null; const back = z < 3 + OZ; return { top: back && siege ? 11 : terrain === 'cave' && back ? 16 : rnd(x, z) < 0.18 ? alt : top, side: siege && back ? 11 : terrain === 'cave' ? 16 : 15, h: back ? (siege ? 1.6 : terrain === 'cave' ? 2.4 : terrain === 'hill' ? 0.9 : terrain === 'river' ? -0.5 : 0.3) : 0 }; },
+      deco: (x, z) => (z === 1 + OZ || z === 2 + OZ || (z === OZ && x % 3 === 0)) && !siege && terrain !== 'cave' && rnd(x, z) < 0.45 ? (terrain === 'forest' ? 2 : terrain === 'hill' ? 5 : terrain === 'snow' ? 6 : terrain === 'desert' ? (rnd(z, x) < 0.5 ? 5 : 0) : 1 + Math.floor(rnd(z, x) * 3)) : 0,
+      props: siege ? [{ kind: 'banner', x: 3 + OX, y: 1.6, z: 1 + OZ, color: siege.color }, { kind: 'banner', x: 13 + OX, y: 1.6, z: 1 + OZ, color: siege.color }, { kind: 'banner', x: 8 + OX, y: 1.6, z: 1 + OZ, color: siege.color }] : [] });
+    v.updateChunks(9 + OX, 6 + OZ); v.follow(7.6 + OX, 0, 5.2 + OZ, true);
   }
   unitActor(u, x, z, face, noSquad) {
     const v = this.view, sheet = u.beast ? beastSheet(u.beast) : personSheet(u.look);
@@ -94,10 +95,10 @@ export class Battle {
     this.mods.atk *= 1 + Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraAtk || 0), 0));
     this.partyDef = 1 - Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraDef || 0), 0));
     // a column for each side, spread from front to back, every other general a step out
-    const zs = (n) => Array.from({ length: n }, (_, i) => (n === 1 ? 6.2 : 3.7 + i * Math.min(1.9, 5.2 / (n - 1))));
+    const zs = (n) => Array.from({ length: n }, (_, i) => OZ + (n === 1 ? 6.2 : 3.7 + i * Math.min(1.9, 5.2 / (n - 1))));
     const pz = zs(this.party.length), fz = zs(this.foes.length);
-    this.party.forEach((u, i) => this.unitActor(u, 10.6 + (i % 2) * 1.2, pz[i], 1));
-    this.foes.forEach((u, i) => this.unitActor(u, 4.6 - (i % 2) * 1.2, fz[i], 2));
+    this.party.forEach((u, i) => this.unitActor(u, OX + 10.6 + (i % 2) * 1.2, pz[i], 1));
+    this.foes.forEach((u, i) => this.unitActor(u, OX + 4.6 - (i % 2) * 1.2, fz[i], 2));
     this.loop = true; const tick = (t) => { if (!this.loop) return; const dt = Math.min(0.05, (t - (this.lt || t)) / 1000); this.lt = t; this.anim(dt); this.view.render(dt); requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     this.game.audio?.music('battle');
     this.marchIn();
@@ -363,7 +364,7 @@ export class Battle {
         else this.fx.aura(x, z, col);
       }, i * (k === 'lei' ? 180 : 90));
     });
-    if (k === 'flood' && targets[0]) this.fx.wave(targets[0].side === 'foe' ? -1 : 18, targets[0].side === 'foe' ? 8 : 9, 6.5);
+    if (k === 'flood' && targets[0]) this.fx.wave(targets[0].side === 'foe' ? OX - 1 : OX + 18, targets[0].side === 'foe' ? OX + 8 : OX + 9, OZ + 6.5);
     if (T.kind === 'dmg') this.game.audio?.sfx(k === 'lei' ? 'clash' : 'fire');
     await wait(k === 'rock' ? 620 : k === 'lei' ? 300 + targets.length * 180 : k === 'flood' ? 650 : 380);
     if (T.kind === 'dmg') this.shake(0.3);
@@ -399,7 +400,7 @@ export class Battle {
     const walk = async (u, to) => { if (!u.actor) return; const from = u.home; u.running = true; await this.tween(0.45, (p) => { const e = ease(p); u.home = [from[0] + (to[0] - from[0]) * e, from[1] + (to[1] - from[1]) * e]; }); u.running = false; };
     // the camera comes in close on the two
     const off0 = this.view.camOff.clone(), tgt0 = this.view.camTarget.clone(), zoom = (to, at) => { const f = this.view.camOff.clone(), t0 = this.view.camTarget.clone(); return this.tween(0.5, (p) => { const e = ease(p); this.view.camOff.lerpVectors(f, to, e); this.view.camTarget.lerpVectors(t0, at, e); }); };
-    await Promise.all([walk(a, [9.0, 6.4]), walk(b, [6.4, 6.4]), zoom(new THREE.Vector3(0, 7.2, 9.2), new THREE.Vector3(8.2, 0.2, 6.4))]);
+    await Promise.all([walk(a, [OX + 9.0, OZ + 6.4]), walk(b, [OX + 6.4, OZ + 6.4]), zoom(new THREE.Vector3(0, 8.6, 11), new THREE.Vector3(OX + 8.2, 0.2, OZ + 6.4))]);
     this.root.classList.add('dueling');
     const box = document.createElement('div'); box.className = 'duel-hud'; this.ui.appendChild(box);
     const draw = () => { box.innerHTML = [B, A].map((S) => `<div class="dh"><b>${S.u.name}</b><span>武力 ${S.u.st.war}</span><i style="--p:${Math.max(0, S.hp / S.max) * 100}%"></i><em style="--p:${S.fury}%"></em></div>`).join('<div class="vs">VS</div>'); };
@@ -468,7 +469,7 @@ export class Battle {
     this.ensureView(); this.root.classList.add('on'); this.stage(o.terrain || 'city', null); this.o = o;
     this.party = [a]; this.foes = [b];
     a.side = 'party'; b.side = 'foe'; a.status = {}; b.status = {}; a.sol = a.solMax = 1; b.sol = b.solMax = 1;
-    this.unitActor(a, 9.4, 6.2, 1, true); this.unitActor(b, 5.8, 6.2, 2, true); for (const u of [a, b]) { this.view.removeLabel(u.bar); u.bar = { el: document.createElement('div') }; }
+    this.unitActor(a, OX + 9.4, OZ + 6.2, 1, true); this.unitActor(b, OX + 5.8, OZ + 6.2, 2, true); for (const u of [a, b]) { this.view.removeLabel(u.bar); u.bar = { el: document.createElement('div') }; }
     this.loop = true; const tick = (t) => { if (!this.loop) return; const dt = Math.min(0.05, (t - (this.lt || t)) / 1000); this.lt = t; this.anim(dt); this.view.render(dt); requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     const r = await this.duel(a, b, o);
     return r;

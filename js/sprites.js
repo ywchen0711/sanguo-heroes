@@ -31,6 +31,33 @@ function outline(cv, col = '#1a1410') {
 }
 
 import { LADIES } from './data/ladies.js';
+// ---------------------------------------------------------------- finer sprites: every figure is drawn at its pixel size, then
+// doubled with Scale2x (which rounds the stair-steps of curves and diagonals into smooth lines) and lit at the new size
+// - a soft highlight on the edges that face the light (top left) and a shade on the far ones - so it reads finer
+// without losing the pixel look.
+function refine(src) {
+  const w = src.width, h = src.height, sx = src.getContext('2d').getImageData(0, 0, w, h), a = new Uint32Array(sx.data.buffer);
+  const W2 = w * 2, H2 = h * 2, out = new ImageData(W2, H2), b = new Uint32Array(out.data.buffer);
+  const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : a[y * w + x]);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const P = a[y * w + x], A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+    let e0 = P, e1 = P, e2 = P, e3 = P;
+    if (C === A && C !== D && A !== B) e0 = A; if (A === B && A !== C && B !== D) e1 = B;
+    if (D === C && D !== B && C !== A) e2 = C; if (B === D && B !== A && D !== C) e3 = D;
+    const o = (y * 2) * W2 + x * 2; b[o] = e0; b[o + 1] = e1; b[o + W2] = e2; b[o + W2 + 1] = e3;
+  }
+  // rim light: little-endian RGBA in a Uint32 (0xAABBGGRR)
+  const lum = (c) => (c & 255) * 0.3 + ((c >>> 8) & 255) * 0.59 + ((c >>> 16) & 255) * 0.11, dark = (c) => !(c >>> 24) || lum(c) < 42;
+  const tint = (c, k) => { const r = Math.min(255, Math.max(0, (c & 255) * k)), g = Math.min(255, Math.max(0, ((c >>> 8) & 255) * k)), bl = Math.min(255, Math.max(0, ((c >>> 16) & 255) * k)); return ((c >>> 24) << 24 | bl << 16 | g << 8 | r) >>> 0; };
+  const src2 = b.slice();
+  for (let y = 1; y < H2 - 1; y++) for (let x = 1; x < W2 - 1; x++) {
+    const i = y * W2 + x, c = src2[i]; if (dark(c)) continue;
+    if (dark(src2[i - W2]) || dark(src2[i - 1])) b[i] = tint(c, 1.16);
+    else if (dark(src2[i + W2]) || dark(src2[i + 1])) b[i] = tint(c, 0.84);
+  }
+  const cv = document.createElement('canvas'); cv.width = W2; cv.height = H2; cv.getContext('2d').putImageData(out, 0, 0); return cv;
+}
+const fine = (out) => { out.canvas = refine(out.canvas); out.fw *= 2; out.fh *= 2; return out; };
 // ---------------------------------------------------------------- how a general looks
 // the famous ones by name; everyone else from their stats and a hash of their name
 const FAMOUS = {
@@ -124,7 +151,7 @@ export function personSheet(L) {
   const cv = px(FW * 3, FH * 4);
   for (let d = 0; d < 4; d++) for (let f = 0; f < 3; f++) drawPerson(cv, f * FW, d * FH, d, f, L);
   outline(cv);
-  const out = { canvas: cv.c, fw: FW, fh: FH };
+  const out = fine({ canvas: cv.c, fw: FW, fh: FH });
   cache.set(L.key, out);
   return out;
 }
@@ -140,7 +167,7 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
   if (L.cape && !L.small) { if (back) qr(5, y0 + 15, 14, 12, L.cape); else if (side) qr(13, y0 + 16, 4, 10, shade(L.cape, 0.85)); }
   // legs and boots
   const legY = y0 + 25;
-  if (side) { qr(9 + step, legY, 3, 5, bodyD); qr(12 - step, legY, 3, 5, shade(bodyD, 0.85)); qr(9 + step, legY + 4, 3, 2, '#2a2018'); qr(12 - step, legY + 4, 3, 2, '#2a2018'); }
+  if (side) { qr(9 + step, legY, 3, 5, bodyD); qr(12 - step, legY, 3, 5, shade(bodyD, 0.85)); qr(9 + step, legY + 4, 3, 2, '#2a2018'); qr(12 - step, legY + 4, 3, 2, '#2a2018'); q(9 + step, legY + 4, '#5a4a38'); }
   else { qr(8, legY + (step < 0 ? -1 : 0), 3, 5, bodyD); qr(13, legY + (step > 0 ? -1 : 0), 3, 5, bodyD); qr(8, legY + 4 + (step < 0 ? -1 : 0), 3, 2, '#2a2018'); qr(13, legY + 4 + (step > 0 ? -1 : 0), 3, 2, '#2a2018'); }
   // the body: armour or a robe
   const bw = 12 + fat * 2, bx = 6 - fat;
@@ -150,7 +177,8 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
     if (L.armor === 'scale') for (let j = 0; j < 6; j++) for (let i = 0; i < bw; i += 2) q(bx + i + (j % 2), y0 + 16 + j, shade(body, 0.8));
     if (L.armor === 'stripe' && !back) for (let i = 1; i < bw; i += 3) qr(bx + i, y0 + 16, 1, 6, shade(body, 0.78));
     if (!back) { qr(bx + 2, y0 + 17, bw - 4, 1, trim); qr(bx + 2, y0 + 19, bw - 4, 1, shade(body, 0.85)); qr(11, y0 + 16, 2, 5, shade(trim, 0.9)); }
-    qr(bx, y0 + 22, bw, 2, trim); // the belt
+    qr(bx, y0 + 22, bw, 2, trim); if (!back) { qr(11, y0 + 22, 2, 2, shade(trim, 1.35)); p(11, y0 + 22, '#ffffff'); } // the belt and its buckle
+    if (!back) { for (let i = bx + 1; i < bx + bw - 1; i += 2) p(i, y0 + 21, shade(body, 0.7)); qr(bx + 1, y0 + 16, 1, 5, shade(body, 1.12)); }
     qr(bx - 1, y0 + 15, 3, 3, shade(body, 1.1)); qr(bx + bw - 2, y0 + 15, 3, 3, shade(body, 1.1)); // shoulder plates
   }
   // arms
@@ -165,7 +193,7 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
   const hs = L.hairStyle;
   if (back) { qr(6, hy, 12, 12, hair); qr(9, hy - 2, 6, 3, hair); if (hs === 'long') qr(6, hy + 12, 12, 5, hair); if (hs === 'tail') qr(11, hy + 10, 2, 7, hair); }
   else {
-    qr(6, hy, 12, 4, hair); qr(6, hy, 2, 8, hair); qr(16, hy, 2, 8, hair);
+    qr(6, hy, 12, 4, hair); qr(6, hy, 2, 8, hair); qr(16, hy, 2, 8, hair); qr(8, hy, 4, 1, shade(hair, 1.45)); p(13, hy + 1, shade(hair, 1.3));
     if (side) { qr(13, hy, 5, 9, hair); if (hs === 'long') qr(14, hy + 8, 4, 7, hair); if (hs === 'tail') { qr(17, hy + 3, 2, 9, hair); } }
     else if (hs === 'long') { qr(5, hy + 3, 2, 10, hair); qr(17, hy + 3, 2, 10, hair); }
     if (hs === 'bald' && !L.hat) { qr(7, hy, 10, 3, skin); qr(7, hy, 10, 1, shade(skin, 1.12)); }
@@ -178,6 +206,10 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
       else if (E === 'big') { for (const x of [7, 15]) { p(x, ey, dk); p(x + 1, ey, dk); p(x, ey + 1, dk); p(x + 1, ey + 1, dk); p(x, ey, '#fff'); } }
       else { p(8, ey, dk); p(8, ey + 1, dk); p(15, ey, dk); p(15, ey + 1, dk); p(9, ey, '#fff'); p(14, ey, '#fff'); }
       p(11, ey + 4, shade(skin, 0.7)); p(12, ey + 4, shade(skin, 0.7)); p(7, ey + 2, shade(skin, 0.92)); p(16, ey + 2, shade(skin, 0.92));
+      // a nose, a mouth, a lid over each eye, shade under the cheekbones, the ears
+      p(11, ey + 2, shade(skin, 0.86)); if (!L.beard || L.beard === 'goatee' || L.beard === 'sideburns') { p(10, ey + 5, shade(skin, 0.62)); p(11, ey + 5, shade(skin, 0.55)); p(12, ey + 5, shade(skin, 0.55)); p(13, ey + 5, shade(skin, 0.62)); }
+      if (E !== 'narrow') { p(8, ey - 1, shade(skin, 0.78)); p(15, ey - 1, shade(skin, 0.78)); }
+      p(6, ey + 4, shade(skin, 0.85)); p(17, ey + 4, shade(skin, 0.85)); p(6, ey + 1, shade(skin, 0.75)); p(17, ey + 1, shade(skin, 0.75));
     }
     // brows
     const B = L.brow;
@@ -207,7 +239,7 @@ function drawPerson(cv, ox, oy, dir, frame, L) {
   // headgear
   const hc = L.hatC, hcD = hc && shade(hc, 0.7), hcL = hc && shade(hc, 1.25);
   switch (L.hat) {
-    case 'helmet': qr(5, hy - 2, 14, 5, hc); qr(5, hy - 2, 14, 1, hcL); qr(5, hy + 3, 14, 1, hcD); qr(11, hy - 5, 2, 3, '#e83a2a'); qr(10, hy - 6, 4, 1, '#e83a2a'); if (!back) qr(4, hy + 3, 2, 5, hcD), qr(18, hy + 3, 2, 5, hcD); break;
+    case 'helmet': qr(5, hy - 2, 14, 5, hc); qr(5, hy - 2, 14, 1, hcL); qr(7, hy - 1, 3, 1, shade(hc, 1.5)); qr(5, hy + 2, 14, 1, shade(hc, 0.8)); p(11, hy - 1, shade(hc, 0.75)); p(12, hy - 1, shade(hc, 0.75)); qr(5, hy + 3, 14, 1, hcD); qr(11, hy - 5, 2, 3, '#e83a2a'); qr(10, hy - 6, 4, 1, '#e83a2a'); if (!back) qr(4, hy + 3, 2, 5, hcD), qr(18, hy + 3, 2, 5, hcD); break;
     case 'crown': qr(7, hy - 2, 10, 3, hc); qr(7, hy - 2, 10, 1, hcL); p(8, hy - 3, hc); p(11, hy - 4, hc); p(12, hy - 4, hc); p(15, hy - 3, hc); qr(5, hy - 1, 14, 1, '#1a1410'); qr(4, hy - 1, 2, 1, '#e8c860'); qr(18, hy - 1, 2, 1, '#e8c860'); break;
     case 'pheasant': qr(6, hy - 2, 12, 4, hc); qr(6, hy - 2, 12, 1, hcL); p(11, hy - 1, '#e83a2a'); p(12, hy - 1, '#e83a2a');
       for (let k = 0; k < 9; k++) { p(7 - Math.floor(k / 3), hy - 3 - k, k % 2 ? '#d84a2a' : '#f0a040'); p(16 + Math.floor(k / 3), hy - 3 - k, k % 2 ? '#d84a2a' : '#f0a040'); } break;
@@ -261,7 +293,7 @@ export function soldierSheet(kind = 'soldier', color = '#8a4a3a', role = 'spear'
   const cv = px(FW * 3, FH * 4);
   for (let f = 0; f < 3; f++) { drawSoldier(cv, f * FW, 1 * FH, f, S, color, false); drawSoldier(cv, f * FW, 2 * FH, f, S, color, true); drawSoldier(cv, f * FW, 0, f, S, color, false); drawSoldier(cv, f * FW, 3 * FH, f, S, color, true); }
   outline(cv, '#140e0a');
-  const out = { canvas: cv.c, fw: FW, fh: FH }; cache.set(key, out); return out;
+  const out = fine({ canvas: cv.c, fw: FW, fh: FH }); cache.set(key, out); return out;
 }
 function drawSoldier(cv, ox, oy, frame, S, color, flip) {
   const P = (i, j, c) => { if (c) cv.P(ox + (flip ? FW - 1 - i : i), oy + j, c); }, R = (i, j, w, h, c) => { for (let u = 0; u < w; u++) for (let v = 0; v < h; v++) P(i + u, j + v, c); };
@@ -307,7 +339,7 @@ function riderSheet(key, S, color) {
   const cv = px(CW * 3, FH * 4);
   for (let f = 0; f < 3; f++) for (let row = 0; row < 4; row++) drawRider(cv, f * CW, row * FH, f, S, color, row >= 2);
   outline(cv, '#140e0a');
-  const out = { canvas: cv.c, fw: CW, fh: FH, rider: true }; cache.set(key, out); return out;
+  const out = fine({ canvas: cv.c, fw: CW, fh: FH, rider: true }); cache.set(key, out); return out;
 }
 function drawRider(cv, ox, oy, frame, S, color, flip) {
   const P = (i, j, c) => { if (c) cv.P(ox + (flip ? CW - 1 - i : i), oy + j, c); }, R = (i, j, w, h, c) => { for (let u = 0; u < w; u++) for (let v = 0; v < h; v++) P(i + u, j + v, c); };
@@ -440,7 +472,7 @@ export function beastSheet(kind) {
   const cv = px(BW * 2, BH);
   for (let f = 0; f < 2; f++) { const K = beastKit(cv, f * BW); drawBeast(K, kind, f); K.flush(); }
   outline(cv);
-  const out = { canvas: cv.c, fw: BW, fh: BH, beast: true }; cache.set(key, out); return out;
+  const out = fine({ canvas: cv.c, fw: BW, fh: BH, beast: true }); cache.set(key, out); return out;
 }
 
 // ---------------------------------------------------------------- the land: a 16x16 tile atlas (8 x 4 tiles)
