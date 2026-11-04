@@ -153,3 +153,8 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 .eq-d p { margin: 2px 0; } .eq-d .pw { color: #ffe8a0; }
 .eqs-help { grid-column: 1 / -1; text-align: center; font-size: 12px; color: var(--dim); }
 @media (max-width: 720px) { .eqs { grid-template-columns: 1fr; } .eqs-party { display: flex; flex-wrap: wrap; max-height: none; } }
+
+/* a general's own life in the encyclopedia */
+.life { border-top: 1px solid rgba(200, 160, 96, 0.3); margin-top: 8px; padding-top: 6px; font-size: 13px; }
+.life h4 { margin: 4px 0; color: var(--gold); } .life h4 small { color: var(--dim); font-weight: 400; }
+.life p { margin: 2px 0; } .life p small { color: var(--dim); }

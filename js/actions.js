@@ -12,6 +12,7 @@ import { itemOf, isRelic, relicFx, partyFx, rollRelic, giveRelic, relicExp, powe
 import { equipScreen } from './equip.js';
 import { addBond, offerOaths, versus, drink, isSworn, isRival, bondOf, bondsHTML } from './bonds.js';
 import { mark, dexScreen } from './dex.js';
+import { TYPE_N } from './sim/life.js';
 import { meetSage, sageOpts, sageGen, sageRumor } from './sages.js';
 import { priceMul, garrisonMul, disasterAt, DIS_N } from './disaster.js';
 
@@ -200,7 +201,7 @@ export class Actions {
     if (await this.g.events.maybe('t', 0.15, n)) return;
     const sameSide = f && mine === x.fac, look = this.g.lookOf(x), age = G.year - x.born;
     mark(this.g, x.id, 1); addBond(this.g, x.id, 1);
-    const info = `${x.name}（${age}歲）${f ? `　${f.name}軍${G.factions[x.fac].lord === x.id ? '・君主' : ''}` : '　在野'}\n統率 ${x.lead}　武力 ${x.war}　智力 ${x.int}　政治 ${x.pol}　魅力 ${x.cha}${G.items.some((it) => it.holder === x.id) ? `\n寶物：${G.items.filter((it) => it.holder === x.id).map((it) => itemName(it.key)).join('、')}` : ''}`;
+    const info = `${x.name}（${age}歲）${x.life ? `　【${TYPE_N[x.life.type]}】Lv${x.life.lv}` : ''}${f ? `　${f.name}軍${G.factions[x.fac].lord === x.id ? '・君主' : ''}` : '　在野'}\n統率 ${x.lead}　武力 ${x.war}　智力 ${x.int}　政治 ${x.pol}　魅力 ${x.cha}${G.items.some((it) => it.holder === x.id) ? `\n寶物：${G.items.filter((it) => it.holder === x.id).map((it) => itemName(it.key)).join('、')}` : ''}`;
     const opts = [{ k: 'talk', n: '交談' }, ...sageOpts(x)];
     if (!f) opts.push({ k: 'recruit', n: '招募' });
     if (!f || sameSide) opts.push({ k: 'spar', n: '切磋' });
@@ -244,7 +245,8 @@ export class Actions {
   }
   // ---------------------------------------------------------------- duels: a friendly bout, or to the death
   duelFoe(x) { const lv = this.lvOf(x); const r = { lv, eq: {} }; return { name: x.name, look: this.g.lookOf(x), lv, st: bstats(x, r), gid: x.id }; }
-  lvOf(x) { if (this.H.rec[x.id]) return this.H.rec[x.id].lv; return Math.max(1, startLv(x) + Math.floor((this.G.year - this.H.startYear) * 0.8) + 2); }
+  // a general's level in battle: their own life's level (see sim/life.js), or for an old save an estimate from the years
+  lvOf(x) { if (this.H.rec[x.id]) return this.H.rec[x.id].lv; if (x.life) return Math.max(1, x.life.lv + 2); return Math.max(1, startLv(x) + Math.floor((this.G.year - this.H.startYear) * 0.8) + 2); }
   async duelWith(x, kind, npc) {
     const G = this.G, me = this.me, f = x.status === 'serving' && G.factions[x.fac];
     if (kind === 'kill' && !await this.ui.yesno(`真的要向${x.name}挑戰生死決鬥嗎？\n${f ? `會與${f.name}軍結仇。` : ''}`)) return;

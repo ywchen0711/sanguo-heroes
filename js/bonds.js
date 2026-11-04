@@ -54,7 +54,7 @@ export function versus(game, gid, won) {
   const H = game.H, G = game.G, x = G.gens[gid]; if (!x || x.isPlayer || H.party.includes(gid)) return;
   H.vs ||= {}; const v = H.vs[gid] ||= { w: 0, l: 0 }; won ? v.w++ : v.l++;
   if (!isRival(H, gid) && (v.l >= 3 || v.w >= 3)) {
-    (H.rivals ||= []).push(gid);
+    (H.rivals ||= []).push(gid); x.rival = true; // a rival trains all the harder (sim/life.js)
     deed(game, `與${x.name}${v.l >= 3 ? '屢戰屢敗' : '屢次交鋒'}，結為宿敵`);
     game.ui.toast(`<b style="color:#ff9a6a">${x.name}成了你的宿敵！</b><br><small>再次交手時，雙方都會全力以赴</small>`, 5000);
   }

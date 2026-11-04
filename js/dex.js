@@ -4,6 +4,8 @@ import { BIOS } from './data/bios.js';
 import { itemName } from './sim/text.js';
 import { frameCanvas, personSheet } from './sprites.js';
 import { checkTitles } from './deeds.js';
+import { TYPE_N, TYPE_D, lifeLine, lvNeed } from './sim/life.js';
+import { fmt } from './sim/text.js';
 
 const BIO = Object.fromEntries(BIOS.map(([n, zi, t]) => [n, { zi: zi === '—' ? '' : zi, t }]));
 export const DEX_N = ['', '見過', '交過手', '曾為同伴'];
@@ -41,6 +43,22 @@ export async function dexScreen(game) {
     await ui.panel(`<div class="st-card"><img src="${img}"><div><h3>${g.name}${b.zi ? `　<small>字${b.zi}</small>` : ''}</h3>
       <div class="st-grid"><span>統率 <b>${g.lead}</b></span><span>武力 <b>${g.war}</b></span><span>智力 <b>${g.int}</b></span><span>政治 <b>${g.pol}</b></span><span>魅力 <b>${g.cha}</b></span></div>
       <div>${g.born}年生　${st}　<span class="dim">${DEX_N[H.dex[g.id]]}</span></div>${items.length ? `<div>寶物：${items.join('、')}</div>` : ''}
-      <p class="bio">${b.t}</p></div></div>`, { title: '武將圖鑑', cls: 'wide' });
+      <p class="bio">${b.t}</p></div></div>${lifeHTML(G, g)}`, { title: '武將圖鑑', cls: 'wide' });
   }
+}
+
+// a general's own life: who they are, how far they have come, the people in it and their chronicle
+function lifeHTML(G, g) {
+  const L = g.life; if (!L) return '';
+  const nm = (id) => G.gens[id]?.name, fr = Object.entries(L.friends || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => nm(id)).filter(Boolean);
+  const STN = ['統率', '武力', '智力', '政治', '魅力'], keys = ['lead', 'war', 'int', 'pol', 'cha'];
+  const room = keys.map((k, i) => (L.pot?.[i] > g.base[k] ? `${STN[i]}還能到 ${L.pot[i]}` : null)).filter(Boolean);
+  const mine = (L.log || []).map((e) => ({ y: e[0], t: lifeLine(e).replace(/^\d+年　/, '') }));
+  const world = G.log.filter((e) => e.g === g.id && e.level >= 2).slice(-8).map((e) => ({ y: e.year, t: fmt(e) }));
+  const told = new Set(world.map((e) => e.y)), mine2 = mine.filter((e, i) => !(L.log[i][1] === 'join' && told.has(e.y))); // the realm's own record says it better
+  const all = [...mine2, ...world].sort((a, b) => a.y - b.y).slice(-14);
+  return `<div class="life"><h4>【${TYPE_N[L.type]}】Lv ${L.lv}　<small>${TYPE_D[L.type]}</small></h4>
+    <div class="dim">經驗 ${L.exp}/${lvNeed(L.lv)}${room.length ? '　潛力：' + room.join('、') : '　已經到達極限'}</div>
+    ${L.mentor != null && nm(L.mentor) ? `<div>師父：${nm(L.mentor)}</div>` : ''}${L.pupil != null && nm(L.pupil) ? `<div>徒弟：${nm(L.pupil)}</div>` : ''}${L.sworn != null && nm(L.sworn) ? `<div>結義兄弟：${nm(L.sworn)}</div>` : ''}${fr.length ? `<div>好友：${fr.join('、')}</div>` : ''}
+    ${all.length ? `<h4>年表</h4>${all.map((e) => `<p><small>${e.y}年</small>　${e.t}</p>`).join('')}` : ''}</div>`;
 }

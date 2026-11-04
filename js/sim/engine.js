@@ -13,6 +13,7 @@ import { CITIES, ROADS } from '../data/world.js';
 import { PREFER } from '../data/allegiance.js';
 import { SCEN } from '../data/scenarios.js';
 import { ITEMS, SPELL_HOLDERS, HIDDEN } from '../data/treasures.js';
+import { lifeMonth, lifeBattle, note } from './life.js';
 
 // Sanguo Heroes: the player's general (isPlayer) and the companions who travel with them (follow = the player's id) are
 // moved by the player, not by the simulation: they take no monthly job, are not sent to war or moved about, and are
@@ -123,7 +124,7 @@ function give(G, it, g) { const prev = it.holder != null ? G.gens[it.holder] : n
 function stash(G, it, fid) { const prev = it.holder != null ? G.gens[it.holder] : null; it.holder = null; it.fac = fid; it.city = null; if (prev) refresh(G, prev); }
 function hide(G, it, cityId) { const prev = it.holder != null ? G.gens[it.holder] : null; it.holder = null; it.fac = null; it.city = cityId; if (prev) refresh(G, prev); }
 const learn = (g, sp) => { if (!g.spells.includes(sp)) { g.spells.push(sp); return true; } return false; };
-function serve(G, g, fid, cityId, loyalty) { g.status = 'serving'; g.fac = fid; g.city = cityId; g.loyalty = loyalty; g.task = null; }
+function serve(G, g, fid, cityId, loyalty) { if (G.t > 0 && g.fac !== fid && G.factions[fid]) note(G, g, 'join', G.factions[fid].name); g.status = 'serving'; g.fac = fid; g.city = cityId; g.loyalty = loyalty; g.task = null; }
 const sameKin = (G, a, b) => !!(a && b && a.kin && a.kin === b.kin);
 // the faction a talent would seek out: their historical lord's faction, or (kin:x) the faction a family serves
 function preferred(G, g) {
@@ -186,6 +187,7 @@ export function step(G) {
   if (G.over) return G;
   lapse(G);
   lifecycle(G);
+  lifeMonth(G, { r: G.r, refresh, gensIn, busy, citiesOf });   // every general's own month (see life.js)
   economy(G);
   events(G);
   for (const fid of shuffle(G, Object.keys(G.factions))) { const f = G.factions[fid]; if (!f.alive) continue; domestic(G, f); }
@@ -587,7 +589,9 @@ function siege(G, f, srcs, city, army, troops, sent, train) {
   city.def = Math.max(0, Math.round(city.def - (startA - a) / 60));
   for (const g of army) if (g.status === 'serving') g.merit += 3;
   const wp = { f: f.name, g: atkLead.name, c: city.name, o: defF ? defF.name : null, notes };
+  lifeBattle(G, army, d <= 0, refresh); lifeBattle(G, defGens, d > 0, refresh);
   if (d <= 0) {
+    note(G, atkLead, 'took', city.name);
     city.troops = 0;
     const lost = city.owner;
     city.owner = f.id; city.troops = Math.min(a, capacity(city)); home(a - city.troops); city.train = Math.round(train); city.morale = Math.max(20, city.morale - 15);
