@@ -16,6 +16,7 @@ import { TYPE_N } from './sim/life.js';
 import { PERKS, perkText } from './hero.js';
 import { meetSage, sageOpts, sageGen, sageRumor } from './sages.js';
 import { priceMul, garrisonMul, disasterAt, DIS_N } from './disaster.js';
+import { tire, tired, eraBonus } from './board.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -151,11 +152,12 @@ export class Actions {
   // ---------------------------------------------------------------- the menu
   async menu() {
     if (this.ui.busy) return;
-    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'save', n: '存檔' }, { k: 'auto', n: this.g.auto.on ? '電腦代玩：開' : '電腦代玩：關', d: '讓電腦替你玩（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
+    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'board', n: '情勢', d: '時局、機會（有期限）、民心', sub: (this.H.opps || []).filter((o) => !o.done && !o.missed).length || '' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'save', n: '存檔' }, { k: 'auto', n: this.g.auto.on ? '電腦代玩：開' : '電腦代玩：關', d: '讓電腦替你玩（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
     if (k === 'status') await this.g.screens.status();
     if (k === 'party') await this.partyMenu();
     if (k === 'equip') await equipScreen(this.g);
     if (k === 'items') await this.useItems();
+    if (k === 'board') await this.g.board.screen();
     if (k === 'missions') await this.g.screens.missions();
     if (k === 'news') await this.g.screens.news();
     if (k === 'realm') await this.g.screens.realm();
@@ -236,7 +238,7 @@ export class Actions {
   async recruit(x, npc) {
     const H = this.H, me = this.me, mine = this.g.myFaction();
     if (H.party.length >= this.g.partyMax()) { await this.ui.say(x.name, `你的隊伍已經滿了。（${this.g.perk().n}最多帶 ${this.g.partyMax()} 位同伴）`, this.g.lookOf(x)); return; }
-    let p = 0.18 + partyFx(this.g, 'recruit') + this.g.perk().recruit + (me.cha - 50) / 110 + H.fame / 1600 - (x.refused || 0) * 0.08 + (x.prefer && x.prefer === mine ? 0.25 : 0);
+    let p = 0.18 + partyFx(this.g, 'recruit') + this.g.perk().recruit + (me.cha - 50) / 110 + H.fame / 1600 - (x.refused || 0) * 0.08 + (x.prefer && x.prefer === mine ? 0.25 : 0) + (x.seek > this.G.t ? 0.4 : 0);
     if (me.war + me.int + me.lead > x.war + x.int + x.lead + 30) p += 0.1;
     if (hasT(H, 'renyi')) p += 0.1; if (hasT(H, 'jianu')) p -= 0.15; if (hasT(H, 'canbao')) p -= 0.1; p += bondOf(H, x.id) / 200;
     if ((H.items.wine || 0) > 0 && await this.ui.yesno(`要送上美酒嗎？（剩 ${H.items.wine}）`)) { H.items.wine--; p += 0.25; }
@@ -355,6 +357,7 @@ export class Actions {
         { k: 'job', n: '內政', d: '為這座城開墾、經商、築城、練兵或安民（十天）' },
         { k: 'draft', n: '徵兵', d: `從城中調兵補滿隊伍（城中兵 ${C.troops}）` },
         { k: 'mission', n: '任務', d: '討伐附近的賊寇' },
+        ...(this.g.board.restless(C) ? [{ k: 'calm', n: '安撫百姓', d: `民心 ${C.morale}：新佔領，可能民變。200 金、五天，民心 +${10 + Math.round(me.cha / 10)}` }] : []),
         { k: 'pick', n: '點將', d: `邀請城裡的武將同行（同伴 ${this.H.party.length}／${this.g.partyMax()}）` },
         ...(isLord ? [{ k: 'treasury', n: '府庫', d: `勢力金 ${f.gold}，可以支取` }] : [{ k: 'quit', n: '下野', d: '離開這個勢力' }]),
         { k: null, n: '離開' }];
@@ -363,6 +366,7 @@ export class Actions {
       if (c === 'report') await this.report(C, f, isLord, host || lord);
       if (c === 'job') await this.job(C, f);
       if (c === 'draft') await this.draft(C, true);
+      if (c === 'calm') await this.g.board.calm(C);
       if (c === 'mission') await this.missionOffer(C, f);
       if (c === 'pick') { const gs = G.gens.filter((x) => x.status === 'serving' && x.fac === f.id && x.city === C.id && !busy(x) && f.lord !== x.id); if (!gs.length) { this.ui.toast('城裡沒有可以同行的武將'); continue; } const k = await this.ui.choose(gs.map((x) => ({ k: x.id, n: x.name, sub: `統${x.lead} 武${x.war} 智${x.int}`, d: x.life ? `【${TYPE_N[x.life.type]}】Lv${x.life.lv}` : '' })).concat([{ k: null, n: '返回' }]), { title: '點將' }); if (k != null) await this.invite(G.gens[k]); }
       if (c === 'treasury') { const n = await this.ui.choose([500, 1000, 3000].map((n) => ({ k: n, n: `支取 ${n} 金`, off: f.gold < n })).concat([{ k: -500, n: '存入 500 金', off: this.H.gold < 500 }, { k: null, n: '返回' }]), { title: `府庫　勢力金 ${f.gold}` }); if (n) { f.gold -= n; this.H.gold += n; this.g.audio.sfx('coin'); } }
@@ -547,20 +551,22 @@ export class Actions {
       const a = Math.random() * Math.PI * 2, d = 8 + Math.random() * 12, x = Math.round(c.x + Math.cos(a) * d), z = Math.round(c.y + Math.sin(a) * d);
       const t = W.at(x, z); if (![T.PLAIN, T.MEADOW, T.FOREST, T.HILL, T.DESERT].includes(t)) continue;
       const kind = pick(['bandit', 'turban', 'bandit', 'pirate']), boss = `${pick(['惡虎', '黑風', '赤眉', '獨眼', '鐵臂', '白狼', '飛天'])} ${pick([...SUR])}${pick([...GIV])}`;
-      return { id: Date.now() + k, city: C.id, x, z, boss, kind, lv, gold: 120 + lv * 35, merit: official ? 10 : 0, fame: 30 + lv * 2, official };
+      const mul = tire(this.H, 'bandit') * eraBonus(this.G, 'bandit');   // the same work again pays less; hard times pay more
+      return { id: Date.now() + k, city: C.id, x, z, boss, kind, lv, gold: Math.round((120 + lv * 35) * mul), merit: official ? Math.round(10 * mul) : 0, fame: Math.round((30 + lv * 2) * mul), official };
     }
     return null;
   }
+  dropBanner(m) { if (this.g.mode !== 'world') return; const p = this.g.view.M.props?.find((q) => q.kind === 'banner' && q.x === m.x && q.z === m.z); if (p) { this.g.view.mapGroup.remove(p.obj); const l = this.g.view.labels.find((l) => l.obj === p.obj); if (l) this.g.view.removeLabel(l); } }
   async missionFight(m) {
     const n = Math.min(5, 2 + Math.floor(m.lv / 8)), foes = [this.foe(m.boss, m.kind === 'pirate' ? 'pirate' : m.kind, m.lv + 2, null, true)];
-    for (let i = 1; i < n; i++) foes.push(this.foe(m.kind === 'turban' ? '黃巾賊' : m.kind === 'pirate' ? '海賊' : '山賊', m.kind, m.lv));
+    for (let i = 1; i < n; i++) foes.push(this.foe(m.minion || (m.kind === 'turban' ? '黃巾賊' : m.kind === 'pirate' ? '海賊' : '山賊'), m.kind, m.lv));
     const r = await this.fight(foes, { terrain: this.terrainAt(), title: `「${m.boss}」率領賊眾殺了過來！`, noFlee: false });
     if (r === 'win') {
       if (hasT(this.H, 'xiake')) { m.gold = Math.round(m.gold * 1.25); m.fame = Math.round(m.fame * 1.25); }
       if (Math.random() < 0.35) { const id = rollRelic(m.lv, 2); giveRelic(this.g, id); }
-      m.done = true; this.H.gold += m.gold; this.H.fame += m.fame; this.H.st.missions++; if (m.official && this.me.status === 'serving') { this.me.merit += m.merit; this.promote(); }
+      m.done = true; this.H.gold += m.gold; this.H.fame += m.fame; this.H.st.missions++; tired(this.H, 'bandit'); if (m.official && this.me.status === 'serving') { this.me.merit += m.merit; this.promote(); }
       await this.ui.say('', `討伐了「${m.boss}」！\n得到 ${m.gold} 金${m.official ? `、功績 ${m.merit}` : ''}、名聲 ${m.fame}。`);
-      const p = this.g.view.M.props?.find((q) => q.kind === 'banner' && q.x === m.x && q.z === m.z); if (p) { this.g.view.mapGroup.remove(p.obj); const l = this.g.view.labels.find((l) => l.obj === p.obj); if (l) this.g.view.removeLabel(l); }
+      this.dropBanner(m);
       this.H.missions = this.H.missions.filter((x) => !x.done);
     }
   }
@@ -669,7 +675,8 @@ export class Actions {
   async siege(C) {
     const G = this.G, me = this.me, f = C.owner && G.factions[C.owner], sol = this.g.partyList().reduce((s, p) => s + p.rec.sol, 0);
     if (sol < 300) { await this.ui.say('', '兵力太少了，先去徵兵或募兵吧。'); this.stepBack(); return; }
-    const foes = this.defenders(C), gm = garrisonMul(this.g, C.id);
+    await this.g.board.beforeSiege(C);
+    const foes = this.defenders(C), gm = garrisonMul(this.g, C.id) * this.g.board.gapMul(C.id);
     if (gm < 1) for (const u of foes) { u.sol = u.solMax = Math.round(u.solMax * gm); }
     const before = C.troops;
     const r = await this.fight(foes, { terrain: 'city', siege: { color: f ? f.color : '#8a7a6a' }, title: `進攻${C.name}！`, siegeOf: C.id });
@@ -688,8 +695,8 @@ export class Actions {
     const F = G.factions[mine];
     C.owner = mine; C.troops = Math.max(800, Math.round(C.troops * 0.3) + 500); C.morale = Math.max(20, C.morale - 15); C.def = Math.max(50, C.def - 60);
     record(G, 'war', 'warWin', { f: F.name, g: me.name, c: C.name, o: pf ? pf.name : null, notes: [] }, mine, 2, { city: C.id, from: C.id, srcs: [], win: true, def: prev });
-    this.H.st.cities.push(C.name); this.H.fame += 80 + C.size * 30; deed(this.g, `攻拔${C.name}`, C.size >= 3); if (!this.g.isLord()) { me.merit += 40 + C.size * 15; this.promote(); }
-    await this.ui.say('', `攻下了${C.name}！${F.name}軍的旗幟插上了城頭。`);
+    this.H.st.cities.push(C.name); this.H.fame += 80 + C.size * 30; const after = this.g.board.conquered(C, prev); deed(this.g, `攻拔${C.name}`, C.size >= 3); if (!this.g.isLord()) { me.merit += 40 + C.size * 15; this.promote(); }
+    await this.ui.say('', `攻下了${C.name}！${F.name}軍的旗幟插上了城頭。\n${after}`);
     // the generals who fought for the city: win them over, let them go, or put them to death
     for (const x of beaten) {
       if (x.status !== 'serving' || x.fac !== prev) continue;

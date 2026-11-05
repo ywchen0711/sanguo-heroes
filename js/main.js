@@ -17,6 +17,7 @@ import { Screens } from './screens.js';
 import { Events } from './events.js';
 import { Story } from './story.js';
 import { AutoPlay } from './auto.js';
+import { Board } from './board.js';
 import { pickRivals } from './sim/rivals.js';
 import { deed, histDeaths, checkTitles, hasT, knownAs } from './deeds.js';
 import { mourn } from './bonds.js';
@@ -30,7 +31,7 @@ const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 
 
 class Game {
   constructor() {
-    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this);
+    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
@@ -184,6 +185,7 @@ class Game {
     this.audio.music('town');
     this.hud();
     if (!snap) { const dz = disasterAt(this, cityId); this.ui.toast(`<b>${C.name}</b>　${f ? f.name + '軍' : '無主之城'}　兵 ${C.troops}${dz ? `　<b style="color:#ff9a6a">${DIS_N[dz.k]}</b>` : ''}`); setTimeout(async () => { if (this.ui.busy || this.locked) return; if (dz) { this.locked = true; try { if (await enterStricken(this, C)) return; } finally { this.locked = false; this.hud(); } } this.happen('town'); }, 500); }
+    if (!snap) this.board.onTown(C);
   }
   // stories first, then the random events of the place
   async happen(where) {
@@ -219,7 +221,7 @@ class Game {
     // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
     try {
-      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
+      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
       if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
@@ -271,6 +273,7 @@ class Game {
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
+    if (this.steps > 5 && this.board.walk()) { this.steps = 0; return; }
     if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (hasT(this.H, 'canbao') ? 0.6 : 1) * (1 - partyFx(this, 'encounter'))) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); return; }
     if (this.H.walk % 10 === 0) this.happen('field');
     if (this.H.walk % 10 === 0) this.hud();
@@ -337,6 +340,7 @@ class Game {
     else if (before.fac && now && before.fac !== now) this.ui.toast(`<b>你所屬的勢力併入了${G.factions[now].name}軍。</b>`, 5000);
     if (!before.lord && this.isLord()) this.ui.toast(`<b style="color:#ffd86a">你繼承了${G.factions[now].name}軍之主的地位！</b>`, 5000);
     noteDisasters(this, logs);
+    this.board.month();
     if (!before.lord && this.isLord()) deed(this, `繼${G.factions[now].name}之位`, true);
     if (before.fac && !now) deed(this, `${G.factions[before.fac]?.name || ''}亡，${g.name}流落在野`);
     if (hasT(this.H, 'bazhu')) this.H.fame += 3;
@@ -360,7 +364,7 @@ class Game {
     if (!this.armies?.length) return;
     for (const a of [...this.armies]) { const m = a.march; m.t += dt; const p = Math.min(1, m.t / m.dur); a.x = m.a.x + (m.b.x - m.a.x) * p; a.z = m.a.y + 1 + (m.b.y - m.a.y) * p; a.dir = Math.abs(m.b.x - m.a.x) > Math.abs(m.b.y - m.a.y) ? (m.b.x > m.a.x ? 2 : 1) : m.b.y > m.a.y ? 0 : 3; a.frame = Math.floor(m.t * 6) % 2 ? 0 : 2; a.y = this.mode === 'world' ? Math.max(0, this.world.hAt(Math.round(a.x), Math.round(a.z))) : 0; this.view.placeActor(a); if (p >= 1) { this.view.removeActor(a); this.armies = this.armies.filter((x) => x !== a); } }
   }
-  missionMarks() { for (const m of this.H.missions) if (!m.done) this.view.addProp({ kind: 'banner', x: m.x, z: m.z, y: Math.max(0, this.world.hAt(m.x, m.z)), color: '#2a2a2a', label: `<b>${m.boss}</b>`, labelY: 1.8, labelClass: 'mission' }); }
+  missionMarks(list = this.H.missions) { for (const m of list) if (!m.done) this.view.addProp({ kind: 'banner', x: m.x, z: m.z, y: Math.max(0, this.world.hAt(m.x, m.z)), color: '#2a2a2a', label: `<b>${m.boss}</b>`, labelY: 1.8, labelClass: 'mission' }); }
   // ---------------------------------------------------------------- the HUD
   hud() {
     const G = this.G, g = this.me, f = this.myFaction() && G.factions[this.myFaction()], el = document.getElementById('hud');

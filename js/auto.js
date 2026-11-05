@@ -86,6 +86,10 @@ export class AutoPlay {
     // 1. hurt: back to the nearest friendly city to rest
     if (pt.sol < pt.max * 0.45 && this.H.days - this.restDay > 3) { const own = mine ? this.near(cities.filter((c) => c.C.owner === mine), P)[0] : null, any = this.near(cities, P)[0], home = own && own[1] < any[1] + 25 ? own : any; if (home && this.goCity(home[0].C, ['in'])) return; }
     if (pt.sol < pt.max * 0.45) { if (this.wander()) return; }
+    // 2b. the chances of the month (情勢): the nearest one that can still be made in time, most of the time
+    const opps = (H.opps || []).filter((o) => !o.done && !o.missed && o.k !== 'bandit' && o.k !== 'border').map((o) => { const c = CITY_POS[o.k === 'escort' && o.stage ? o.to : o.cid]; return [o, Math.hypot(c.x - P.x, c.y - P.z)]; })
+      .filter(([o, d]) => d < 60 && (o.k !== 'gap' || (this.g.board.canSiege(G.cities[o.cid]) && pt.sol > pt.max * 0.7))).sort((a, b) => a[1] - b[1]);
+    if (opps.length && Math.random() < 0.6) { const [o] = opps[0], C = G.cities[o.k === 'escort' && o.stage ? o.to : o.cid]; if (this.goCity(C, [o.k === 'gap' ? 'siege' : 'in'])) { this.target = C.name + '・' + o.k; if (o.k === 'talent') this.tasks = ['talent']; return; } }
     // 2. a bounty to hunt
     const m = H.missions.filter((x) => !x.done).sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z))[0];
     if (m && this.walkTo((x, z) => x === m.x && z === m.z)) { this.want = null; this.target = m.boss; return; }
@@ -121,7 +125,9 @@ export class AutoPlay {
         if (pt.sol < pt.max * 0.9 || this.g.partyList().some((p) => p.rec.sp < p.spMax * 0.5)) list.push({ door: 'inn' });
         if (H.gold > 400) list.push({ door: 'arms' });
         if ((H.items.med || 0) < 3 && H.gold > 150) list.push({ door: 'goods' });
-        if (H.party.length < this.g.partyMax() && H.gold > 250) list.push({ door: 'tavern' });
+        const talent = (H.opps || []).some((o) => o.k === 'talent' && !o.done && !o.missed && o.cid === M.C.id);
+        if (H.party.length < this.g.partyMax() && (H.gold > 250 || talent)) list.push({ door: 'tavern' });
+        if (this.g.board.restless(M.C) && M.C.morale < 65 && H.gold >= 200) list.push({ door: 'gov', calm: true });
         if (this.tasks.includes('serve') && !mine) list.push({ door: 'gov', want: ['serve'] });
         else if (own) list.push({ door: 'gov' });
         else if (H.missions.filter((m) => !m.done).length < 2) list.push({ door: 'tavern', bounty: true });
@@ -144,11 +150,12 @@ export class AutoPlay {
     if (door.id === 'goods') { while ((H.items.med || 0) < 4 && H.gold >= 30) { H.gold -= 30; H.items.med = (H.items.med || 0) + 1; } return true; }
     if (door.id === 'tavern') {
       if (e.bounty) { this.want = [true]; await A.missionOffer(C, null); this.want = null; return true; }
-      const free = this.G.gens.filter((x) => x.status === 'free' && x.city === C.id && x.follow == null && !x.isPlayer).sort((a, b) => (b.lead + b.war + b.int) - (a.lead + a.war + a.int));
+      const free = this.G.gens.filter((x) => x.status === 'free' && x.city === C.id && x.follow == null && !x.isPlayer).sort((a, b) => (b.seek > this.G.t) - (a.seek > this.G.t) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int));
       if (free[0] && H.party.length < this.g.partyMax()) { this.want = [true]; await A.recruit(free[0]); this.want = null; }
       return true;
     }
     if (door.id === 'gov') {
+      if (e.calm) { await this.g.board.calm(C); return true; }
       if (e.want) { this.want = e.want; await A.gov(C); this.want = null; return true; }
       if (f && C.owner === mine) {
         if (H.missions.filter((m) => !m.done).length < 2) { this.want = [true]; await A.missionOffer(C, f); }

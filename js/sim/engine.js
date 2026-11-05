@@ -22,6 +22,7 @@ import { rivalsMonth } from './rivals.js';
 export const busy = (g) => !!(g && (g.isPlayer || g.follow != null));
 
 // ---------------------------------------------------------------- random numbers (seeded, so a game can be replayed)
+import { eraMonth, harvestMul, taxMul, rebelMul, warPause, warBias } from './era.js';
 export function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (r, a) => a[Math.floor(r() * a.length)];
@@ -194,6 +195,7 @@ export function step(G) {
   if (G.rivals) rivalsMonth(G, { record, refresh, busy, give, die, serve, hostile, hostileTo: () => false, siege, citiesOf, destroy }); // the computer players (rivals.js)
   economy(G);
   events(G);
+  eraMonth(G, { record, citiesOf });                            // the age, and coalitions against the overgrown (era.js)
   for (const fid of shuffle(G, Object.keys(G.factions))) { const f = G.factions[fid]; if (!f.alive) continue; domestic(G, f); }
   if (G.month % 3 === 0) for (const fid of shuffle(G, Object.keys(G.factions))) { const f = G.factions[fid]; if (f.alive) diplomacy(G, f); }
   for (const fid of shuffle(G, Object.keys(G.factions))) { const f = G.factions[fid]; if (f.alive) war(G, f); }
@@ -280,9 +282,9 @@ function destroy(G, fid, by, key, p) {
 function economy(G) {
   for (const f of Object.values(G.factions)) if (f.alive) {
     const cs = citiesOf(G, f.id);
-    f.gold += Math.round(sum(cs, (c) => (c.comm * 0.13 + c.pop / 9000) * (0.4 + c.morale / 160)));
+    f.gold += Math.round(sum(cs, (c) => (c.comm * 0.13 + c.pop / 9000) * (0.4 + c.morale / 160)) * taxMul(G));
     f.gold -= gensOf(G, f.id).length * 2 + Math.round(sum(cs, (c) => c.troops) / 400);
-    if (G.month === 7) { const harvest = Math.round(sum(cs, (c) => (c.farm * 2.6 + c.pop / 320) * (0.4 + c.morale / 160))); f.food += harvest; }
+    if (G.month === 7) { const harvest = Math.round(sum(cs, (c) => (c.farm * 2.6 + c.pop / 320) * (0.4 + c.morale / 160)) * harvestMul(G)); f.food += harvest; }
     f.food -= Math.round(sum(cs, (c) => c.troops) / 150);
     if (f.food < 0) { f.food = 0; for (const c of cs) { c.troops = Math.round(c.troops * 0.93); c.morale = clamp(c.morale - 3, 0, 100); } if (G.r() < 0.1) record(G, 'famine', 'famine', { f: f.name }, f.id, 1); }
     f.gold = Math.max(0, f.gold);
@@ -488,6 +490,7 @@ const armyPower = (gs, troops, train) => { const lead = gs.length ? Math.max(...
 function war(G, f) {
   const r = G.r, lord = lordOf(G, f.id), cs = citiesOf(G, f.id);
   if (G.t < 3 || f.food < 1500 || f.rest > G.t) return;          // the coalition gathers before the fighting starts
+  if (warPause(G, r)) return;                                     // a plague or a time of plenty: little appetite for war
   // every hostile city on the border, and what all our cities around it could throw at it
   const targets = new Map();
   for (const c of cs) for (const a of c.adj) { const t = G.cities[a]; if (hostile(G, f.id, t.owner)) { if (!targets.has(t.id)) targets.set(t.id, []); targets.get(t.id).push(c); } }
@@ -505,10 +508,10 @@ function war(G, f) {
     const train = sum(from, (c) => c.train * c.troops) / Math.max(1, sum(from, (c) => c.troops));
     const [fa, fd] = fieldMul(G, f.id, t, from[0]), atk = armyPower(army, troops, train) * fa, def = armyPower(gensIn(G, t), t.troops, t.train) * wallBonus(t) * fd;
     // commanders misjudge the enemy a little (fog of war), so some risky attacks happen
-    const ratio = atk / Math.max(1, def) * (0.85 + r() * 0.3), want = ratio * f.aggr * (t.owner === null ? 1.3 : 1) * (1 + (f.rel[t.owner] || 0) / -300) * (t.size / 2 + 0.5);
+    const [bw, bn] = warBias(G, f.id, t.owner), ratio = atk / Math.max(1, def) * (0.85 + r() * 0.3), want = bw * ratio * f.aggr * (t.owner === null ? 1.3 : 1) * (1 + (f.rel[t.owner] || 0) / -300) * (t.size / 2 + 0.5);
     // a realm far stronger overall can afford riskier sieges (this is what ends long stalemates)
     if (t.owner && !theirs.has(t.owner)) theirs.set(t.owner, power(G, t.owner));
-    const edge = t.owner ? mine / Math.max(1, theirs.get(t.owner)) : 9, need = edge > 2.5 ? 0.9 : edge > 1.5 ? 1.0 : edge > 1.1 ? 1.1 : 1.2;
+    const edge = t.owner ? mine / Math.max(1, theirs.get(t.owner)) : 9, need = bn * (edge > 2.5 ? 0.9 : edge > 1.5 ? 1.0 : edge > 1.1 ? 1.1 : 1.2);
     if (ratio > need) options.push({ t, from, send, troops, army, train, ratio, need, want: want * Math.min(2, edge / 2 + 0.5) });
   }
   if (!options.length) return;
@@ -726,7 +729,7 @@ function unrest(G) {
     const gov = G.gens[c.gov], f = G.factions[c.owner];
     if (!gov || busy(gov) || f.lord === gov.id || sameKin(G, gov, lordOf(G, f.id)) || gov.loyalty > 55 || gov.lead + gov.cha < 110) continue;
     // a sprawling empire is hard to hold: the more cities, the likelier a governor rebels
-    const n = citiesOf(G, f.id).length; if (n < 3 || r() > 0.006 + n / 1200) continue;
+    const n = citiesOf(G, f.id).length; if (n < 3 || r() > (0.006 + n / 1200) * rebelMul(G)) continue;
     // the governor declares himself a warlord
     const id = 'r' + G.nextFac++, colors = ['#e07a5a', '#5ae0c0', '#c05ae0', '#e0d05a', '#5a8ae0', '#e05a9a', '#9ae05a', '#5ae07a'];
     G.factions[id] = { id, name: gov.name, lordName: gov.name, color: colors[G.nextFac % colors.length], lord: gov.id, alive: true, gold: 400, food: 3000, rel: {}, allies: {}, truce: {}, capital: c.id, born: G.t, peak: 1, aggr: 0.9 + r() * 0.4, rebel: true };

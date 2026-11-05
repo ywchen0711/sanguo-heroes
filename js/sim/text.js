@@ -116,6 +116,7 @@ export function fmt(e, lang = 'zh') {
     case 'assassinFail': return en ? `An assassin strikes at ${N('g')}, but is cut down.` : `刺客行刺${p.g}，當場伏誅。`;
     case 'assassinWound': return en ? `An assassin wounds ${N('g')}, who survives.` : `刺客行刺${p.g}，${p.g}負傷逃過一劫。`;
     case 'granary': return en ? `Fire sweeps the granaries of ${C('c')}; the ${N('f')} army loses much of its food.` : `${p.c}糧倉失火，${p.f}軍損失大量糧草。`;
+    case 'txt': return en ? p.en : p.zh;
     default: return e.key;
   }
 }
