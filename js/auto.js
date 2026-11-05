@@ -138,13 +138,13 @@ export class AutoPlay {
   // ---------------------------------------------------------------- in a town: a short list of errands, then out of the gate
   inTown() {
     const M = this.g.town, H = this.H, pt = this.party(), mine = this.g.myFaction();
+    if (M.cave) return this.inCave(M, pt);
     if (!this.townKey || this.townKey !== M) {
       this.townKey = M; const own = M.C.owner && M.C.owner === mine;
       const list = [];
-      if (M.cave) { // a cave: its chests, then its master, if the party is strong enough
-        const st = H.places?.[M.place.id];
-        if (pt.lv >= this.caveLv(M.place.tier)) { for (const c of M.chests) if (!st?.chests.includes(c.i)) list.push({ thing: c }); const b = this.g.npcs.find((n) => n.special === 'boss'); if (b && pt.lv >= 6 + M.place.tier * 4) list.push({ npc: b }); } // the master only when strong enough
-      } else {
+      { // the people worth a word: a sage not seen this year, the village elder or the magistrate (missions, news, happenings)
+        const yr = this.G.year; this.met ||= {};
+        for (const n of this.g.npcs) if ((n.special === 'sage' && this.met['s' + n.sage] !== yr) || ((n.special === 'elder' || n.special === 'magistrate') && this.met[M.place?.id + n.special] !== this.G.t)) list.push({ npc: n });
         if (pt.sol < pt.max * 0.9 || this.g.partyList().some((p) => p.rec.sp < p.spMax * 0.5)) list.push({ door: 'inn' });
         if (H.gold > 400) list.push({ door: 'arms' });
         if ((H.items.med || 0) < 3 && H.gold > 150) list.push({ door: 'goods' });
@@ -163,9 +163,32 @@ export class AutoPlay {
     const e = this.errands.shift();
     if (!e) { this.lastCity = M.C.name; const gt = M.gate; this.walkTo((x, z) => z >= M.H - 1 && x >= gt.x0 && x <= gt.x1); this.want = null; return; }
     if (e.door) { const d = M.doors.find((x) => x.id === e.door); if (!d) return; this.errand = e; this.walkTo((x, z) => x === d.x && z === d.z); return; }
+    if (e.npc) { const n = e.npc; this.met[n.special === 'sage' ? 's' + n.sage : M.place?.id + n.special] = n.special === 'sage' ? this.G.year : this.G.t; }
     const t = e.thing || { x: Math.round(e.npc.a.x), z: Math.round(e.npc.a.z) };
     // walk next to it and then into it (a bump opens a chest or speaks to the master)
     if (this.walkTo((x, z) => Math.abs(x - t.x) + Math.abs(z - t.z) === 1)) this.path.push([t.x, t.z]);
+  }
+  // a cave: each time, the nearest thing left in it - a chest, a stele, a spring,
+  // a shrine, bones, a hermit or a sage, then the master (when strong enough, and with most of the soldiers still standing). Worked out afresh every time, so a fight on
+  // the way loses nothing; something it could not reach after three tries is left alone. Nothing left: out of the cave.
+  inCave(M, pt) {
+    const H = this.H, q = M.place, st = H.places?.[q.id] || { chests: [], odd: [] }, P = this.g.pos, yr = this.G.year; this.tries ||= {}; this.met ||= {};
+    const list = [];
+    for (const c of M.chests) if (!st.chests.includes(c.i)) list.push({ key: `${q.id}c${c.i}`, x: c.x, z: c.z });
+    M.odd.forEach((o, i) => { if (o.kind !== 'hermit' && !st.odd.includes(i)) list.push({ key: `${q.id}o${i}`, x: o.x, z: o.z }); });
+    for (const n of this.g.npcs) {
+      if (n.special === 'odd' && !st.odd.includes(n.odd)) list.push({ key: `${q.id}o${n.odd}`, x: Math.round(n.a.x), z: Math.round(n.a.z) });
+      if (n.special === 'sage' && this.met['s' + n.sage] !== yr) list.push({ key: `${q.id}s${n.sage}${yr}`, x: Math.round(n.a.x), z: Math.round(n.a.z), sage: n.sage });
+      if (n.special === 'boss' && pt.lv >= 6 + q.tier * 4 && pt.sol >= pt.max * 0.6) list.push({ key: `${q.id}b${this.G.t}`, x: Math.round(n.a.x), z: Math.round(n.a.z), boss: true });
+    }
+    const left = list.filter((t) => (this.tries[t.key] || 0) < 3).sort((a, b) => !!a.boss - !!b.boss || Math.abs(a.x - P.x) + Math.abs(a.z - P.z) - (Math.abs(b.x - P.x) + Math.abs(b.z - P.z)));
+    const t = left[0];
+    if (!t) { this.lastCity = q.name; const gt = M.gate; this.walkTo((x, z) => z >= M.H - 1 && x >= gt.x0 && x <= gt.x1); this.want = null; return; }
+    this.tries[t.key] = (this.tries[t.key] || 0) + 1; if (t.sage) this.met['s' + t.sage] = yr;
+    this.target = q.name;
+    // walk next to it and then into it (a bump opens a chest, reads a stele or speaks to someone)
+    if (Math.abs(t.x - P.x) + Math.abs(t.z - P.z) === 1) this.path = [[t.x, t.z]];
+    else if (this.walkTo((x, z) => Math.abs(x - t.x) + Math.abs(z - t.z) === 1)) this.path.push([t.x, t.z]);
   }
   // a door reached in a town: do the errand directly; true if handled
   async door(door, C) {
