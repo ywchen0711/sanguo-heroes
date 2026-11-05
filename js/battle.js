@@ -275,13 +275,14 @@ export class Battle {
           const terr = this.o.terrain, bonus = (o.k === 'rock' && terr === 'hill') || (o.k === 'flood' && (terr === 'marsh' || terr === 'coast')) || ((o.k === 'fire' || o.k === 'blaze') && terr === 'forest') ? 1.35 : o.k === 'fire' && terr === 'snow' ? 0.7 : 1;
           const fm = FORMS[this.form[u.side === 'party' ? 'party' : 'foe']]?.tac || 1, tm = u.side === 'party' && hasT(this.game.H, 'zhiduo') ? 1.1 : 1;
           const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * (1 + ((o.k === 'fire' || o.k === 'blaze' || o.k === 'feng') ? u.arms?.fire || 0 : 0)) * (this.round === 1 ? 1 + (u.arms?.firstAtk || 0) : 1) * (this.o.siege && t.side === 'foe' ? 1 - (t.arms?.wall || 0) : 1);
-          const d = Math.round((u.st.int * 2.4 + (u.lv || 1) * 3) * T.pow * bonus * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2) * (110 / (110 + t.st.int * 0.5)));
+          const sfU = 0.4 + 0.6 * Math.sqrt(Math.max(0, u.sol) / u.solMax), wits = clamp(1 + (u.st.int - t.st.int) / 120, 0.55, 1.5);   // wits against wits, carried out by the troops left
+          const d = Math.round((u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2));
           if (u.side === 'party' && this.game.H) bump(this.game.H, 'tacs');
           this.hit(t, d, u, true);
         }
       }
-      if (T.kind === 'heal') { const ts = T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine.sort((a, b) => a.sol / a.solMax - b.sol / b.solMax)[0]]; for (const t of ts) { const n = Math.round((u.st.int * 3 + 60) * T.pow * (1 + (u.arms?.healPow || 0))); t.sol = Math.min(t.solMax, t.sol + n); this.float(t, '+' + n, '#8aff8a'); this.drawBar(t); } }
-      if (T.kind === 'confuse') { const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 ? o.t : foes[0]]; for (const t of ts) { if (t.arms?.noConfuse) { this.float(t, '無效', '#c8e8ff'); continue; } if (Math.random() < clamp(0.55 + (u.st.int - t.st.int) / 100, 0.1, 0.9)) { t.status.confuse = 2; this.float(t, '混亂！', '#c8a0ff'); this.drawBar(t); } else this.float(t, '識破！', '#c8e8ff'); } }
+      if (T.kind === 'heal') { const ts = T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine.sort((a, b) => a.sol / a.solMax - b.sol / b.solMax)[0]]; for (const t of ts) { const n = Math.round((u.st.int * 2 + 40) * T.pow * (1 + (u.arms?.healPow || 0))); t.sol = Math.min(t.solMax, t.sol + n); this.float(t, '+' + n, '#8aff8a'); this.drawBar(t); } }
+      if (T.kind === 'confuse') { const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 ? o.t : foes[0]]; for (const t of ts) { if (t.arms?.noConfuse) { this.float(t, '無效', '#c8e8ff'); continue; } if (Math.random() < clamp(0.55 + (u.st.int - t.st.int) / 100, 0.1, 0.9) * (T.tgt === 'all' ? 0.65 : 1)) { t.status.confuse = 2; this.float(t, '混亂！', '#c8a0ff'); this.drawBar(t); } else this.float(t, '識破！', '#c8e8ff'); } }
       if (T.kind === 'buff') for (const t of mine) { t.status.rouse = 3; this.float(t, '攻擊↑', '#ffb04a'); }
       if (T.kind === 'guard') for (const t of mine) { t.status.guard = 3; this.float(t, '防禦↑', '#8ac8ff'); }
       if (T.kind === 'evade') for (const t of mine) { t.status.evade = 3; this.float(t, '迴避↑', '#c8e8ff'); }

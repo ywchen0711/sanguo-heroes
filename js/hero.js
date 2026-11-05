@@ -88,20 +88,20 @@ export const EQUIP = Object.fromEntries([...WEAPONS.map((w) => [w[0], { kind: 'w
 export const TACTICS = {
   fire: { n: '火計', int: 20, sp: 5, kind: 'dmg', pow: 1.5, tgt: 'one', d: '火燒一隊敵軍' },
   cheer: { n: '激勵', int: 30, sp: 6, kind: 'heal', pow: 1.0, tgt: 'ally', d: '回復一隊我軍兵力' },
-  rock: { n: '落石', int: 40, sp: 8, kind: 'dmg', pow: 2.1, tgt: 'one', d: '從高處落石（山地威力大）' },
+  rock: { n: '落石', int: 40, sp: 8, kind: 'dmg', pow: 1.9, tgt: 'one', d: '從高處落石（山地威力大）' },
   rouse: { n: '奮迅', int: 45, sp: 10, kind: 'buff', tgt: 'allies', d: '全軍攻擊上升三回合' },
   confuse: { n: '混亂', int: 50, sp: 8, kind: 'confuse', tgt: 'one', d: '使一隊敵軍混亂，無法行動' },
-  blaze: { n: '烈火', int: 60, sp: 14, kind: 'dmg', pow: 1.25, tgt: 'all', d: '大火燒向全體敵軍' },
-  rally: { n: '援軍', int: 70, sp: 16, kind: 'heal', pow: 0.75, tgt: 'allies', d: '回復全軍兵力' },
-  flood: { n: '水計', int: 78, sp: 20, kind: 'dmg', pow: 1.6, tgt: 'all', d: '引水淹沒全體敵軍（近水威力大）' },
+  blaze: { n: '烈火', int: 60, sp: 18, kind: 'dmg', pow: 0.5, tgt: 'all', d: '大火燒向全體敵軍' },
+  rally: { n: '援軍', int: 70, sp: 18, kind: 'heal', pow: 0.5, tgt: 'allies', d: '回復全軍兵力' },
+  flood: { n: '水計', int: 78, sp: 24, kind: 'dmg', pow: 0.6, tgt: 'all', d: '引水淹沒全體敵軍（近水威力大）' },
   // the spells of the simulation, for whoever knows them
-  lei: { n: '落雷', spell: true, sp: 18, kind: 'dmg', pow: 2.3, tgt: 'all', d: '天降落雷，重創全體敵軍' },
-  feng: { n: '呼風喚雨', spell: true, sp: 16, kind: 'dmg', pow: 1.7, tgt: 'all', d: '狂風助長火勢，焚燒全體敵軍' },
+  lei: { n: '落雷', spell: true, sp: 24, kind: 'dmg', pow: 0.72, tgt: 'all', d: '天降落雷，重創全體敵軍' },
+  feng: { n: '呼風喚雨', spell: true, sp: 22, kind: 'dmg', pow: 0.56, tgt: 'all', d: '狂風助長火勢，焚燒全體敵軍' },
   yao: { n: '妖術', spell: true, sp: 14, kind: 'confuse', tgt: 'all', d: '妖術迷惑全體敵軍' },
   huan: { n: '幻術', spell: true, sp: 12, kind: 'evade', tgt: 'allies', d: '幻影使敵軍攻擊落空' },
   zhen: { n: '八陣圖', spell: true, sp: 16, kind: 'guard', tgt: 'allies', d: '全軍防禦大幅上升' },
   dun: { n: '奇門遁甲', spell: true, sp: 12, kind: 'evade', tgt: 'allies', d: '全軍迴避上升' },
-  zhi: { n: '治癒', spell: true, sp: 14, kind: 'heal', pow: 1.1, tgt: 'allies', d: '救治全軍傷兵' },
+  zhi: { n: '治癒', spell: true, sp: 16, kind: 'heal', pow: 0.6, tgt: 'allies', d: '救治全軍傷兵' },
 };
 export const tacticsOf = (g) => Object.keys(TACTICS).filter((k) => { const T = TACTICS[k]; return T.spell ? g.spells?.includes(k) : g.int >= T.int; });
 
