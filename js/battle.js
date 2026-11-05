@@ -11,6 +11,7 @@ import { TACTICS, tacticsOf, bstats, ITEMS, usable, armsOf, hasHorse, TROOPS, tr
 import { hasT, bump } from './deeds.js';
 import { battleMods } from './bonds.js';
 import { relicFx } from './relics.js';
+import { groupTraits, comboLines, syncParty } from './traits.js';
 import { FX } from './fx.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -77,17 +78,21 @@ export class Battle {
     this.ensureView(); this.root.classList.add('on'); this.partyColor = o.color || '#3a6ad8';
     this.stage(o.terrain, o.siege); this.o = o; this.round = 0; this.log = [];
     const G = this.game.G, H = this.game.H, wounded = H?.wound > G?.t;
-    const EXTRA = ['stun', 'breakdef', 'counter', 'bowPow', 'navyPow', 'again', 'tacDmg', 'tacCost', 'tacHit', 'healPow', 'spRegen', 'steal', 'regen', 'physRes', 'tacRes', 'block', 'noConfuse', 'revive', 'lowHeal', 'startRouse', 'auraAtk', 'auraDef', 'duelHp', 'duelDmg'];
+    const EXTRA = ['fire', 'siege', 'wall', 'firstAtk', 'bossDmg', 'lowAtk', 'beastDmg', 'infPow', 'horse', 'stun', 'breakdef', 'counter', 'bowPow', 'navyPow', 'again', 'tacDmg', 'tacCost', 'tacHit', 'healPow', 'spRegen', 'steal', 'regen', 'physRes', 'tacRes', 'block', 'noConfuse', 'revive', 'lowHeal', 'startRouse', 'auraAtk', 'auraDef', 'duelHp', 'duelDmg'];
     const withRelics = (arms, r) => { const R = relicFx(r); for (const k of ['crit', 'combo', 'pierce', 'dodge']) arms[k] = (arms[k] || 0) + (R[k] || 0); arms.sweep = Math.max(arms.sweep || 0, R.sweep || 0); arms.first ||= !!R.first; arms.flee ||= !!R.flee; arms.cav = (arms.cav || 1) * (1 + (R.cavPow || 0)); for (const k of EXTRA) arms[k] = R[k] || 0; return arms; };
     const mk = (p) => { const g = p.g, r = p.rec, st = bstats(g, r), arms = withRelics(armsOf(G, g), r);
       if (g.isPlayer && wounded) { st.atk *= 0.85; st.def *= 0.85; }
       st.spd += arms.spd + (arms.first ? 999 : 0);
       const troop = r.troop === 'cav' && !hasHorse(G, g, r) ? 'inf' : r.troop || (hasHorse(G, g, r) ? 'cav' : p.look?.wpn === 'bow' ? 'bow' : 'inf');
       return { side: 'party', g, rec: r, name: g.name, look: p.look, lv: r.lv, sol: r.sol, solMax: p.solMax, sp: r.sp, spMax: p.spMax, st, arms, troop, tactics: tacticsOf(g), status: {}, isPlayer: g.isPlayer }; };
+    const PT = H && !o.drill ? syncParty(this.game) : null;
     this.party = party.map(mk);
     const foeTroop = (f) => f.troop || (f.beast ? null : f.solKind === 'nomad' ? 'cav' : f.solKind === 'pirate' ? 'navy' : f.gid != null ? (hasHorse(G, G.gens[f.gid]) ? 'cav' : f.int > f.war + 10 ? 'bow' : 'inf') : o.siege ? 'bow' : 'inf');
     this.foes = foes.map((f) => { const arms = armsOf(G, f.gid != null ? G.gens[f.gid] : { id: -9 });
       return { side: 'foe', ...f, arms, troop: foeTroop(f), st: { atk: f.war + (f.wpn || 0), def: f.lead * 0.6 + (f.arm || 0) * 1.6 + f.lv + (o.siege ? 18 : 0), int: f.int, spd: (f.war + f.lead) / 2 + f.lv * 0.3 + arms.spd + (arms.first ? 999 : 0), lead: f.lead, war: f.war }, tactics: f.beast ? [] : tacticsOf({ int: f.int, spells: f.spells || [] }), status: {}, spMax: f.sp, solLook: f.solLook || LOOKS.soldier(f.color || '#8a4a3a') }; });
+    const named = this.foes.filter((f) => f.gid != null), FT = named.length ? groupTraits(named.map((f) => G.gens[f.gid])) : null;
+    for (const f of named) { const fx = FT.get(f.gid).fx; for (const [k, v] of Object.entries(fx)) { if (['war', 'lead', 'int'].includes(k)) { if (k === 'war') f.st.atk += v; if (k === 'int') f.st.int += v; continue; } if (k === 'spd') { f.st.spd += v; continue; } if (k === 'first') { f.st.spd += 999; continue; } if (k === 'cavPow') { f.arms.cav = (f.arms.cav || 1) * (1 + v); continue; } f.arms[k] = (typeof v === 'number' && typeof f.arms[k] === 'number') ? f.arms[k] + v : v; } }
+    this.comboSay = [...(PT ? comboLines(PT, party.map((p) => p.g), '') : []), ...(FT ? comboLines(FT, named.map((f) => G.gens[f.gid]), '敵軍') : [])];
     // formations: ours as last chosen; an army led by generals (or a siege) draws one up too
     this.form = { party: H?.form || 'yulin', foe: foes.some((f) => f.gid != null) || o.siege ? Object.keys(FORMS)[Math.floor(Math.random() * 5)] : null };
     // what the people in the player's life bring: sworn brothers, a fury for a fallen one, rivals, a killer to avenge
@@ -96,6 +101,7 @@ export class Battle {
     if (H && hasT(H, 'wanren')) this.mods.atk *= 1.05; if (H && o.siege && hasT(H, 'gongcheng')) this.mods.atk *= 1.1;
     this.mods.atk *= 1 + Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraAtk || 0), 0));
     this.partyDef = 1 - Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraDef || 0), 0));
+    this.mods.foeAtk *= 1 + Math.min(0.3, this.foes.reduce((t, u) => t + (u.arms.auraAtk || 0), 0)); this.foeDef = 1 - Math.min(0.3, this.foes.reduce((t, u) => t + (u.arms.auraDef || 0), 0));
     // a column for each side, spread from front to back, every other general a step out
     const zs = (n) => Array.from({ length: n }, (_, i) => OZ + (n === 1 ? 6.2 : 3.7 + i * Math.min(1.9, 5.2 / (n - 1))));
     const pz = zs(this.party.length), fz = zs(this.foes.length);
@@ -107,6 +113,7 @@ export class Battle {
     await this.say(o.title || `${this.foes.map((f) => f.name).slice(0, 3).join('、')}${this.foes.length > 3 ? '等' : ''}出現了！`);
     this.formBar();
     for (const l of this.mods.lines) await this.say(l, 1100);
+    for (const l of this.comboSay.slice(0, 4)) { this.game.audio?.sfx('level'); await this.say(`★ ${l}`, 1000); }
     const drum = Math.max(0, ...this.party.map((u) => u.arms.startRouse || 0));
     if (drum) { for (const u of this.party) { u.status.rouse = drum + 1; this.float(u, '攻擊↑', '#ffb04a'); } await this.say('戰鼓擂響，全軍士氣大振！', 900); }
     let result;
@@ -267,7 +274,7 @@ export class Battle {
           if (Math.random() > hitP) { this.float(t, '識破！', '#c8e8ff'); continue; }
           const terr = this.o.terrain, bonus = (o.k === 'rock' && terr === 'hill') || (o.k === 'flood' && (terr === 'marsh' || terr === 'coast')) || ((o.k === 'fire' || o.k === 'blaze') && terr === 'forest') ? 1.35 : o.k === 'fire' && terr === 'snow' ? 0.7 : 1;
           const fm = FORMS[this.form[u.side === 'party' ? 'party' : 'foe']]?.tac || 1, tm = u.side === 'party' && hasT(this.game.H, 'zhiduo') ? 1.1 : 1;
-          const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : 1);
+          const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * (1 + ((o.k === 'fire' || o.k === 'blaze' || o.k === 'feng') ? u.arms?.fire || 0 : 0)) * (this.round === 1 ? 1 + (u.arms?.firstAtk || 0) : 1) * (this.o.siege && t.side === 'foe' ? 1 - (t.arms?.wall || 0) : 1);
           const d = Math.round((u.st.int * 2.4 + (u.lv || 1) * 3) * T.pow * bonus * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2) * (110 / (110 + t.st.int * 0.5)));
           if (u.side === 'party' && this.game.H) bump(this.game.H, 'tacs');
           this.hit(t, d, u, true);
@@ -299,7 +306,11 @@ export class Battle {
     if (u.troop === 'bow' && fu?.bow) d *= fu.bow; if (u.troop === 'cav') d *= u.arms?.cav || 1;
     if (this.mods) d *= u.side === 'party' ? this.mods.atk : this.mods.foeAtk;
     if (u.troop === 'bow') d *= 1 + (u.arms?.bowPow || 0); if (u.troop === 'navy') d *= 1 + (u.arms?.navyPow || 0);
-    d *= (1 - (t.arms?.physRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : 1);
+    if (u.troop === 'inf') d *= 1 + (u.arms?.infPow || 0); if (u.troop === 'cav' && u.arms?.horse) d *= 1 + u.arms.horse / 2;
+    if (this.o.siege && u.side === 'party') d *= 1 + (u.arms?.siege || 0); if (this.o.siege && t.side === 'foe') d *= 1 - (t.arms?.wall || 0);
+    if (this.round === 1) d *= 1 + (u.arms?.firstAtk || 0); if (u.sol < u.solMax * 0.3) d *= 1 + (u.arms?.lowAtk || 0);
+    if (t.gid != null || t.boss) d *= 1 + (u.arms?.bossDmg || 0); if (t.beast) d *= 1 + (u.arms?.beastDmg || 0);
+    d *= (1 - (t.arms?.physRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1);
     if (t.arms?.block && Math.random() < t.arms.block) { d *= 0.5; this.float(t, '格擋', '#c8e8ff'); }
     if (Math.random() < 0.06 + u.st.war / 1500 + (u.arms?.crit || 0)) { d *= 1.6; this.float(u, '會心！', '#ffe04a'); }
     return Math.max(1, Math.round(d));

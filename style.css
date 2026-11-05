@@ -164,3 +164,13 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 .life p { margin: 2px 0; } .life p small { color: var(--dim); }
 .h-name .h-bot { font-style: normal; color: #8affff; font-size: 12px; margin-left: 6px; }
 .score.board td { padding: 3px 8px; } .score.board tr.me td { color: var(--gold); background: rgba(255, 216, 106, 0.08); }
+
+/* traits */
+.traits { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.trait { border: 1px solid var(--edge); border-radius: 5px; padding: 2px 8px; background: rgba(0, 0, 0, 0.2); }
+.trait.r3 { border-color: #ffc84a; box-shadow: 0 0 6px rgba(255, 200, 74, 0.35); } .trait.r2 { border-color: #6ab0ff; }
+.trait small { display: block; color: var(--dim); font-size: 12px; }
+.sch { display: inline-block; font-size: 11px; line-height: 15px; border-radius: 3px; padding: 0 4px; margin-left: 3px; color: #fff; vertical-align: 1px; }
+.acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.act { font-size: 13px; color: #c8e0ff; } .act.big { color: #ffd86a; font-weight: bold; } .act small { color: var(--dim); font-weight: normal; margin-left: 3px; }
+.combo-tip { color: #ffd86a; font-size: 14px; }

@@ -8,7 +8,7 @@ import { WEAPONS, ARMORS, HORSES, EQUIP, rankOf, solMax } from './hero.js';
 import { itemOf } from './relics.js';
 
 const STEP = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-const RISKY = /生死|斬首|斬殺|下野|離開這個|背叛|高價賣|視而不見|不關我的事|按兵不動|太危險|重新選擇|稱王天下/;
+const RISKY = /忘掉|生死|斬首|斬殺|下野|離開這個|背叛|高價賣|視而不見|不關我的事|按兵不動|太危險|重新選擇|稱王天下/;
 const RISKY_Q = /生死決鬥|離開.+軍嗎|賣掉|結束，結算|提前結算|斬殺/;
 export class AutoPlay {
   constructor(game) { this.g = game; this.on = false; this.path = []; this.want = null; this.wait = 0; this.tasks = []; this.stuckN = 0; this.lastCity = null; this.restDay = -99; }

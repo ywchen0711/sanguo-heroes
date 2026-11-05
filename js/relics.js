@@ -3,12 +3,14 @@
 // { sid } for a shop piece taken off. The bag (H.bag) holds everything not being worn.
 import { RELICS, RELIC_IDS, POWERS, GRADE_N, GRADE_C, SLOT_N, PRICE } from './data/relics.js';
 import { EQUIP } from './hero.js';
+import { SETS } from './data/relics.js';
+import { TF } from './traits.js';
 
-export { RELICS, POWERS, GRADE_N, GRADE_C, SLOT_N, PRICE };
+export { RELICS, POWERS, GRADE_N, GRADE_C, SLOT_N, PRICE, SETS };
 const LV_EXP = [0, 0, 20, 60, 130, 240];
 export const lvMul = (lv) => 1 + 0.12 * ((lv || 1) - 1);
-const CAP = { crit: 0.4, combo: 0.6, pierce: 0.7, dodge: 0.45, block: 0.6, physRes: 0.5, tacRes: 0.7, again: 0.4, counter: 0.7, stun: 0.4, tacCost: 0.6, encounter: 0.7, steal: 0.5 };
-const FLAG = new Set(['first', 'noConfuse', 'flee']);
+const CAP = { fire: 1.2, siege: 0.8, wall: 0.6, firstAtk: 1, bossDmg: 0.8, lowAtk: 1, beastDmg: 1, infPow: 0.8, crit: 0.4, combo: 0.6, pierce: 0.7, dodge: 0.45, block: 0.6, physRes: 0.5, tacRes: 0.7, again: 0.4, counter: 0.7, stun: 0.4, tacCost: 0.6, encounter: 0.7, steal: 0.5 };
+const FLAG = new Set(['first', 'noConfuse', 'flee']), STATK = new Set(['lead', 'war', 'int', 'pol', 'cha']);
 const INT = new Set(['spRegen', 'spd', 'startRouse']);
 // the strength of one power of a treasure (its second power is a little weaker)
 export function powerVal(R, key, lv, second) {
@@ -32,7 +34,13 @@ export function relicFx(r) {
     const e = r?.eq?.[k]; if (!isRelic(e)) continue; const R = RELICS[e.id]; if (!R) continue;
     if (R.stat) o.stat[R.stat] = (o.stat[R.stat] || 0) + Math.round(R.v * lvMul(e.lv));
     for (const [key, second] of [[R.p1, false], [R.p2, true]]) if (key) o[key] = FLAG.has(key) ? 1 : (o[key] || 0) + powerVal(R, key, e.lv, second);
+    if (R.set != null) (o._sets ||= {})[R.set] = (o._sets[R.set] || 0) + 1;
   }
+  // sets: two pieces, four pieces
+  for (const [si, n] of Object.entries(o._sets || {})) { const S = SETS[si]; for (const [need, b] of [[2, S[3]], [4, S[4]]]) if (n >= need) for (const [k, v] of Object.entries(b)) o[k] = FLAG.has(k) ? 1 : (o[k] || 0) + v; }
+  // the general's traits (worked out for the party in traits.js)
+  const T = r && TF.get(r);
+  if (T) for (const [k, v] of Object.entries(T)) { if (STATK.has(k)) o.stat[k] = (o.stat[k] || 0) + Math.round(v); else o[k] = FLAG.has(k) ? 1 : (o[k] || 0) + v; }
   for (const k in CAP) if (o[k] > CAP[k]) o[k] = CAP[k];
   return o;
 }

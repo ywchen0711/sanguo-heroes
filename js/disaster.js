@@ -3,6 +3,7 @@
 // sell your own at ten times the price; a plague sickens a party that walks in, unless a healer is with it; a
 // famished garrison fights badly, so a disaster is also a chance for a siege. A comet foretells a great man's death.
 import { deed, bump, checkTitles, hasT } from './deeds.js';
+import { partyFx } from './relics.js';
 
 const DUR = { locust: 4, flood: 3, plague: 2, quake: 2 };
 export const DIS_N = { locust: '蝗災', flood: '水災', plague: '瘟疫', quake: '地震' };
@@ -18,7 +19,7 @@ export function noteDisasters(game, logs) {
   }
 }
 // prices in a hungry city
-export function priceMul(game, cid) { const d = cid != null && disasterAt(game, cid); return (d && famine(d.k) ? 1.6 : 1) * (hasT(game.H, 'renyi') ? 0.9 : 1); }
+export function priceMul(game, cid) { const d = cid != null && disasterAt(game, cid); return (d && famine(d.k) ? 1.6 : 1) * (hasT(game.H, 'renyi') ? 0.9 : 1) * (1 - Math.min(0.3, partyFx(game, 'price'))); }
 // the garrison of a stricken city is weaker
 export const garrisonMul = (game, cid) => { const d = disasterAt(game, cid); return d ? (famine(d.k) ? 0.78 : d.k === 'plague' ? 0.85 : 0.92) : 1; };
 // walking into a stricken city

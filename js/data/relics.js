@@ -70,6 +70,36 @@ export const LINES = [
   ['x:lead', 'bowPow', 'crit', '弓箭手用的護具', ['箭囊', '鐵箭囊', '雕翎箭', '穿雲箭', '射日神箭']],
   ['x:lead', 'navyPow', 'dodge', '水戰的寶物', ['船錨', '水軍令旗', '樓船圖', '錦帆鈴', '定海神針']],
   ['x:int', 'again', 'tacDmg', '傳說中仙人留下的寶物', ['奇石', '七星珠', '避水珠', '定風珠', '如意寶珠']],
+  // ---------------------------------------------------------------- school treasures (流派寶物): each also strengthens its wearer's traits of one school
+  ['w', 'bossDmg', 'crit', '猛將的兵器，越勇越強', ['虎牙刀', '破軍刀', '霸王槍', '無雙戟', '萬人敵'], '勇'],
+  ['h', 'cavPow', 'firstAtk', '衝鋒陷陣的好馬', ['戰馬', '西涼馬', '烏桓駿馬', '虎豹駒', '嘶風赤驥'], '騎'],
+  ['x:war', 'bowPow', 'crit', '射手代代相傳的心得', ['射術心得', '百步秘要', '穿楊訣', '落雁譜', '射日神訣'], '弓'],
+  ['a', 'navyPow', 'dodge', '在水上行動自如', ['蓑衣', '水靠', '鮫皮衣', '蛟鱗甲', '避水寶衣'], '水'],
+  ['a', 'wall', 'physRes', '守城將士的鎧甲', ['守城甲', '城門鎧', '金湯甲', '長城鎧', '不破金身'], '守'],
+  ['x:int', 'tacDmg', 'tacHit', '謀士的心血', ['算籌', '策論', '兵機錄', '奇謀錄', '隆中對'], '謀'],
+  ['w', 'fire', 'tacDmg', '一揮就是一片火海', ['火摺子', '火油罐', '火龍扇', '祝融鞭', '朱雀羽扇'], '火'],
+  ['x:cha', 'healPow', 'mend', '醫家的方書', ['藥王經', '青囊方', '百草譜', '千金方', '青囊書'], '仁'],
+  ['h', 'spd', 'dodge', '快得看不見影子', ['快馬', '驍騎', '奔霄', '絕影', '超光'], '速'],
+  ['x:lead', 'solMax', 'auraAtk', '統帥的信物', ['將令', '軍令狀', '都督印', '大將軍印', '節鉞'], '統'],
+  ['x:int', 'spRegen', 'stun', '藏著天機的奇物', ['龜甲', '卦簽', '河圖', '洛書', '遁甲天書'], '奇'],
+  ['x:pol', 'gold', 'fame', '治理一方的帳冊', ['算盤', '賬簿', '田冊', '戶籍圖', '治國策'], '政'],
+  ['x:cha', 'recruit', 'fame', '讓人一見傾心', ['香囊', '玉簪', '珠釵', '鳳冠', '傾城玉'], '魅'],
+  ['a', 'encounter', 'dodge', '浪跡江湖的行頭', ['斗笠', '俠客衫', '江湖行囊', '遊俠披風', '逍遙衣'], '遊'],
+  ['x:cha', 'drop', 'gold', '帶來好運的吉物', ['銅錢', '吉祥結', '福袋', '如意', '招財金蟾'], '運'],
+];
+// sets (套裝): four pieces of grade 4; two of a set worn together add one thing more, all four another
+// [name, school, [w, a, h, x] as [name, power], two-piece bonus, four-piece bonus, the accessory's number]
+export const SETS = [
+  ['虎豹騎', '騎', [['虎豹騎槍', 'crit'], ['虎豹騎甲', 'physRes'], ['虎豹騎駿', 'cavPow'], ['虎豹騎令', 'firstAtk']], { cavPow: 0.1 }, { first: 1, cavPow: 0.15 }, 'lead'],
+  ['臥龍', '謀', [['臥龍羽扇', 'tacDmg'], ['臥龍鶴氅', 'tacRes'], ['四輪車', 'spd'], ['臥龍兵書', 'tacCost']], { tacCost: 0.1 }, { tacDmg: 0.2, spRegen: 4 }, 'int'],
+  ['西涼', '騎', [['西涼長槍', 'pierce'], ['西涼狼皮甲', 'physRes'], ['西涼戰馬', 'cavPow'], ['西涼狼牙', 'crit']], { cavPow: 0.1 }, { crit: 0.1, combo: 0.1 }, 'war'],
+  ['江東', '水', [['古錠刀', 'combo'], ['錦帆甲', 'dodge'], ['江東赤驥', 'spd'], ['水軍都督令', 'navyPow']], { navyPow: 0.12 }, { navyPow: 0.2, fire: 0.15 }, 'lead'],
+  ['黃巾', '奇', [['黃天法杖', 'tacDmg'], ['黃巾道袍', 'tacRes'], ['大賢良師青牛', 'regen'], ['太平符', 'spRegen']], { stun: 0.06 }, { stun: 0.1, tacDmg: 0.15 }, 'int'],
+  ['陷陣營', '守', [['陷陣刀', 'breakdef'], ['陷陣重甲', 'physRes'], ['陷陣戰馬', 'block'], ['陷陣令', 'auraDef']], { auraDef: 0.05 }, { breakdef: 0.15, physRes: 0.1 }, 'lead'],
+  ['白馬義從', '弓', [['白馬角弓', 'bowPow'], ['白馬銀甲', 'dodge'], ['白馬', 'cavPow'], ['義從令', 'spd']], { bowPow: 0.1 }, { cavPow: 0.1, bowPow: 0.1, again: 0.08 }, 'lead'],
+  ['南蠻', '勇', [['南蠻飛刀', 'crit'], ['藤甲王鎧', 'physRes'], ['戰象', 'sweep'], ['象牙護符', 'revive']], { physRes: 0.06 }, { sweep: 0.2, revive: 0.2 }, 'war'],
+  ['華佗', '仁', [['華佗刀針', 'steal'], ['青囊衣', 'regen'], ['白鹿', 'mend'], ['五禽戲圖', 'healPow']], { healPow: 0.2 }, { lowHeal: 0.4, regen: 0.03 }, 'cha'],
+  ['名將之魂', '統', [['名將佩劍', 'crit'], ['名將戰袍', 'solMax'], ['名將神駒', 'spd'], ['名將兵符', 'auraAtk']], { auraAtk: 0.04 }, { auraAtk: 0.08, auraDef: 0.06 }, 'lead'],
 ];
 // powers: [name, values for grades 1-5, how it reads]
 export const POWERS = {
@@ -114,6 +144,14 @@ export const POWERS = {
   encounter: ['潛行', [0.1, 0.15, 0.22, 0.3, 0.4], (v) => `野外遇敵 -${pc(v)}`],
   recruit: ['威望', [0.05, 0.07, 0.1, 0.13, 0.17], (v) => `招募成功率 +${pc(v)}`],
   fame: ['名望', [0.1, 0.15, 0.2, 0.28, 0.36], (v) => `得到的名聲 +${pc(v)}`],
+  fire: ['火攻', [0.08, 0.12, 0.16, 0.22, 0.3], (v) => `火計威力 +${pc(v)}`],
+  siege: ['攻城', [0.06, 0.09, 0.13, 0.18, 0.24], (v) => `攻城時攻擊 +${pc(v)}`],
+  wall: ['守城', [0.06, 0.09, 0.13, 0.18, 0.24], (v) => `守城時受到的傷害 -${pc(v)}`],
+  firstAtk: ['先手', [0.08, 0.12, 0.16, 0.22, 0.3], (v) => `第一回合傷害 +${pc(v)}`],
+  bossDmg: ['斬將', [0.06, 0.09, 0.13, 0.18, 0.24], (v) => `對武將與頭目傷害 +${pc(v)}`],
+  lowAtk: ['背水', [0.1, 0.15, 0.2, 0.28, 0.36], (v) => `兵力不到三成時攻擊 +${pc(v)}`],
+  beastDmg: ['獵獸', [0.1, 0.15, 0.22, 0.3, 0.4], (v) => `對猛獸傷害 +${pc(v)}`],
+  infPow: ['步戰', [0.1, 0.14, 0.18, 0.24, 0.3], (v) => `率領步兵時攻擊 +${pc(v)}`],
 };
 const pc = (v) => `${Math.round(v * 100)}%`;
 export const SLOT_N = { w: '武器', a: '防具', h: '坐騎', x: '輔助' };
@@ -124,8 +162,11 @@ const BASE = { w: [6, 10, 15, 21, 28], a: [5, 9, 14, 20, 27], h: [4, 7, 11, 15, 
 export const PRICE = [0, 400, 1100, 2600, 5600, 12000];
 // the catalogue: id -> { id, n, slot, grade, v, stat (for accessories), p1, p2, d }
 export const RELICS = {};
-LINES.forEach(([slot0, p1, p2, d, names], li) => {
+LINES.forEach(([slot0, p1, p2, d, names, school], li) => {
   const [slot, stat] = slot0.split(':');
-  names.forEach((n, i) => { const g = i + 1, id = `r${li}_${g}`; RELICS[id] = { id, n, slot, stat: stat || null, grade: g, v: BASE[slot][i], p1, p2: g >= 3 ? p2 : null, d }; });
+  names.forEach((n, i) => { const g = i + 1, id = `r${li}_${g}`; RELICS[id] = { id, n, slot, stat: stat || null, grade: g, v: BASE[slot][i], p1, p2: g >= 3 ? p2 : null, d, school: school || null }; });
+});
+SETS.forEach(([sn, school, pieces, , , stat], si) => {
+  ['w', 'a', 'h', 'x'].forEach((slot, i) => { const [n, p1] = pieces[i], id = `s${si}${slot}`; RELICS[id] = { id, n, slot, stat: slot === 'x' ? stat : null, grade: 4, v: BASE[slot][3], p1, p2: null, d: `「${sn}」套裝的一件（${school}系）`, set: si }; });
 });
 export const RELIC_IDS = Object.keys(RELICS);

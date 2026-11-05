@@ -2,25 +2,29 @@
 // on the right with what each piece would change. Arrow keys move, Z chooses, X goes back; the mouse works too.
 import { personSheet, frameCanvas } from './sprites.js';
 import { bstats, solMax, spMax, forgeOf } from './hero.js';
+import { schoolsOf, SCHOOLS, TF } from './traits.js';
+import { SETS } from './data/relics.js';
 import { itemOf, isRelic, relicFx, powerLines, bagFor, wear, nextExp, RELICS, POWERS, GRADE_N, GRADE_C, SLOT_N } from './relics.js';
 
 const SLOTS = ['w', 'a', 'h', 'x'];
 const STATS = [['atk', '攻擊'], ['def', '防禦'], ['spd', '速度'], ['int', '智力'], ['sol', '兵力上限'], ['sp', '策略上限']];
 function numbers(g, rec) { const b = bstats(g, rec); return { atk: Math.round(b.atk), def: Math.round(b.def), spd: Math.round(b.spd), int: Math.round(b.int), sol: solMax(g, rec), sp: spMax(g, rec) }; }
 // what the numbers would be with entry e in slot k
-function tryOn(rec, k, e) { const r2 = { ...rec, eq: { ...rec.eq, [k]: e ? (e.sid ? e.sid : { id: e.id, lv: e.lv || 1, exp: e.exp || 0 }) : null }, forge: { ...(rec.forge || {}), [k]: e ? e.forge || 0 : 0 } }; return r2; }
+function tryOn(rec, k, e) { const r2 = { ...rec, eq: { ...rec.eq, [k]: e ? (e.sid ? e.sid : { id: e.id, lv: e.lv || 1, exp: e.exp || 0 }) : null }, forge: { ...(rec.forge || {}), [k]: e ? e.forge || 0 : 0 } }; if (TF.has(rec)) TF.set(r2, TF.get(rec)); return r2; }
 function pieceHTML(e, forge) {
   const it = itemOf(e); if (!it) return '<span class="dim">（空）</span>';
   return `<b style="color:${it.color}">${it.n}</b>${it.lv > 1 ? `<small> Lv${it.lv}</small>` : ''}${forge ? `<small> +${forge}</small>` : ''}`;
 }
-function infoHTML(e) {
+function infoHTML(e, g) {
   const it = itemOf(e); if (!it) return '';
   if (it.shop) return `<div class="eq-d"><b>${it.n}</b>　<small>${SLOT_N[it.slot]}・商店貨</small><p>${{ w: '攻擊', a: '防禦', h: '速度' }[it.slot]} +${it.v}</p></div>`;
   const R = it.R, nx = nextExp(e);
   return `<div class="eq-d"><b style="color:${it.color}">${it.n}</b>　<small>${GRADE_N[R.grade]}・${SLOT_N[R.slot]}　Lv${it.lv}${nx ? `（經驗 ${e.exp || 0}/${nx}）` : '（最高）'}</small>
     <p class="dim">${R.d}</p><p>${R.slot === 'x' ? `${{ int: '智力', war: '武力', lead: '統率', cha: '魅力', pol: '政治' }[R.stat]} +${it.v}` : `${{ w: '攻擊', a: '防禦', h: '速度' }[R.slot]} +${it.v}`}</p>
-    ${powerLines(e).map((l) => `<p class="pw">【${l.n}】${l.d}</p>`).join('')}</div>`;
+    ${powerLines(e).map((l) => `<p class="pw">【${l.n}】${l.d}</p>`).join('')}
+    ${R.school ? `<p class="pw">【流派】${R.school}系特性的效果 +${R.grade * 8}%${g && schoolsOf(g).has(R.school) ? `　<b style="color:#ffd86a">★ 和${g.name}的特性配合</b>` : ''}</p>` : ''}${R.set != null ? `<p class="pw">【套裝・${SETS[R.set][0]}】兩件：${setText(SETS[R.set][3])}；四件：${setText(SETS[R.set][4])}</p>` : ''}</div>`;
 }
+const setText = (b) => Object.entries(b).map(([k, v]) => (POWERS[k] ? POWERS[k][2](v) : k)).join('、');
 export async function equipScreen(game, start = 0) {
   const ui = game.ui, H = game.H;
   let col = 0, mi = Math.min(start, game.partyList().length - 1), si = 0, bi = 0;
@@ -41,7 +45,7 @@ export async function equipScreen(game, start = 0) {
           <div class="eqs-col eqs-bag${col === 2 ? ' on' : ''}">
             <h4>背包・${SLOT_N[slot]}（${bag.length}）</h4>
             ${col === 2 ? opts.map((e, i) => `<div class="eqs-it${i === bi ? ' sel' : ''}" data-b="${i}">${e ? pieceHTML(e, e.forge) : '<span class="dim">卸下</span>'}${e && isRelic(e) ? `<small class="g" style="color:${GRADE_C[RELICS[e.id].grade]}">${GRADE_N[RELICS[e.id].grade]}</small>` : ''}</div>`).join('') : bag.slice(0, 12).map((e) => `<div class="eqs-it dim">${pieceHTML(e, e.forge)}</div>`).join('') || '<p class="dim">沒有可以換的東西。<br>寶物可以在洞穴、戰鬥、任務和大城的寶物商人那裡得到。</p>'}
-            <div class="eqs-info">${col === 2 ? (opts[bi] ? infoHTML(opts[bi]) : '<p class="dim">把這個部位的裝備卸下，放回背包。</p>') : infoHTML(rec.eq?.[slot])}</div>
+            <div class="eqs-info">${col === 2 ? (opts[bi] ? infoHTML(opts[bi], p.g) : '<p class="dim">把這個部位的裝備卸下，放回背包。</p>') : infoHTML(rec.eq?.[slot], p.g)}</div>
           </div>
           <div class="eqs-help">↑↓ 選擇　→ / Z 決定　← / X 返回</div>`;
         root.querySelector('.eqs-bag .sel')?.scrollIntoView({ block: 'nearest' });

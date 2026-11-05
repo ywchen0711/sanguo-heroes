@@ -11,10 +11,7 @@ export const SCHOOLS = {
 const pc = (v) => `${Math.round(v * 100)}%`;
 // effects that are not treasure powers
 export const EXTRA = {
-  war: (v) => `武力 +${v}`, int: (v) => `智力 +${v}`, lead: (v) => `統率 +${v}`, pol: (v) => `政治 +${v}`, cha: (v) => `魅力 +${v}`,
-  fire: (v) => `火計威力 +${pc(v)}`, siege: (v) => `攻城時攻擊 +${pc(v)}`, wall: (v) => `守城時受到的傷害 -${pc(v)}`,
-  lowAtk: (v) => `兵力不到三成時攻擊 +${pc(v)}`, firstAtk: (v) => `第一回合傷害 +${pc(v)}`, bossDmg: (v) => `對武將與頭目傷害 +${pc(v)}`,
-  beastDmg: (v) => `對猛獸傷害 +${pc(v)}`, infPow: (v) => `率領步兵時攻擊 +${pc(v)}`, horse: (v) => `坐騎的效果 +${pc(v)}`,
+  war: (v) => `武力 +${v}`, int: (v) => `智力 +${v}`, lead: (v) => `統率 +${v}`, pol: (v) => `政治 +${v}`, cha: (v) => `魅力 +${v}`, horse: (v) => `坐騎的效果 +${pc(v)}`,
   farm: (v) => `開墾成效 +${pc(v)}`, comm: (v) => `經商成效 +${pc(v)}`, morale: (v) => `安民成效 +${pc(v)}`, train: (v) => `練兵成效 +${pc(v)}`,
   build: (v) => `築城成效 +${pc(v)}`, loyal: (v) => `部下忠誠 +${Math.round(v * 100)}`, merit: (v) => `得到的功績 +${pc(v)}`,
   price: (v) => `買東西便宜 ${pc(v)}`, diplo: (v) => `外交成功率 +${pc(v)}`, bond: (v) => `好感上升 +${pc(v)}`, event: (v) => `奇遇機率 +${pc(v)}`,

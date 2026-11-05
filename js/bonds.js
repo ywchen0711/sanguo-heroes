@@ -3,6 +3,7 @@
 // grief-stricken fury, and his killer becomes the man to hunt down. A general who beats you three times — or whom
 // you beat three times — becomes your rival, and the two of you fight the harder whenever you meet.
 import { deed, checkTitles, hasT } from './deeds.js';
+import { partyFx } from './relics.js';
 
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 export const bondOf = (H, id) => (H.bond || {})[id] || 0;
@@ -12,7 +13,7 @@ export const isRival = (H, id) => (H.rivals || []).includes(id);
 export function addBond(game, id, n) {
   const H = game.H; H.bond ||= {};
   const cap = H.party.includes(id) || isSworn(H, id) ? 100 : 40;
-  H.bond[id] = Math.min(cap, (H.bond[id] || 0) + n);
+  H.bond[id] = Math.min(cap, (H.bond[id] || 0) + (n > 0 ? Math.round(n * (1 + partyFx(game, 'bond'))) : n));
 }
 // after a fight or a drink: a companion close enough is ready to swear brotherhood
 export async function offerOaths(game) {

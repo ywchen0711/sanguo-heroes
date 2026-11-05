@@ -18,6 +18,7 @@ import { Events } from './events.js';
 import { Story } from './story.js';
 import { AutoPlay } from './auto.js';
 import { Board } from './board.js';
+import { syncParty, awaken } from './traits.js';
 import { pickRivals } from './sim/rivals.js';
 import { deed, histDeaths, checkTitles, hasT, knownAs } from './deeds.js';
 import { mourn } from './bonds.js';
@@ -71,7 +72,7 @@ class Game {
   load2() { this.world ||= buildWorld(); this.mode = 'world'; document.body.classList.add('playing'); assignLooks(this.G.gens); }
   get me() { return this.G.gens[this.H.pid]; }
   // the party as [{ g, rec, look, solMax, spMax }]
-  partyList() { const cmd = this.perk().troop; return [this.H.pid, ...this.H.party].map((id) => { const g = this.G.gens[id], rec = this.H.rec[id]; rec.cmd = cmd; return { g, rec, look: this.lookOf(g), solMax: solMax(g, rec), spMax: spMax(g, rec) }; }); }
+  partyList() { syncParty(this); const cmd = this.perk().troop; return [this.H.pid, ...this.H.party].map((id) => { const g = this.G.gens[id], rec = this.H.rec[id]; rec.cmd = cmd; return { g, rec, look: this.lookOf(g), solMax: solMax(g, rec), spMax: spMax(g, rec) }; }); }
   // what the player's rank brings (see PERKS), and how many may travel with them
   perk() { const g = this.me; return PERKS[this.isLord() ? 7 : g.status === 'serving' ? 1 + rankOf(g.merit) : 0]; }
   partyMax() { return this.perk().party; }
@@ -341,6 +342,7 @@ class Game {
     if (!before.lord && this.isLord()) this.ui.toast(`<b style="color:#ffd86a">你繼承了${G.factions[now].name}軍之主的地位！</b>`, 5000);
     noteDisasters(this, logs);
     this.board.month();
+    { const loyal = partyFx(this, 'loyal'), mine = this.myFaction(); if (loyal) for (const id of this.H.party) { const x = G.gens[id]; if (x.status === 'serving') x.loyalty = Math.min(100, x.loyalty + Math.round(loyal * 10)); } if (mine && this.isLord()) G.factions[mine].diplo = Math.min(0.3, partyFx(this, 'diplo')); }
     if (!before.lord && this.isLord()) deed(this, `繼${G.factions[now].name}之位`, true);
     if (before.fac && !now) deed(this, `${G.factions[before.fac]?.name || ''}亡，${g.name}流落在野`);
     if (hasT(this.H, 'bazhu')) this.H.fame += 3;

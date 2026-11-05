@@ -24,17 +24,21 @@ import { EV_FIELD } from './ev/field.js';
 import { EV_TALK3 } from './ev/talk3.js';
 import { EV_TOWN2 } from './ev/town2.js';
 import { EV_FIELD2 } from './ev/field2.js';
+import { EV_TRAIT } from './ev/trait.js';
+import { traitsOf, TRAIT, learnTrait, syncParty } from './traits.js';
+import { eraIs } from './sim/era.js';
+import { addBond } from './bonds.js';
 import { ITEMS, EQUIP, STAT_N, gainExp, solMax, spMax } from './hero.js';
 import { itemName } from './sim/text.js';
 import { citiesOf, power, busy } from './sim/engine.js';
 import { regionAt, CITY_POS } from './world.js';
 import { LOOKS } from './sprites.js';
 import { checkTitles } from './deeds.js';
-import { itemOf, rollRelic, giveRelic, RELICS } from './relics.js';
+import { itemOf, rollRelic, giveRelic, RELICS, partyFx } from './relics.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
-export const EVENTS = [...EV_TALK, ...EV_TALK2, ...EV_TALK3, ...EV_TOWN, ...EV_TOWN2, ...EV_FIELD, ...EV_FIELD2].map(([req, who, text, opts], id) => ({ id, req: req.split(/\s+/).filter(Boolean), who, text, opts: opts || [] }));
+export const EVENTS = [...EV_TALK, ...EV_TALK2, ...EV_TALK3, ...EV_TOWN, ...EV_TOWN2, ...EV_FIELD, ...EV_FIELD2, ...EV_TRAIT].map(([req, who, text, opts], id) => ({ id, req: req.split(/\s+/).filter(Boolean), who, text, opts: opts || [] }));
 const SEASON = (m) => (m <= 3 ? 'spring' : m <= 6 ? 'summer' : m <= 9 ? 'autumn' : 'winter');
 const SEASON_N = { spring: '春', summer: '夏', autumn: '秋', winter: '冬' };
 
@@ -63,18 +67,28 @@ export class Events {
       if (['north', 'south', 'west', 'central', 'coast'].includes(t) && c.region !== t) return false;
       if (t === 'party' && !H.party.length) return false;
       if (t === 'once' && (H.evOnce || []).includes(ev.id)) return false;
+      // the traits of the party, the combinations in it, the age
+      const tm = /^(trait|school|combo|era):([^*]+)(?:\*(\d))?$/.exec(t);
+      if (tm) {
+        const [, kind, v, n] = tm, party = this.g.partyList().map((p) => p.g);
+        if (kind === 'era') { if (!eraIs(this.G, v)) return false; continue; }
+        if (kind === 'combo') { const res = syncParty(this.g); if (![...res.values()].some((x) => x.act.some((a) => a.n === v))) return false; continue; }
+        const who = party.filter((g) => traitsOf(g).some((x) => (kind === 'trait' ? x === v : TRAIT[x]?.s.includes(v))));
+        if (who.length < +(n || 1)) return false; c.tg ||= who.find((g) => !g.isPlayer)?.name || who[0].name; continue;
+      }
+      if (t === 'coal' && !(this.G.coal && !this.G.coal.over && this.G.coal.until > this.G.t && this.G.coal.target === c.mine)) return false;
     }
     return ev.req.includes(c.where);
   }
   // a random event for this place, or null; recent ones are skipped
   pick(where, npc) {
     const c = this.ctx(where, npc), H = this.H; H.evRecent ||= [];
-    const pool = EVENTS.filter((e) => !H.evRecent.includes(e.id) && this.ok(e, c));
+    const pool = EVENTS.filter((e) => { c.tg = null; return !H.evRecent.includes(e.id) && this.ok(e, c); });
     if (!pool.length) return null;
-    const ev = pick(pool); H.evRecent.push(ev.id); if (H.evRecent.length > 60) H.evRecent.shift();
+    const ev = pick(pool); c.tg = null; this.ok(ev, c); H.evRecent.push(ev.id); if (H.evRecent.length > 60) H.evRecent.shift();
     return { ev, c };
   }
-  async maybe(where, chance, npc) { if (Math.random() >= chance) return false; const p = this.pick(where, npc); if (!p) return false; await this.run(p.ev, p.c); return true; }
+  async maybe(where, chance, npc) { if (Math.random() >= chance * (1 + partyFx(this.g, 'event'))) return false; const p = this.pick(where, npc); if (!p) return false; await this.run(p.ev, p.c); return true; }
   // ---------------------------------------------------------------- filling in the text
   fill(s, c, vars) {
     const G = this.G;
@@ -82,6 +96,7 @@ export class Events {
       if (k in vars) return vars[k];
       let v = '';
       if (k === 'me') v = c.g.name;
+      if (k === 'tg') v = c.tg || c.g.name;
       if (k === 'city') v = c.town ? c.town.name : this.nearCity().name;
       if (k === 'season') v = SEASON_N[c.season];
       if (k === 'lord') { const f = c.mine ? G.factions[c.mine] : c.town?.owner ? G.factions[c.town.owner] : null; v = f ? G.gens[f.lord].name : '各路諸侯'; }
@@ -148,6 +163,13 @@ export class Events {
         continue;
       }
       if ((m = /^sol([+-])(\d+)$/.exec(t))) { const f = +m[2] / 100 * (m[1] === '-' ? -1 : 1); let tot = 0; for (const p of party) { const d = Math.round(p.solMax * f); const before = p.rec.sol; p.rec.sol = clamp(p.rec.sol + d, 10, p.solMax); tot += p.rec.sol - before; } notes.push(`兵力 ${tot >= 0 ? '+' : ''}${tot}`); continue; }
+      if ((m = /^learn:(.+)$/.exec(t))) {
+        const n = m[1], ts = traitsOf(g); if (ts.includes(n) || !TRAIT[n]) continue;
+        const i = await this.ui.choose([...ts.map((x, j) => ({ k: j, n: `忘掉「${x}」，學「${n}」`, d: TRAIT[x].d })), { k: null, n: '不學了（保留原本的特性）' }], { title: `學會特性「${n}」：${TRAIT[n].d}` });
+        if (i == null) { notes.push(`沒有學「${n}」`); continue; }
+        const old = learnTrait(g, n, i); if (old) { notes.push(`${g.name}學會了特性「${n}」（取代「${old}」）`); this.g.audio.sfx('level'); } continue;
+      }
+      if ((m = /^bond\+(\d+)$/.exec(t))) { for (const id of H.party) addBond(this.g, id, +m[1]); if (H.party.length) notes.push(`同伴好感 +${m[1]}`); continue; }
       if (t === 'heal') { for (const p of party) { p.rec.sol = p.solMax; p.rec.sp = p.spMax; } notes.push('全隊完全回復'); continue; }
       if ((m = /^item:(\w+)(?:\*(\d+))?$/.exec(t))) { const n = +(m[2] || 1); H.items[m[1]] = (H.items[m[1]] || 0) + n; notes.push(`${ITEMS[m[1]]?.n || m[1]} +${n}`); continue; }
       if ((m = /^eq:(\w+)$/.exec(t))) { const E = EQUIP[m[1]], r = H.rec[H.pid], old = r.eq[E.kind], oi = itemOf(old); if (!old || (oi.shop && oi.v < E.v)) { r.eq[E.kind] = m[1]; if (r.forge) r.forge[E.kind] = 0; notes.push(`得到${E.n}，裝備上了`); } else if (!oi.shop) { (H.bag ||= []).push({ sid: m[1] }); notes.push(`得到${E.n}（放進了背包）`); } else { H.gold += Math.round(E.price / 2); notes.push(`得到${E.n}（比身上的差，賣了 ${Math.round(E.price / 2)} 金）`); } continue; }

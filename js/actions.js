@@ -17,6 +17,7 @@ import { PERKS, perkText } from './hero.js';
 import { meetSage, sageOpts, sageGen, sageRumor } from './sages.js';
 import { priceMul, garrisonMul, disasterAt, DIS_N } from './disaster.js';
 import { tire, tired, eraBonus } from './board.js';
+import { awaken, traitsOf, traitHTML, combosWith, TRAIT, reroll } from './traits.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -126,6 +127,7 @@ export class Actions {
       bump(this.H, 'caves'); deed(this.g, `入${q.name}，誅${B.name}`); for (const id of this.H.party) addBond(this.g, id, 5); checkTitles(this.g);
       if (this.me.status === 'serving') { this.me.merit += 10 * t; this.promote(); }
       this.H.st.missions++;
+      if (Math.random() < 0.12 + q.tier * 0.04) { this.H.items.xisui = (this.H.items.xisui || 0) + 1; notes.push('洗髓丹'); }
       if (Math.random() < 0.08 + q.tier * 0.04) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       else { const id = rollRelic(this.avgLv() + 4, Math.min(5, q.tier + 1)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', `打倒了${q.name}的${B.name}！\n${notes.join('　')}`); this.g.hud(); return;
@@ -194,6 +196,12 @@ export class Actions {
     if (!own.length) { this.ui.toast('沒有可以用的道具'); return; }
     const k = await this.ui.choose(own.map((k) => ({ k, n: `${ITEMS[k].n} ×${this.H.items[k]}`, d: ITEMS[k].d })), { title: '道具' }); if (!k) return;
     const I = ITEMS[k], list = this.g.partyList();
+    if (I.reroll) {
+      const i = await this.ui.choose(list.map((p, i) => ({ k: i, n: p.g.name, sub: traitsOf(p.g).join('・') })), { title: '洗髓丹：給誰？' }); if (i == null) return; const g = list[i].g;
+      const j = await this.ui.choose(traitsOf(g).map((t, j) => ({ k: j, n: t, d: TRAIT[t].d })), { title: `重抽${g.name}的哪一個特性？` }); if (j == null) return;
+      this.H.items[k]--; const r = reroll(g, j); if (r) { this.g.audio.sfx('level'); await this.ui.say('', `${g.name}服下洗髓丹，脫胎換骨！\n特性「${r.old}」變成了「${r.nu}」。`); }
+      return;
+    }
     const targets = I.healAll ? list : [list[await this.ui.choose(list.map((p, i) => ({ k: i, n: p.g.name, sub: I.sp ? `策 ${p.rec.sp}/${p.spMax}` : `兵 ${p.rec.sol}/${p.solMax}` })), { title: '給誰？' }) ?? -1]].filter(Boolean);
     if (!targets.length) return;
     this.H.items[k]--; if (I.full) this.H.wound = 0; for (const p of targets) { if (I.full) p.rec.sp = p.spMax; if (I.sp) p.rec.sp = Math.min(p.spMax, p.rec.sp + I.sp); else p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * (I.heal || I.healAll))); }
@@ -208,7 +216,7 @@ export class Actions {
     if (await this.g.events.maybe('t', 0.15, n)) return;
     const sameSide = f && mine === x.fac, look = this.g.lookOf(x), age = G.year - x.born;
     mark(this.g, x.id, 1); addBond(this.g, x.id, 1);
-    const info = `${x.name}（${age}歲）${x.life ? `　【${TYPE_N[x.life.type]}】Lv${x.life.lv}` : ''}${f ? `　${f.name}軍${G.factions[x.fac].lord === x.id ? '・君主' : ''}` : '　在野'}\n統率 ${x.lead}　武力 ${x.war}　智力 ${x.int}　政治 ${x.pol}　魅力 ${x.cha}${G.items.some((it) => it.holder === x.id) ? `\n寶物：${G.items.filter((it) => it.holder === x.id).map((it) => itemName(it.key)).join('、')}` : ''}`;
+    const info = `${x.name}（${age}歲）${x.life ? `　【${TYPE_N[x.life.type]}】Lv${x.life.lv}` : ''}${f ? `　${f.name}軍${G.factions[x.fac].lord === x.id ? '・君主' : ''}` : '　在野'}\n統率 ${x.lead}　武力 ${x.war}　智力 ${x.int}　政治 ${x.pol}　魅力 ${x.cha}${G.items.some((it) => it.holder === x.id) ? `\n寶物：${G.items.filter((it) => it.holder === x.id).map((it) => itemName(it.key)).join('、')}` : ''}\n特性：${traitsOf(x).map((t) => `<b>${t}</b>`).join('、')}${(() => { const c = combosWith(G, x, this.g.partyList().map((p) => p.g)); return (c.own ? `　★ 絕技「${c.own}」` : '') + c.with.slice(0, 2).map((w) => `\n<b style="color:#ffd86a">★ 和${w.g.name}能組成「${w.n}」</b>`).join(''); })()}`;
     const opts = [{ k: 'talk', n: '交談' }, ...sageOpts(x)];
     if (!f) opts.push({ k: 'recruit', n: '招募' });
     if (sameSide && !this.g.H.party.includes(x.id) && G.factions[x.fac].lord !== x.id) opts.push({ k: 'invite', n: '邀請同行', d: `依官階而定（${this.g.perk().n}）` });
@@ -383,13 +391,14 @@ export class Actions {
     const me = this.me, J = [['farm', '開墾', '農業'], ['comm', '商業', '商業'], ['def', '築城', '城防'], ['train', '練兵', '訓練'], ['morale', '安民', '民心']];
     const k = await this.ui.choose(J.map(([k, n, s]) => ({ k, n, sub: `${s} ${C[k] ?? ''}` })).concat([{ k: null, n: '返回' }]), { title: '內政（十天）' }); if (!k) return;
     if (f.gold < 20 && k !== 'train') { this.ui.toast('勢力的金不夠'); return; }
-    const r = Math.random;
+    const r = Math.random, before = C[k];
     if (k === 'farm') { C.farm = Math.min(C.farmMax, C.farm + Math.round(4 + me.pol / 6 + r() * 6)); f.gold -= 20; }
     if (k === 'comm') { C.comm = Math.min(C.commMax, C.comm + Math.round(4 + me.pol / 6 + r() * 6)); f.gold -= 20; }
     if (k === 'def') { C.def = Math.min(C.defMax, C.def + Math.round(5 + me.lead / 7 + r() * 6)); f.gold -= 20; }
     if (k === 'train') C.train = Math.min(100, C.train + Math.round(3 + me.lead / 10 + r() * 4));
     if (k === 'morale') { C.morale = Math.min(100, C.morale + Math.round(2 + me.cha / 18 + r() * 3)); f.gold -= 10; }
-    me.merit += 3 + (PERKS.indexOf(this.g.perk()) >= 3 ? 1 : 0); gainExp(this.G, me, this.H.rec[me.id], 20);
+    const tm = 1 + partyFx(this.g, k === 'def' ? 'build' : k); if (tm > 1 && C[k] > before) C[k] = Math.min(C[k + 'Max'] ?? 100, before + Math.round((C[k] - before) * tm)); // the traits of the party
+    me.merit += Math.round((3 + (PERKS.indexOf(this.g.perk()) >= 3 ? 1 : 0)) * (1 + partyFx(this.g, 'merit'))); gainExp(this.G, me, this.H.rec[me.id], 20);
     await this.passDays(10, `${me.name}努力${J.find((j) => j[0] === k)[1]}。（功績 +3）`);
     this.promote();
   }
@@ -564,7 +573,7 @@ export class Actions {
     if (r === 'win') {
       if (hasT(this.H, 'xiake')) { m.gold = Math.round(m.gold * 1.25); m.fame = Math.round(m.fame * 1.25); }
       if (Math.random() < 0.35) { const id = rollRelic(m.lv, 2); giveRelic(this.g, id); }
-      m.done = true; this.H.gold += m.gold; this.H.fame += m.fame; this.H.st.missions++; tired(this.H, 'bandit'); if (m.official && this.me.status === 'serving') { this.me.merit += m.merit; this.promote(); }
+      m.done = true; this.H.gold += m.gold; this.H.fame += m.fame; this.H.st.missions++; tired(this.H, 'bandit'); if (m.official && this.me.status === 'serving') { this.me.merit += Math.round(m.merit * (1 + partyFx(this.g, 'merit'))); this.promote(); }
       await this.ui.say('', `討伐了「${m.boss}」！\n得到 ${m.gold} 金${m.official ? `、功績 ${m.merit}` : ''}、名聲 ${m.fame}。`);
       this.dropBanner(m);
       this.H.missions = this.H.missions.filter((x) => !x.done);
@@ -607,7 +616,7 @@ export class Actions {
       this.H.st.wins++;
       const exp = Math.round(foes.reduce((s, x) => s + 10 + x.lv * 7 + x.solMax / 22, 0) * (o.drill ? 0.6 : 1) * (hasT(this.H, 'baizhan') ? 1.1 : 1) * (1 + partyFx(g, 'exp'))), gold = o.drill ? 0 : Math.round(foes.reduce((s, x) => s + x.lv * 6 + Math.random() * x.lv * 5, 0) * (1 + partyFx(g, 'gold')));
       this.H.gold += gold; this.H.fame += o.drill ? 0 : Math.round(foes.length * (1 + partyFx(g, 'fame')));
-      for (const p of party) for (const u of gainExp(G, p.g, p.rec, exp)) ups.push(`${p.g.name} 升到 Lv${u.lv}！${u.grow.map((k) => STAT_N[k] + '+1').join(' ')}`);
+      for (const p of party) for (const u of gainExp(G, p.g, p.rec, exp)) { ups.push(`${p.g.name} 升到 Lv${u.lv}！${u.grow.map((k) => STAT_N[k] + '+1').join(' ')}`); const aw = awaken(p.g, p.rec, u.lv); if (aw) { ups.push(`★ ${p.g.name}覺醒了！特性「${aw.old}」→「${aw.nu}」`); setTimeout(() => this.ui.banner(`<b style="color:#ffc84a;font-size:20px">★ 覺醒 ★</b><br>${p.g.name}的「${aw.old}」覺醒為「${aw.nu}」`, 6000), 400); } }
       msg = `勝利！\n經驗 +${exp}${gold ? `　金 +${gold}` : ''}${ups.length ? '\n' + ups.join('\n') : ''}`;
       if (ups.length) g.audio.sfx('level');
       // now and then the defeated leave something behind
@@ -695,7 +704,7 @@ export class Actions {
     const F = G.factions[mine];
     C.owner = mine; C.troops = Math.max(800, Math.round(C.troops * 0.3) + 500); C.morale = Math.max(20, C.morale - 15); C.def = Math.max(50, C.def - 60);
     record(G, 'war', 'warWin', { f: F.name, g: me.name, c: C.name, o: pf ? pf.name : null, notes: [] }, mine, 2, { city: C.id, from: C.id, srcs: [], win: true, def: prev });
-    this.H.st.cities.push(C.name); this.H.fame += 80 + C.size * 30; const after = this.g.board.conquered(C, prev); deed(this.g, `攻拔${C.name}`, C.size >= 3); if (!this.g.isLord()) { me.merit += 40 + C.size * 15; this.promote(); }
+    this.H.st.cities.push(C.name); this.H.fame += 80 + C.size * 30; const after = this.g.board.conquered(C, prev); deed(this.g, `攻拔${C.name}`, C.size >= 3); if (!this.g.isLord()) { me.merit += Math.round((40 + C.size * 15) * (1 + partyFx(this.g, 'merit'))); this.promote(); }
     await this.ui.say('', `攻下了${C.name}！${F.name}軍的旗幟插上了城頭。\n${after}`);
     // the generals who fought for the city: win them over, let them go, or put them to death
     for (const x of beaten) {

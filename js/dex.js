@@ -6,6 +6,7 @@ import { frameCanvas, personSheet } from './sprites.js';
 import { checkTitles } from './deeds.js';
 import { TYPE_N, TYPE_D, lifeLine, lvNeed } from './sim/life.js';
 import { fmt } from './sim/text.js';
+import { traitsOf, traitHTML, combosWith } from './traits.js';
 
 const BIO = Object.fromEntries(BIOS.map(([n, zi, t]) => [n, { zi: zi === '—' ? '' : zi, t }]));
 export const DEX_N = ['', '見過', '交過手', '曾為同伴'];
@@ -43,6 +44,7 @@ export async function dexScreen(game) {
     await ui.panel(`<div class="st-card"><img src="${img}"><div><h3>${g.name}${b.zi ? `　<small>字${b.zi}</small>` : ''}</h3>
       <div class="st-grid"><span>統率 <b>${g.lead}</b></span><span>武力 <b>${g.war}</b></span><span>智力 <b>${g.int}</b></span><span>政治 <b>${g.pol}</b></span><span>魅力 <b>${g.cha}</b></span></div>
       <div>${g.born}年生　${st}　<span class="dim">${DEX_N[H.dex[g.id]]}</span></div>${items.length ? `<div>寶物：${items.join('、')}</div>` : ''}
+      <div class="traits">${traitsOf(g).map((n) => traitHTML(n)).join('')}</div>${(() => { const c = combosWith(G, g, game.partyList().map((p) => p.g)); return (c.own ? `<div class="combo-tip">★ 個人絕技「${c.own}」</div>` : '') + c.with.map((w) => `<div class="combo-tip">★ 和${w.g.name}能組成「${w.n}」</div>`).join(''); })()}
       <p class="bio">${b.t}</p></div></div>${lifeHTML(G, g)}`, { title: '武將圖鑑', cls: 'wide' });
   }
 }

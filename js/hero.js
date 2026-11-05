@@ -18,6 +18,7 @@ export const ITEMS = {
   ore: { n: '鐵礦石', d: '鐵匠用來鍛造強化武器和防具（+1～+3）', price: 0, mat: true },
   ore2: { n: '玄鐵', d: '罕見的黑鐵，鍛造 +4、+5 時需要', price: 0, mat: true },
   pill: { n: '仙丹', d: '一名武將回復全部兵力和策略點', price: 0, heal: 1, full: true, rare: true },
+  xisui: { n: '洗髓丹', d: '重新抽一位武將的一個特性', price: 0, rare: true, reroll: true },
 };
 export const shopItems = () => Object.entries(ITEMS).filter(([, I]) => !I.mat && !I.rare);
 export const usable = (k) => ITEMS[k] && !ITEMS[k].gift && !ITEMS[k].mat;

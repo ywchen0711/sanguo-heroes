@@ -435,7 +435,7 @@ function diplomacy(G, f) {
   if (threat && power(G, threat) > me * 1.1 && !Object.keys(f.allies).some((a) => f.allies[a] > G.t && G.factions[a].alive)) {
     const cand = Object.values(G.factions).filter((o) => o.alive && o.id !== f.id && o.id !== threat && !(f.allies[o.id] > G.t) && citiesOf(G, o.id).some((c) => c.adj.some((a) => G.cities[a].owner === threat)));
     const o = maxBy(cand, (x) => power(G, x.id) + (f.rel[x.id] || 0) * 300);
-    if (o && r() < 0.12 + ((f.rel[o.id] || 0) + (envoy.int + envoy.pol) / 2 - 50) / 250) {
+    if (o && r() < 0.12 + (f.diplo || 0) + ((f.rel[o.id] || 0) + (envoy.int + envoy.pol) / 2 - 50) / 250) {
       const ally = () => { f.allies[o.id] = o.allies[f.id] = G.t + 36; f.rel[o.id] = o.rel[f.id] = Math.min(100, (f.rel[o.id] || 0) + 30);
         record(G, 'diplo', 'ally', { f: f.name, o: o.name, t: G.factions[threat].name, g: envoy.name }, f.id, 2); };
       if (isMine(G, f)) propose(G, { type: 'ally', g: envoy.id, smart: true, p: { g: envoy.name, o: o.name, t: G.factions[threat].name }, valid: () => alive(G, o.id) && alive(G, f.id) && !(f.allies[o.id] > G.t), run: ally });

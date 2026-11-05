@@ -10,6 +10,7 @@ import { biography, rewritten, knownAs, titleName, TITLES } from './deeds.js';
 import { rivalH, rankIdx } from './sim/rivals.js';
 import { isSworn, bondOf } from './bonds.js';
 import { dexCount } from './dex.js';
+import { traitsOf, traitHTML, actHTML, syncParty } from './traits.js';
 
 const BEST = 'sanguo-heroes-best';
 export class Screens {
@@ -76,7 +77,7 @@ export class Screens {
   }
   // ---------------------------------------------------------------- status of a general
   async status(id) {
-    const G = this.g.G, H = this.g.H, ids = id != null ? [id] : [H.pid, ...H.party];
+    const G = this.g.G, H = this.g.H, ids = id != null ? [id] : [H.pid, ...H.party], PT = syncParty(this.g);
     const html = ids.map((gid) => {
       const g = G.gens[gid], r = H.rec[gid], st = bstats(g, r), look = this.g.lookOf(g), img = frameCanvas(personSheet(look), 0, 1).toDataURL();
       const items = G.items.filter((it) => it.holder === gid).map((it) => `${itemName(it.key)}（${Object.entries(it.fx).map(([k, v]) => STAT_N[k] + '+' + v).join(' ')}）`);
@@ -86,6 +87,7 @@ export class Screens {
         <div>兵力 ${r.sol}/${solMax(g, r)}　策略 ${r.sp}/${spMax(g, r)}　經驗 ${r.exp}/${expNeed(r.lv)}</div>
         <div>攻擊 ${Math.round(st.atk)}　防禦 ${Math.round(st.def)}　速度 ${Math.round(st.spd)}</div>
         <div>裝備：${['w', 'a', 'h', 'x'].map((k) => eqName(r, k)).join('／')}　兵種：${TROOPS[this.g.act.troopOf({ g, rec: r, look })].n}</div>
+        <div class="traits">${traitsOf(g).map((n) => traitHTML(n)).join('')}</div>${actHTML(PT?.get(gid)?.act || [])}
         ${armsOf(G, g).list.map((A) => `<div class="arms">✦ ${A.n}：${A.d}</div>`).join('')}
         ${items.length ? `<div>寶物：${items.join('、')}</div>` : ''}<div class="dim">策略：${tac.join('、') || '無'}</div>
         ${gid !== H.pid ? `<div>${isSworn(H, gid) ? '<b style="color:#ffd86a">結義兄弟</b>' : `好感 ${bondOf(H, gid)}／100`}</div>` : ''}
