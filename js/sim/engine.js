@@ -620,6 +620,8 @@ function captives(G, f, city, defGens, defFid) {
     const escape = defFid && citiesOf(G, defFid).filter((c) => c.adj.includes(city.id) || true).sort((x, y) => (G.cities[x.id].adj.includes(city.id) ? -1 : 1))[0];
     const isLord = defFid && G.factions[defFid].lord === g.id;
     if (escape && r() < 0.35 + (g.war + g.int) / 400 + (isLord ? 0.25 : 0) + (holds(G, g, 'h') ? 0.2 : 0)) { g.city = escape.id; continue; }
+    // a rival hero cuts their way out, as the player would: back to their own side, or into the wilds
+    if (g.rivalHero) { if (escape) g.city = escape.id; else { g.status = 'free'; g.fac = null; g.city = pick(r, city.adj); } continue; }
     // try to win the captive over
     const p = isLord ? 0.04 : clamp(0.25 + (lord.cha - g.loyalty) / 160 + (defFid && sameKin(G, g, lordOf(G, defFid)) ? -0.4 : 0), 0.03, 0.9);
     // the player's lord decides: persuade, release or execute

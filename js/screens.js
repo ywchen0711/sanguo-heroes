@@ -6,7 +6,7 @@ import { fmt, dateStr, itemName } from './sim/text.js';
 import { CITY_POS, W, H, T } from './world.js';
 import { personSheet, frameCanvas, lookFor, assignLooks } from './sprites.js';
 import { RANKS, rankOf, solMax, spMax, bstats, EQUIP, score, expNeed, tacticsOf, TACTICS, STAT_N, eqName, armsOf, TROOPS } from './hero.js';
-import { biography, rewritten, knownAs, titleName } from './deeds.js';
+import { biography, rewritten, knownAs, titleName, TITLES } from './deeds.js';
 import { rivalH, rankIdx } from './sim/rivals.js';
 import { isSworn, bondOf } from './bonds.js';
 import { dexCount } from './dex.js';
@@ -105,10 +105,11 @@ export class Screens {
   // the player and the computer players, ranked by the same reckoning as the end
   board(end) {
     const G = this.g.G, H = this.g.H; if (!(G.rivals || []).length) return '';
-    const rows = [{ me: true, g: G.gens[H.pid], sc: score(G, H), H }, ...G.rivals.map((R) => ({ g: G.gens[R.id], sc: score(G, rivalH(G, R)), R }))].sort((a, b) => b.sc.total - a.sc.total);
+    const withTitles = (R) => { const RH = rivalH(G, R), g = G.gens[R.id], fake = { G, isLord: () => g.status === 'serving' && G.factions[g.fac]?.lord === g.id, myFaction: () => (g.status === 'serving' ? g.fac : null) }; RH.titles = TITLES.filter((t) => { try { return t.ok(RH, fake); } catch (e) { return false; } }).map((t) => t.id); return RH; };
+    const rows = [{ me: true, g: G.gens[H.pid], sc: score(G, H), H }, ...G.rivals.map((R) => { const RH = withTitles(R); return { g: G.gens[R.id], sc: score(G, RH), R, RH }; })].sort((a, b) => b.sc.total - a.sc.total);
     const what = (x) => { const g = x.g, f = g.status === 'serving' && G.factions[g.fac]; if (g.status === 'dead') return '已故'; if (!f) return '在野'; if (f.lord === g.id) return `${f.name}軍之主（${citiesOf(G, f.id).length} 城）`; return `${f.name}軍・${['從事', '校尉', '都尉', '中郎將', '將軍', '大將軍'][rankIdx(g.merit)]}`; };
     const st = (x) => x.me ? x.H.st : x.R.st;
-    return `<h3>${end ? '最終排名' : '群雄榜'}</h3><table class="score board">${rows.map((x, i) => `<tr class="${x.me ? 'me' : ''}"><td>${i + 1}</td><td><b>${x.g.name}</b>${x.me ? '（你）' : ''}</td><td>${what(x)}</td><td>勝 ${st(x).wins}　城 ${st(x).cities.length}　斬 ${st(x).kills.length}</td><td>${x.sc.total} 分</td><td>${x.sc.title}</td></tr>`).join('')}</table>`;
+    return `<h3>${end ? '最終排名' : '群雄榜'}</h3><table class="score board">${rows.map((x, i) => `<tr class="${x.me ? 'me' : ''}"><td>${i + 1}</td><td><b>${x.g.name}</b>${x.me ? '（你）' : ''}</td><td>${what(x)}</td><td>Lv ${x.me ? x.H.rec[x.H.pid].lv : x.R.lv || 1}　勝 ${st(x).wins}　城 ${st(x).cities.length}　斬 ${st(x).kills.length}${(x.me ? x.H.titles : x.RH.titles)?.length ? `　稱號 ${(x.me ? x.H.titles : x.RH.titles).length}` : ''}</td><td>${x.sc.total} 分</td><td>${x.sc.title}</td></tr>`).join('')}</table>`;
   }
   async rivals() { await this.ui.panel(this.board(false) + '<p class="dim">對手和你用同樣的方式計分。對手的大事會出現在年表和消息裡。</p>', { title: '群雄榜', cls: 'wide' }); }
   // the realm: a map of who holds what, and the warlords ranked
