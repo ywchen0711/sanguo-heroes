@@ -8,11 +8,14 @@ import { initLife, gainLife, note } from './life.js';
 const RANK_AT = [0, 40, 100, 200, 350, 600], RANK_N = ['從事', '校尉', '都尉', '中郎將', '將軍', '大將軍'];
 export const rankIdx = (m) => { let k = 0; RANK_AT.forEach((v, i) => { if (m >= v) k = i; }); return k; };
 const total = (g) => g.lead + g.war + g.int + g.pol + g.cha;
-// choose N rivals from the generals alive now: famous ones more often, never the player
-export function pickRivals(G, n, pid, r) {
-  const pool = G.gens.filter((g) => (g.status === 'serving' || g.status === 'free') && g.id !== pid && !g.hidden && total(g) >= 240 && G.year - g.born >= 16 && g.died > G.year + 8);
+// choose N rivals from the generals alive now, never the player. how: 'famous' - the great names, most likely the
+// greatest; 'random' - anyone at all, every general as likely as another
+export function pickRivals(G, n, pid, r, how = 'famous') {
+  const adult = (g) => (g.status === 'serving' || g.status === 'free') && g.id !== pid && G.year - g.born >= 16 && g.died > G.year + 3;
+  const pool = G.gens.filter((g) => adult(g) && (how === 'random' || (!g.hidden && total(g) >= 300 && g.died > G.year + 8)));
   const out = [];
-  while (out.length < n && pool.length) { pool.sort((a, b) => total(b) + r() * 120 - (total(a) + r() * 120)); const g = pool.splice(0, 1)[0]; out.push(g); }
+  if (how === 'random') while (out.length < n && pool.length) out.push(pool.splice(Math.floor(r() * pool.length), 1)[0]);
+  else while (out.length < n && pool.length) { pool.sort((a, b) => total(b) + r() * 90 - (total(a) + r() * 90)); out.push(pool.splice(0, 1)[0]); }
   return out.map((g) => { initLife(G, g); g.rivalHero = true; return { id: g.id, party: [], fame: Math.round(total(g) / 4), st: { wins: 0, battles: 0, bandits: 0, duels: 0, kills: [], cities: [], missions: 0, bestRank: g.status === 'serving' ? rankIdx(g.merit) : 0 }, alive: true }; });
 }
 export function rivalsMonth(G, E) {

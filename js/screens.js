@@ -67,7 +67,8 @@ export class Screens {
       const ok = await this.ui.ask(`${g.name}　${G.year - g.born}歲\n${f ? `${f.name}軍${f.lord === g.id ? '・君主' : ''}` : '在野'}　所在：${G.cities[g.city].name}\n統率 ${g.lead}　武力 ${g.war}　智力 ${g.int}　政治 ${g.pol}　魅力 ${g.cha}`, [{ k: true, n: '就是他了' }, { k: false, n: '重新選擇' }], g.name, lookFor(g, f ? f.color : '#7a6a5a'));
       if (!ok) continue;
       const rivals = await this.ui.choose([0, 3, 5, 8].map((n) => ({ k: n, n: n ? `${n} 位電腦對手` : '不要對手', d: n ? `另外 ${n} 位武將也由電腦扮演：和你一樣闖蕩、投靠明主、升官、攻城，甚至自立為王。最後比誰統一天下，或誰的功績最高。` : '只有你一位主角，天下照常運轉。' })), { title: '對手', noBack: true });
-      return { scenario: sc, years, pid, seed, rivals };
+      const rivalHow = rivals ? await this.ui.choose([{ k: 'famous', n: '知名英雄', d: '從名將裡挑：曹操、劉備、孫權、呂布這些人物最常出現' }, { k: 'random', n: '隨機', d: '所有在世的武將都可能被選上，連無名小卒也會來爭天下' }], { title: '對手人選', noBack: true }) : null;
+      return { scenario: sc, years, pid, seed, rivals, rivalHow };
     }
   }
   pickGen(G, list, title) {

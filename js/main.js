@@ -46,7 +46,7 @@ class Game {
     const G = this.G = newGame({ seed: o.seed ?? (Date.now() & 0x7fffffff), scenario: o.scenario });
     const g = G.gens[o.pid]; g.isPlayer = true; g.died = Math.max(g.died, G.year + o.years + 1);
     // the computer players: they live as long as the player does (unless killed)
-    if (o.rivals) { G.rivals = pickRivals(G, o.rivals, g.id, G.r); for (const R of G.rivals) { const x = G.gens[R.id]; x.died = Math.max(x.died, G.year + o.years + 1); } }
+    if (o.rivals) { G.rivals = pickRivals(G, o.rivals, g.id, G.r, o.rivalHow || 'famous'); for (const R of G.rivals) { const x = G.gens[R.id]; x.died = Math.max(x.died, G.year + o.years + 1); } }
     const f = g.status === 'serving' ? G.factions[g.fac] : null, lord = f && f.lord === g.id;
     this.H = { pid: g.id, gold: lord ? 1500 : f ? 500 : 300, fame: Math.round((g.lead + g.war + g.int + g.pol + g.cha) / 4) + (lord ? 200 : 0), items: { med: 3, rice: 1 }, party: [], rec: { [g.id]: newRec(g) },
       st: { wins: 0, battles: 0, bandits: 0, duels: 0, kills: [], cities: [], missions: 0, bestRank: 0 }, endYear: G.year + o.years, years: o.years, days: 0, missions: [], seenLog: G.log.length, scenario: o.scenario, startYear: G.year, news: [] };
