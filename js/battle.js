@@ -14,7 +14,8 @@ import { relicFx } from './relics.js';
 import { groupTraits, comboLines, syncParty } from './traits.js';
 import { FX } from './fx.js';
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const PACE = 2, HIT = 1.8, MEND = 1.5;   // the pace of a battle: animations quicker, blows harder, so a fight takes fewer rounds
+const wait = (ms) => new Promise((r) => setTimeout(r, ms / PACE));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ease = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2), easeIn = (p) => p * p * p, easeOut = (p) => 1 - (1 - p) ** 3;
 const SQUADS = false; // the little soldiers behind each general
@@ -32,7 +33,7 @@ export class Battle {
     this.view.sun.shadow.mapSize.set(1024, 1024); // the small stage does not need the land's big shadow map
   }
   // a tween: fn(p) every frame for dur seconds, p from 0 to 1; resolves when done
-  tween(dur, fn) { return new Promise((res) => this.tw.push({ t: 0, dur, fn, res })); }
+  tween(dur, fn) { return new Promise((res) => this.tw.push({ t: 0, dur: dur / PACE, fn, res })); }
   shake(k = 0.25) { this.shakeT = Math.max(this.shakeT || 0, k); }
   // ---------------------------------------------------------------- the stage
   stage(terrain, siege) {
@@ -217,9 +218,19 @@ export class Battle {
     if (hurt.length && can('rally')) return { u, kind: 'tac', k: 'rally' };
     if (hurt.length && can('zhi')) return { u, kind: 'tac', k: 'zhi' };
     if (hurt.length && can('cheer')) return { u, kind: 'tac', k: 'cheer', t: hurt[0] };
-    if (live.length >= 2) for (const k of ['lei', 'feng', 'flood', 'blaze']) if (can(k)) return { u, kind: 'tac', k };
-    if (u.st.int > u.st.war + 10) for (const k of ['rock', 'fire']) if (can(k)) return { u, kind: 'tac', k, t: weak };
+    const k = this.bestTac(u, live, can); if (k) return { u, kind: 'tac', k, t: weak };
     return { u, kind: 'atk', t: weak };
+  }
+  // the damaging stratagem that does more than a blow would (a rough reckoning, as a commander would make it), or null
+  bestTac(u, live, can) {
+    const n = live.length, tint = live.reduce((s, t) => s + t.st.int, 0) / Math.max(1, n), tdef = live.reduce((s, t) => s + t.st.def, 0) / Math.max(1, n);
+    const blow = (u.st.atk * 2.4 + (u.lv || 1) * 3) * (100 / (100 + tdef * 0.8)) * (u.troop === 'cav' ? u.arms?.cav || 1 : 1);
+    const wits = Math.max(0.55, Math.min(1.5, 1 + (u.st.int - tint) / 120)), hit = Math.max(0.18, Math.min(0.97, 0.6 + (u.st.int - tint) / 110));
+    let best = null, bv = blow * 1.1;
+    for (const k of u.tactics) { const T = TACTICS[k]; if (T.kind !== 'dmg' || !can(k)) continue;
+      const v = (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * (T.tgt === 'all' ? n : 1) * wits * hit * (1 + (u.arms?.tacDmg || 0)) * (k === 'fire' || k === 'blaze' || k === 'feng' ? 1 + (u.arms?.fire || 0) : 1);
+      if (v > bv) { bv = v; best = k; } }
+    return best;
   }
   // ---------------------------------------------------------------- a round
   async playRound(list) {
@@ -239,8 +250,12 @@ export class Battle {
   foeOrder(f) {
     if (f.status.confuse) return { u: f, kind: 'confused' };
     const live = this.party.filter((u) => u.sol > 0); if (!live.length) return { u: f, kind: 'wait' };
-    const can = f.tactics.filter((k) => f.sp >= TACTICS[k].sp && TACTICS[k].kind !== 'heal');
-    if (can.length && Math.random() < 0.38) { const k = can[Math.floor(Math.random() * can.length)]; return { u: f, kind: 'tac', k, t: live[Math.floor(Math.random() * live.length)] }; }
+    const can = f.tactics.filter((k) => f.sp >= this.cost(f, k) && TACTICS[k].kind !== 'heal');
+    // a stratagem when it pays (now and then one of the others: a buff, a confusion)
+    const best = this.bestTac(f, live, (k) => can.includes(k));
+    if (best && Math.random() < 0.8) return { u: f, kind: 'tac', k: best, t: live[Math.floor(Math.random() * live.length)] };
+    const other = can.filter((k) => TACTICS[k].kind !== 'dmg');
+    if (other.length && Math.random() < 0.15) { const k = other[Math.floor(Math.random() * other.length)]; return { u: f, kind: 'tac', k, t: live[Math.floor(Math.random() * live.length)] }; }
     const t = Math.random() < 0.5 ? live.sort((a, b) => a.sol - b.sol)[0] : live[Math.floor(Math.random() * live.length)];
     return { u: f, kind: 'atk', t };
   }
@@ -276,12 +291,12 @@ export class Battle {
           const fm = FORMS[this.form[u.side === 'party' ? 'party' : 'foe']]?.tac || 1, tm = u.side === 'party' && hasT(this.game.H, 'zhiduo') ? 1.1 : 1;
           const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * (1 + ((o.k === 'fire' || o.k === 'blaze' || o.k === 'feng') ? u.arms?.fire || 0 : 0)) * (this.round === 1 ? 1 + (u.arms?.firstAtk || 0) : 1) * (this.o.siege && t.side === 'foe' ? 1 - (t.arms?.wall || 0) : 1);
           const sfU = 0.4 + 0.6 * Math.sqrt(Math.max(0, u.sol) / u.solMax), wits = clamp(1 + (u.st.int - t.st.int) / 120, 0.55, 1.5);   // wits against wits, carried out by the troops left
-          const d = Math.round((u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2));
+          const d = Math.round(HIT * (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2));
           if (u.side === 'party' && this.game.H) bump(this.game.H, 'tacs');
           this.hit(t, d, u, true);
         }
       }
-      if (T.kind === 'heal') { const ts = T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine.sort((a, b) => a.sol / a.solMax - b.sol / b.solMax)[0]]; for (const t of ts) { const n = Math.round((u.st.int * 2 + 40) * T.pow * (1 + (u.arms?.healPow || 0))); t.sol = Math.min(t.solMax, t.sol + n); this.float(t, '+' + n, '#8aff8a'); this.drawBar(t); } }
+      if (T.kind === 'heal') { const ts = T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine.sort((a, b) => a.sol / a.solMax - b.sol / b.solMax)[0]]; for (const t of ts) { const n = Math.round(MEND * (u.st.int * 2 + 40) * T.pow * (1 + (u.arms?.healPow || 0))); t.sol = Math.min(t.solMax, t.sol + n); this.float(t, '+' + n, '#8aff8a'); this.drawBar(t); } }
       if (T.kind === 'confuse') { const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 ? o.t : foes[0]]; for (const t of ts) { if (t.arms?.noConfuse) { this.float(t, '無效', '#c8e8ff'); continue; } if (Math.random() < clamp(0.55 + (u.st.int - t.st.int) / 100, 0.1, 0.9) * (T.tgt === 'all' ? 0.65 : 1)) { t.status.confuse = 2; this.float(t, '混亂！', '#c8a0ff'); this.drawBar(t); } else this.float(t, '識破！', '#c8e8ff'); } }
       if (T.kind === 'buff') for (const t of mine) { t.status.rouse = 3; this.float(t, '攻擊↑', '#ffb04a'); }
       if (T.kind === 'guard') for (const t of mine) { t.status.guard = 3; this.float(t, '防禦↑', '#8ac8ff'); }
@@ -314,7 +329,7 @@ export class Battle {
     d *= (1 - (t.arms?.physRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1);
     if (t.arms?.block && Math.random() < t.arms.block) { d *= 0.5; this.float(t, '格擋', '#c8e8ff'); }
     if (Math.random() < 0.06 + u.st.war / 1500 + (u.arms?.crit || 0)) { d *= 1.6; this.float(u, '會心！', '#ffe04a'); }
-    return Math.max(1, Math.round(d));
+    return Math.max(1, Math.round(d * HIT));
   }
   hit(t, d, by, magic) {
     t.sol = Math.max(0, t.sol - d); this.float(t, d, magic ? '#ffb04a' : '#ffffff', d > t.solMax * 0.25);
@@ -489,7 +504,7 @@ export class Battle {
     return r;
   }
   // ---------------------------------------------------------------- the little UI: a message line, menus, target picking
-  say(text, ms = 900) { return new Promise((res) => { let el = this.ui.querySelector('.b-msg'); if (!el) { el = document.createElement('div'); el.className = 'b-msg'; this.ui.appendChild(el); } el.textContent = text; el.classList.add('on'); setTimeout(() => res(), ms); }); }
+  say(text, ms = 900) { ms /= 1.6; return new Promise((res) => { let el = this.ui.querySelector('.b-msg'); if (!el) { el = document.createElement('div'); el.className = 'b-msg'; this.ui.appendChild(el); } el.textContent = text; el.classList.add('on'); setTimeout(() => res(), ms); }); }
   menu(title, opts) { return this.game.ui.choose(opts, { title, host: this.ui, cls: 'b-menu' }); }
   async pick(list, title, ally) {
     const live = list.filter((u) => ally || u.sol > 0); if (live.length === 1 && !ally) return live[0];
