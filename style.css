@@ -174,3 +174,5 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 .acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
 .act { font-size: 13px; color: #c8e0ff; } .act.big { color: #ffd86a; font-weight: bold; } .act small { color: var(--dim); font-weight: normal; margin-left: 3px; }
 .combo-tip { color: #ffd86a; font-size: 14px; }
+
+.fame { margin: 4px 0; } .fame .dim { font-size: 13px; }

@@ -106,20 +106,18 @@ export const TACTICS = {
 export const tacticsOf = (g) => Object.keys(TACTICS).filter((k) => { const T = TACTICS[k]; return T.spell ? g.spells?.includes(k) : g.int >= T.int; });
 
 // ---------------------------------------------------------------- ranks of a serving officer, by merit (功績), and their monthly pay
-export const RANKS = [['從事', 0, 20], ['校尉', 40, 50], ['都尉', 100, 90], ['中郎將', 200, 150], ['將軍', 350, 240], ['大將軍', 600, 400]];
-export const rankOf = (merit) => { let k = 0; RANKS.forEach((r, i) => { if (merit >= r[1]) k = i; }); return k; };
-// what a rank brings: soldiers led (x the base), companions who may travel along, recruiting, monthly reinforcement, attack, what it opens
-export const PERKS = [
-  { n: '在野', troop: 1, party: 4, recruit: 0, regen: 0.08, atk: 0, d: '' },
-  { n: '從事', troop: 1, party: 4, recruit: 0, regen: 0.08, atk: 0, d: '領月俸' },
-  { n: '校尉', troop: 1.15, party: 4, recruit: 0, regen: 0.1, atk: 0, d: '可以率軍攻城' },
-  { n: '都尉', troop: 1.3, party: 5, recruit: 0.05, regen: 0.1, atk: 0, d: '內政的效果更好' },
-  { n: '中郎將', troop: 1.5, party: 5, recruit: 0.1, regen: 0.12, atk: 0.03, d: '可以邀請同勢力的武將同行' },
-  { n: '將軍', troop: 1.75, party: 6, recruit: 0.15, regen: 0.15, atk: 0.05, d: '同勢力武將幾乎都願意同行' },
-  { n: '大將軍', troop: 2, party: 6, recruit: 0.2, regen: 0.18, atk: 0.08, d: '同勢力武將一定同行' },
-  { n: '君主', troop: 2, party: 6, recruit: 0.2, regen: 0.18, atk: 0.08, d: '號令一國' },
-];
-export const perkText = (P) => `帶兵 ×${P.troop}　同伴最多 ${P.party} 人${P.recruit ? `　招募 +${Math.round(P.recruit * 100)}%` : ''}　每月補兵 ${Math.round(P.regen * 100)}%${P.atk ? `　全軍攻擊 +${Math.round(P.atk * 100)}%` : ''}${P.d ? '　' + P.d : ''}`;
+import { RANKS, rankOf, SIEGE_RANK, LORD_SCORE } from './data/ranks.js';
+export { RANKS, rankOf, SIEGE_RANK, LORD_SCORE };
+// what a rank brings: soldiers led (x the base), companions who may travel along, recruiting, monthly reinforcement, attack;
+// from 都尉 better domestic work, from 中郎將 officers of one's own side who come along (inv 1, 2, 3), from 征虜將軍 a fief
+// (亭侯, 鄉侯, 縣侯: gold and renown each month), from 四鎮將軍 a bodyguard (less damage taken)
+const NOBLE = { 8: '亭侯', 12: '鄉侯', 16: '縣侯' }, PERK_D = { 0: '領月俸', 1: '帶兵稍多', 2: '可以率軍攻城', 3: '內政的效果更好', 6: '可以邀請同勢力的武將同行', 8: '封亭侯：每月封地收入', 9: '同勢力武將幾乎都願意同行', 10: '親兵護衛：受到的傷害減少', 12: '晉封鄉侯：封地收入和名聲', 14: '同勢力武將一定同行', 16: '晉封縣侯：位極人臣' };
+const r2 = (v) => Math.round(v * 100) / 100;
+const perkAt = (n, i) => ({ n, troop: r2(1 + i * 0.08), party: i >= 8 ? 6 : i >= 3 ? 5 : 4, recruit: r2(Math.max(0, i - 2) * 0.015), regen: r2(0.08 + i * 0.0065), atk: r2(i >= 6 ? (i - 5) * 0.008 : 0),
+  def: r2(i >= 10 ? (i - 9) * 0.012 : 0), siege: i >= 2, dom: i >= 3, inv: i >= 14 ? 3 : i >= 9 ? 2 : i >= 6 ? 1 : 0, fief: i >= 16 ? 250 : i >= 12 ? 120 : i >= 8 ? 50 : 0, fame: i >= 16 ? 5 : i >= 12 ? 3 : 0,
+  noble: NOBLE[Object.keys(NOBLE).filter((k) => i >= +k).pop()] || null, d: PERK_D[i] || '' });
+export const PERKS = [{ n: '在野', troop: 1, party: 4, recruit: 0, regen: 0.08, atk: 0, def: 0, inv: 0, fief: 0, fame: 0, d: '' }, ...RANKS.map(([n], i) => perkAt(n, i)), { ...perkAt('君主', 16), noble: null, fief: 0, fame: 3, d: '號令一國' }];
+export const perkText = (P) => `帶兵 ×${P.troop}　同伴最多 ${P.party} 人${P.recruit ? `　招募 +${Math.round(P.recruit * 100)}%` : ''}　每月補兵 ${Math.round(P.regen * 100)}%${P.atk ? `　全軍攻擊 +${Math.round(P.atk * 100)}%` : ''}${P.def ? `　親兵：受傷 -${Math.round(P.def * 100)}%` : ''}${P.fief ? `　封地每月 ${P.fief} 金${P.fame ? `、名聲 +${P.fame}` : ''}` : ''}${P.d ? '　' + P.d : ''}`;
 
 // ---------------------------------------------------------------- levels
 export const expNeed = (lv) => 30 + lv * lv * 18;
@@ -163,7 +161,7 @@ export function score(G, H) {
     ['完成任務', s.missions, s.missions * 40],
     ['名聲', H.fame, Math.round(H.fame / 2)],
     ['功績', g.merit, g.merit * 2],
-    ['最高官職', lord ? '君主' : RANKS[s.bestRank]?.[0] || '在野', lord ? 1500 : [0, 50, 150, 300, 600, 1000][s.bestRank] || 0],
+    ['最高官職', lord ? '君主' : RANKS[s.bestRank]?.[0] || '在野', lord ? LORD_SCORE : RANKS[s.bestRank]?.[3] || 0],
     ['寶物', G.items.filter((it) => it.holder === g.id).length, G.items.filter((it) => it.holder === g.id).length * 100],
   ];
   if (lord) rows.push(['統治城池', cities, cities * 150]);

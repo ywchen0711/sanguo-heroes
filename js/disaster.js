@@ -4,6 +4,7 @@
 // famished garrison fights badly, so a disaster is also a chance for a siege. A comet foretells a great man's death.
 import { deed, bump, checkTitles, hasT } from './deeds.js';
 import { partyFx } from './relics.js';
+import { fameOf } from './fame.js';
 
 const DUR = { locust: 4, flood: 3, plague: 2, quake: 2 };
 export const DIS_N = { locust: '蝗災', flood: '水災', plague: '瘟疫', quake: '地震' };
@@ -19,7 +20,7 @@ export function noteDisasters(game, logs) {
   }
 }
 // prices in a hungry city
-export function priceMul(game, cid) { const d = cid != null && disasterAt(game, cid); return (d && famine(d.k) ? 1.6 : 1) * (hasT(game.H, 'renyi') ? 0.9 : 1) * (1 - Math.min(0.3, partyFx(game, 'price'))); }
+export function priceMul(game, cid) { const d = cid != null && disasterAt(game, cid); return (d && famine(d.k) ? 1.6 : 1) * (hasT(game.H, 'renyi') ? 0.9 : 1) * (1 - Math.min(0.3, partyFx(game, 'price'))) * (1 - (fameOf(game.H).price || 0)); }
 // the garrison of a stricken city is weaker
 export const garrisonMul = (game, cid) => { const d = disasterAt(game, cid); return d ? (famine(d.k) ? 0.78 : d.k === 'plague' ? 0.85 : 0.92) : 1; };
 // walking into a stricken city

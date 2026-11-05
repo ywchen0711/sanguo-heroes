@@ -10,6 +10,7 @@ import { eraOf, eraIs, eraText, ERAS, eraArea } from './sim/era.js';
 import { disasterAt, DIS_N } from './disaster.js';
 import { deed } from './deeds.js';
 import { rankOf } from './hero.js';
+import { fameOf } from './fame.js';
 
 export const KIND_N = { bandit: '剿匪', relief: '賑災', talent: '訪賢', gap: '敵城空虛', escort: '護送商隊', border: '抵禦外族' };
 const KIND_C = { bandit: '#e0a050', relief: '#7ad07a', talent: '#7ac0ff', gap: '#ff6a5a', escort: '#e8d070', border: '#c890ff' };
@@ -35,7 +36,7 @@ export class Board {
   dist(c) { const h = this.here(); return Math.hypot(c.x - h.x, c.y - h.y); }
   near(min, max, ok = () => true) { return this.G.cities.filter((c) => { const d = this.dist(CITY_POS[c.id]); return d >= min && d <= max && ok(c); }); }
   mine() { return this.g.myFaction(); }
-  canSiege(C) { const G = this.G, mine = this.mine(), me = this.g.me; return !!C.owner && C.owner !== mine && !(mine && allied(G, mine, C.owner)) && (mine ? (this.g.isLord() || rankOf(me.merit) >= 1) : this.H.fame >= 100); }
+  canSiege(C) { const G = this.G, mine = this.mine(), me = this.g.me; return !!C.owner && C.owner !== mine && !(mine && allied(G, mine, C.owner)) && (mine ? (this.g.isLord() || rankOf(me.merit) >= 2) : this.H.fame >= 100); }
   // ---------------------------------------------------------------- the month
   month() {
     const G = this.G, H = this.H;
@@ -45,13 +46,15 @@ export class Board {
     this.unrest();
     const fresh = [];
     for (let k = 0; k < 12 && H.opps.length < 4; k++) { const o = this.make(); if (o) { H.opps.push(o); fresh.push(o); } }
+    if (Math.random() < (fameOf(H).seek || 0)) for (let k = 0; k < 6; k++) { const o = this.make('talent'); if (o) { o.title = '慕名而來：' + o.title; H.opps.push(o); fresh.push(o); break; } }
     if (fresh.length) setTimeout(() => this.g.ui.toast(`<b style="color:#ffd86a">新的機會</b>　${fresh.map((o) => `<span style="color:${KIND_C[o.k]}">${KIND_N[o.k]}</span>`).join('、')}<br><small>選單「情勢」看詳情（有期限）</small>`, 5000), 3200);
   }
   // a new chance, of a kind the times favour
-  make() {
+  make(only) {
     const G = this.G, H = this.H, e = eraOf(G)?.k, have = new Set(this.list().map((o) => o.k + ':' + o.cid));
     const w = { bandit: e === 'turban' || e === 'drought' ? 5 : 3, relief: 3, talent: 2, gap: 2, escort: 2, border: e === 'barbarian' ? 5 : 0 };
     let t = 0; for (const k in w) t += w[k]; let x = Math.random() * t, k = 'bandit'; for (const kk in w) { x -= w[kk]; if (x < 0) { k = kk; break; } }
+    if (only) k = only;
     const id = (H.oppN = (H.oppN || 0) + 1), base = { id, k, t0: G.t };
     if (k === 'bandit' || k === 'border') {
       const area = eraArea(G), cs = k === 'border' ? this.near(0, 70, (c) => area && area[3](c)) : this.near(0, 35);

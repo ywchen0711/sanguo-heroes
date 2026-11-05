@@ -18,6 +18,8 @@ import { Events } from './events.js';
 import { Story } from './story.js';
 import { AutoPlay } from './auto.js';
 import { Board } from './board.js';
+import { fromOld } from './data/ranks.js';
+import { fameOf, fameCheck } from './fame.js';
 import { syncParty, awaken } from './traits.js';
 import { pickRivals } from './sim/rivals.js';
 import { deed, histDeaths, checkTitles, hasT, knownAs } from './deeds.js';
@@ -51,7 +53,7 @@ class Game {
     if (o.rivals) { G.rivals = pickRivals(G, o.rivals, g.id, G.r, o.rivalHow || 'famous'); for (const R of G.rivals) { const x = G.gens[R.id]; x.died = Math.max(x.died, G.year + o.years + 1); } }
     const f = g.status === 'serving' ? G.factions[g.fac] : null, lord = f && f.lord === g.id;
     this.H = { pid: g.id, gold: lord ? 1500 : f ? 500 : 300, fame: Math.round((g.lead + g.war + g.int + g.pol + g.cha) / 4) + (lord ? 200 : 0), items: { med: 3, rice: 1 }, party: [], rec: { [g.id]: newRec(g) },
-      st: { wins: 0, battles: 0, bandits: 0, duels: 0, kills: [], cities: [], missions: 0, bestRank: 0 }, endYear: G.year + o.years, years: o.years, days: 0, missions: [], seenLog: G.log.length, scenario: o.scenario, startYear: G.year, news: [] };
+      rk2: 1, st: { wins: 0, battles: 0, bandits: 0, duels: 0, kills: [], cities: [], missions: 0, bestRank: 0 }, endYear: G.year + o.years, years: o.years, days: 0, missions: [], seenLog: G.log.length, scenario: o.scenario, startYear: G.year, news: [] };
     this.H.rec[g.id].eq = { w: 'w2', a: 'a2', h: null, x: null }; this.H.bag = [];
     { const ids = Object.keys(RELICS).filter((id) => RELICS[id].grade === 1 && RELICS[id].slot === 'x'); this.H.bag.push({ id: ids[Math.floor(Math.random() * ids.length)], lv: 1, exp: 0 }); }
     this.H.hist = histDeaths(G); this.H.startFac = f ? f.name : null; this.H.st.lastFac = f ? f.id : null;
@@ -66,7 +68,8 @@ class Game {
   hasSave() { try { return !!localStorage.getItem(SAVE); } catch (e) { return false; } }
   loadGame() {
     const d = JSON.parse(localStorage.getItem(SAVE)); const G = this.G = d.G; G.r = rng(G.seed + G.t * 7919 + 1); G.pending = []; G.byName = Object.fromEntries(G.gens.map((g) => [g.name, g]));
-    this.H = d.H; this.load2();
+    this.H = d.H; if (!this.H.rk2) { this.H.st.bestRank = fromOld(this.H.st.bestRank || 0); for (const R of G.rivals || []) R.st.bestRank = fromOld(R.st.bestRank || 0); this.H.rk2 = 1; }
+    this.load2();
     if (d.pos.place != null) this.enterPlace(this.world.places[d.pos.place], true, d.pos); else if (d.pos.town != null) this.enterTown(d.pos.town, true, d.pos); else this.enterWorld(d.pos.x, d.pos.z, d.pos.dir);
   }
   load2() { this.world ||= buildWorld(); this.mode = 'world'; document.body.classList.add('playing'); assignLooks(this.G.gens); }
@@ -74,7 +77,7 @@ class Game {
   // the party as [{ g, rec, look, solMax, spMax }]
   partyList() { syncParty(this); const cmd = this.perk().troop; return [this.H.pid, ...this.H.party].map((id) => { const g = this.G.gens[id], rec = this.H.rec[id]; rec.cmd = cmd; return { g, rec, look: this.lookOf(g), solMax: solMax(g, rec), spMax: spMax(g, rec) }; }); }
   // what the player's rank brings (see PERKS), and how many may travel with them
-  perk() { const g = this.me; return PERKS[this.isLord() ? 7 : g.status === 'serving' ? 1 + rankOf(g.merit) : 0]; }
+  perk() { const g = this.me; return PERKS[this.isLord() ? PERKS.length - 1 : g.status === 'serving' ? 1 + rankOf(g.merit) : 0]; }
   partyMax() { return this.perk().party; }
   lookOf(g) { const f = g.status === 'serving' && this.G.factions[g.fac]; return lookFor(g, f ? f.color : '#7a6a5a'); }
   myFaction() { const g = this.me; return g.status === 'serving' ? g.fac : null; }
@@ -222,7 +225,7 @@ class Game {
     // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
     try {
-      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
+      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
       if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
@@ -327,9 +330,9 @@ class Game {
     const n0 = G.log.length; step(G);
     const logs = G.log.slice(n0); this.H.seenLog = G.log.length;
     // pay
-    if (g.status === 'serving') { const pay = this.isLord() ? 0 : RANKS[rankOf(g.merit)][2]; if (pay) this.H.gold += pay; this.H.st.bestRank = Math.max(this.H.st.bestRank, rankOf(g.merit)); }
+    if (g.status === 'serving') { const pay = this.isLord() ? 0 : RANKS[rankOf(g.merit)][2]; if (pay) this.H.gold += pay; if (!this.isLord()) this.H.st.bestRank = Math.max(this.H.st.bestRank, rankOf(g.merit)); const P = this.perk(); if (P.fief) { this.H.gold += P.fief; this.H.fame += P.fame || 0; } else if (P.fame) this.H.fame += P.fame; }
     // the wounded recover a little each month
-    const regen = this.perk().regen; for (const p of this.partyList()) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * regen));
+    const regen = this.perk().regen + (fameOf(this.H).vol || 0); for (const p of this.partyList()) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * regen));
     // the news: big events everywhere, and anything about my own faction
     const mine = before.fac;
     const big = logs.filter((e) => e.level >= 3 || (e.kind === 'rival' && e.level >= 2) || (e.level >= 2 && (e.fac === mine || e.kind === 'war' || e.kind === 'death')) || (mine && e.fac === mine && ['war', 'defect', 'succession', 'fall'].includes(e.kind)) || e.def === mine);

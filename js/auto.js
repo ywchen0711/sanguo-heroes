@@ -111,7 +111,7 @@ export class AutoPlay {
     const m = H.missions.filter((x) => !x.done).sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z))[0];
     if (m && Math.random() < S.bounty && this.walkTo((x, z) => x === m.x && z === m.z)) { this.want = null; this.target = m.boss; return; }
     // 3. strong enough: lay siege to a weak enemy city nearby
-    const canSiege = mine ? (this.g.isLord() || rankOf(me.merit) >= 1) : H.fame >= 100;
+    const canSiege = mine ? (this.g.isLord() || rankOf(me.merit) >= 2) : H.fame >= 100;
     const bold = S === STYLES.war;
     if (canSiege && S.siege > 0 && pt.sol > pt.max * (bold ? 0.65 : 0.8)) {
       const prey = this.near(cities.filter((c) => c.C.owner && c.C.owner !== mine && (!mine || hostile(G, mine, c.C.owner)) && !(mine && allied(G, mine, c.C.owner)) && c.C.troops * this.g.board.gapMul(c.C.id) < pt.sol * (bold ? 3 : 1.6)), P).filter(([, d]) => d < (bold ? 65 : 40))[0];

@@ -5,7 +5,9 @@
 // kept like the player's, so at the end everyone is scored alike, and whoever unifies the realm wins outright.
 import { initLife, gainLife, note } from './life.js';
 
-const RANK_AT = [0, 40, 100, 200, 350, 600], RANK_N = ['從事', '校尉', '都尉', '中郎將', '將軍', '大將軍'];
+import { RANKS as RANK_T } from '../data/ranks.js';
+const RANK_AT = RANK_T.map((r) => r[1]), RANK_N = RANK_T.map((r) => r[0]);
+export { RANK_N };
 export const rankIdx = (m) => { let k = 0; RANK_AT.forEach((v, i) => { if (m >= v) k = i; }); return k; };
 const total = (g) => g.lead + g.war + g.int + g.pol + g.cha;
 // choose N rivals from the generals alive now, never the player. how: 'famous' - the great names, most likely the
@@ -44,7 +46,7 @@ export function rivalsMonth(G, E) {
     const lv = R.lv;
     const w = lord ? { rule: 6, duel: 1, bandit: 2 } : g.status === 'free'
       ? { bandit: 5, bounty: 3, cave: lv >= 8 ? 1 : 0, recruit: R.party.length < 4 ? 2 : 0, travel: 2, treasure: 1, duel: 1, serve: R.fame >= 150 ? 2 : 0, rise: R.fame >= 280 && R.party.length >= 2 ? 2 : 0 }
-      : { bandit: 3, bounty: 3, cave: lv >= 8 ? 1 : 0, work: 2, recruit: R.party.length < 4 ? 1 : 0, duel: 1, siege: rankIdx(g.merit) >= 1 ? 3 : 0, treasure: 1, rise: R.fame >= 500 && g.loyalty < 50 ? 1 : R.fame >= 2500 && (g.life?.type === 'A' || g.loyalty < 75) ? 0.6 : 0 };
+      : { bandit: 3, bounty: 3, cave: lv >= 8 ? 1 : 0, work: 2, recruit: R.party.length < 4 ? 1 : 0, duel: 1, siege: rankIdx(g.merit) >= 2 ? 3 : 0, treasure: 1, rise: R.fame >= 500 && g.loyalty < 50 ? 1 : R.fame >= 2500 && (g.life?.type === 'A' || g.loyalty < 75) ? 0.6 : 0 };
     for (const k of once) w[k] = 0;
     let t = 0; for (const k in w) t += w[k]; let x = r() * t, act = 'bandit'; for (const k in w) { x -= w[k]; if (x < 0) { act = k; break; } }
     const merit = (n) => { if (g.status !== 'serving' || lord) return; const before = rankIdx(g.merit); g.merit += n; const after = rankIdx(g.merit); if (after > before) { R.st.bestRank = Math.max(R.st.bestRank, after); E.record(G, 'rival', 'rivalRank', { g: g.name, r: RANK_N[after], f: f.name }, g.fac, after >= 3 ? 2 : 1, { g: g.id }); } };

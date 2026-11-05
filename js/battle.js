@@ -101,7 +101,7 @@ export class Battle {
     if (H && this.game.perk) this.mods.atk *= 1 + (this.game.perk().atk || 0);
     if (H && hasT(H, 'wanren')) this.mods.atk *= 1.05; if (H && o.siege && hasT(H, 'gongcheng')) this.mods.atk *= 1.1;
     this.mods.atk *= 1 + Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraAtk || 0), 0));
-    this.partyDef = 1 - Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraDef || 0), 0));
+    this.partyDef = (1 - Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraDef || 0), 0))) * (1 - (H && this.game.perk ? this.game.perk().def || 0 : 0));
     this.mods.foeAtk *= 1 + Math.min(0.3, this.foes.reduce((t, u) => t + (u.arms.auraAtk || 0), 0)); this.foeDef = 1 - Math.min(0.3, this.foes.reduce((t, u) => t + (u.arms.auraDef || 0), 0));
     // a column for each side, spread from front to back, every other general a step out
     const zs = (n) => Array.from({ length: n }, (_, i) => OZ + (n === 1 ? 6.2 : 3.7 + i * Math.min(1.9, 5.2 / (n - 1))));
