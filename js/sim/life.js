@@ -52,10 +52,14 @@ export function gainLife(G, g, n, favour, refresh) {
     if (g.base[k] < L.pot[STAT.indexOf(k)]) { g.base[k]++; refresh(G, g); if (g.base[k] >= 90 && g.base[k] - 1 < 90) note(G, g, 'peak', k); }
   }
 }
+// how fast the land's generals grow: about a level a month at first, Lv35-45 after ten years
+const GROW = 12;
 const FAV = { W: 'war', S: 'int', P: 'pol', A: 'cha', H: 'war' };
 // ---------------------------------------------------------------- the month
 export function lifeMonth(G, H) {
   const { r, refresh, gensIn, busy, citiesOf } = H;
+  // a month of a life is worth GROW times what it says (a rival hero keeps its own pace, see rivals.js)
+  const grow = (x, n, fav, f) => gainLife(G, x, x.rivalHero ? n : n * GROW, fav, f);
   const active = G.gens.filter((g) => (g.status === 'serving' || g.status === 'free') && !g.isPlayer && G.year - g.born >= 15);
   // who is in each city (for duels, teachers and friends)
   const byCity = new Map(); for (const g of active) { if (!byCity.has(g.city)) byCity.set(g.city, []); byCity.get(g.city).push(g); }
@@ -64,46 +68,46 @@ export function lifeMonth(G, H) {
     // the old fade a little each year
     if (G.month === 1 && age >= 58) for (const k of ['war', 'lead']) if (r() < (age - 55) / 25 && g.base[k] > 30) { g.base[k]--; refresh(G, g); }
     // a pupil learns from a master in the same city
-    if (L.mentor != null) { const m = G.gens[L.mentor]; if (!m || m.status === 'dead' || m.city !== g.city) { if (m && m.status === 'dead') note(G, g, 'mentorDied', m.name); L.mentor = null; } else gainLife(G, g, 14, bestOf(m), refresh); }
+    if (L.mentor != null) { const m = G.gens[L.mentor]; if (!m || m.status === 'dead' || m.city !== g.city) { if (m && m.status === 'dead') note(G, g, 'mentorDied', m.name); L.mentor = null; } else grow(g, 14, bestOf(m), refresh); }
     const here = byCity.get(g.city) || [], young = age < 30;
     const w = { W: { train: 5, duel: 3, drill: 2, friend: 1, mentor: young ? 2 : 0, rest: 1 }, S: { study: 5, visit: 2, drill: 1, friend: 1, mentor: young ? 2 : 0, rest: 1 },
       P: { govern: 5, study: 2, friend: 2, rest: 1 }, A: { friend: 4, study: 2, drill: 2, plot: g.status === 'serving' ? 2 : 0, rest: 1 }, H: { travel: withPlayer ? 0 : 4, train: 2, study: 2, mentor: 3, friend: 1, rest: 1 } }[L.type];
     if (g.status === 'free') { w.govern = 0; w.plot = 0; } if (withPlayer) { w.duel = 0; w.travel = 0; w.plot = 0; w.mentor = 0; }
     const act = pickW(r, w), youth = age < 22 ? 1.6 : age < 30 ? 1.25 : age > 55 ? 0.6 : 1, rival = g.rival ? 1.6 : 1, k = youth * rival;
-    if (act === 'train') gainLife(G, g, Math.round(18 * k), 'war', refresh);
-    if (act === 'study') gainLife(G, g, Math.round(18 * k), 'int', refresh);
-    if (act === 'drill') gainLife(G, g, Math.round(16 * k), 'lead', refresh);
-    if (act === 'govern') { gainLife(G, g, Math.round(16 * k), 'pol', refresh); const c = G.cities[g.city]; if (c && c.owner === g.fac && r() < 0.3) { c.farm = Math.min(c.farmMax, c.farm + 1); c.comm = Math.min(c.commMax, c.comm + 1); } }
-    if (act === 'rest') gainLife(G, g, 4, null, refresh);
-    if (act === 'visit') { gainLife(G, g, Math.round(14 * k), 'int', refresh); const sage = here.find((x) => x !== g && x.life?.type === 'H' && x.base.int >= 75); if (sage && r() < 0.3) { gainLife(G, g, 30, 'int', refresh); note(G, g, 'visit', sage.name); } }
-    if (act === 'travel' && g.status === 'free' && !busy(g)) { const c = G.cities[g.city]; if (c && c.adj.length) g.city = c.adj[Math.floor(r() * c.adj.length)]; gainLife(G, g, 10, null, refresh); }
+    if (act === 'train') grow(g, Math.round(18 * k), 'war', refresh);
+    if (act === 'study') grow(g, Math.round(18 * k), 'int', refresh);
+    if (act === 'drill') grow(g, Math.round(16 * k), 'lead', refresh);
+    if (act === 'govern') { grow(g, Math.round(16 * k), 'pol', refresh); const c = G.cities[g.city]; if (c && c.owner === g.fac && r() < 0.3) { c.farm = Math.min(c.farmMax, c.farm + 1); c.comm = Math.min(c.commMax, c.comm + 1); } }
+    if (act === 'rest') grow(g, 4, null, refresh);
+    if (act === 'visit') { grow(g, Math.round(14 * k), 'int', refresh); const sage = here.find((x) => x !== g && x.life?.type === 'H' && x.base.int >= 75); if (sage && r() < 0.3) { grow(g, 30, 'int', refresh); note(G, g, 'visit', sage.name); } }
+    if (act === 'travel' && g.status === 'free' && !busy(g)) { const c = G.cities[g.city]; if (c && c.adj.length) g.city = c.adj[Math.floor(r() * c.adj.length)]; grow(g, 10, null, refresh); }
     if (act === 'mentor' && L.mentor == null) {
       const fav = FAV[L.type], m = here.filter((x) => x !== g && x.follow == null && total(x) > total(g) + 40 && G.year - x.born > age + 8 && (x.fac === g.fac || x.status === 'free') && !x.life?.pupil).sort((a, b) => b.base[fav] - a.base[fav])[0];
       if (m && r() < 0.5) { L.mentor = m.id; (m.life || initLife(G, m)).pupil = g.id; note(G, g, 'mentor', m.name); note(G, m, 'pupil', g.name); }
-      else gainLife(G, g, 8, fav, refresh);
+      else grow(g, 8, fav, refresh);
     }
     if (act === 'duel') {
       const cand = here.filter((x) => x !== g && !x.isPlayer && x.follow == null && Math.abs(x.base.war - g.base.war) < 15), o = cand[Math.floor(r() * cand.length)];
-      if (o) { const win = g.war + r() * 20 > o.war + r() * 20, [a, b] = win ? [g, o] : [o, g]; gainLife(G, a, 30, 'war', refresh); gainLife(G, b, 14, 'war', refresh); if ((b.base.war >= 85 && r() < 0.5) || r() < 0.04) { note(G, a, 'duelWin', b.name); if (a.base.war >= 85) note(G, b, 'duelLose', a.name); } }
-      else gainLife(G, g, 12, 'war', refresh);
+      if (o) { const win = g.war + r() * 20 > o.war + r() * 20, [a, b] = win ? [g, o] : [o, g]; grow(a, 30, 'war', refresh); grow(b, 14, 'war', refresh); if ((b.base.war >= 85 && r() < 0.5) || r() < 0.04) { note(G, a, 'duelWin', b.name); if (a.base.war >= 85) note(G, b, 'duelLose', a.name); } }
+      else grow(g, 12, 'war', refresh);
     }
     if (act === 'friend') {
       const cand = here.filter((x) => x !== g && x.fac === g.fac && x.status === g.status), o = cand[Math.floor(r() * cand.length)];
       if (o) { const LO = o.life || initLife(G, o); L.friends[o.id] = (L.friends[o.id] || 0) + 4 + Math.round(g.cha / 20); LO.friends[g.id] = (LO.friends[g.id] || 0) + 3;
         if (L.friends[o.id] >= 160 && L.sworn == null && LO.sworn == null && r() < 0.5) { L.sworn = o.id; LO.sworn = g.id; g.loyalty = Math.min(100, g.loyalty + 5); note(G, g, 'sworn', o.name); note(G, o, 'sworn', g.name); }
         trimFriends(L); }
-      gainLife(G, g, 6, 'cha', refresh);
+      grow(g, 6, 'cha', refresh);
     }
     if (act === 'plot') { // the ambitious cool towards a weak lord, and gather the like-minded
       const f = G.factions[g.fac], lord = f && G.gens[f.lord]; if (lord && lord !== g && total(lord) < total(g)) g.loyalty = Math.max(10, g.loyalty - 2);
-      gainLife(G, g, 10, 'cha', refresh);
+      grow(g, 10, 'cha', refresh);
     }
   }
 }
 const bestOf = (m) => ['lead', 'war', 'int', 'pol'].reduce((a, k) => (m.base[k] > m.base[a] ? k : a), 'lead');
 function trimFriends(L) { const ks = Object.keys(L.friends); if (ks.length > 8) { ks.sort((a, b) => L.friends[a] - L.friends[b]); for (const k of ks.slice(0, ks.length - 8)) delete L.friends[k]; } }
 // a battle: everyone who was in it learns from it
-export function lifeBattle(G, gs, won, refresh) { for (const g of gs) if (g && g.status === 'serving' && !g.isPlayer) gainLife(G, g, won ? 40 : 22, won ? 'lead' : 'war', refresh); }
+export function lifeBattle(G, gs, won, refresh) { for (const g of gs) if (g && g.status === 'serving' && !g.isPlayer) gainLife(G, g, (won ? 40 : 22) * (g.rivalHero ? 1 : 3), won ? 'lead' : 'war', refresh); }
 // how one line of a general's chronicle reads
 export function lifeLine([y, code, a]) {
   const S = { lead: '統率', war: '武力', int: '智力', pol: '政治', cha: '魅力' };
