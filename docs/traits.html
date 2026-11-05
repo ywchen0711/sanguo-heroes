@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>武將特性規劃</title>
+<style>
+:root { --bg: #f6f1e6; --panel: #fffaf0; --ink: #2a2418; --dim: #7a6e58; --edge: #d8ccb0; --gold: #a0701a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #16130e; --panel: #211c15; --ink: #efe6d2; --dim: #a89a80; --edge: #3a3226; --gold: #ffc84a; } }
+:root[data-theme="dark"] { --bg: #16130e; --panel: #211c15; --ink: #efe6d2; --dim: #a89a80; --edge: #3a3226; --gold: #ffc84a; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 "Noto Serif TC", "PMingLiU", serif; }
+main { max-width: 1080px; margin: 0 auto; padding: 24px 16px 60px; }
+h1 { font-size: 26px; margin: 0 0 4px; color: var(--gold); }
+h2 { font-size: 20px; margin: 34px 0 10px; border-bottom: 1px solid var(--edge); padding-bottom: 4px; }
+p.lead { color: var(--dim); margin-top: 0; }
+.card { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: 12px 16px; margin: 10px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
+.chip { border: 1px solid var(--edge); border-radius: 14px; padding: 2px 10px; cursor: pointer; background: var(--panel); font: inherit; color: inherit; }
+.chip.on { border-color: var(--gold); color: var(--gold); font-weight: bold; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.t { background: var(--panel); border: 1px solid var(--edge); border-radius: 6px; padding: 8px 10px; }
+.t b { font-size: 16px; } .t .r { float: right; font-size: 12px; }
+.t small { color: var(--dim); display: block; }
+.t ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.s { display: inline-block; font-size: 12px; border-radius: 3px; padding: 0 5px; margin-right: 3px; color: #fff; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+td, th { border-bottom: 1px solid var(--edge); padding: 6px 6px; text-align: left; vertical-align: top; }
+th { color: var(--dim); font-weight: normal; }
+.r1 { color: var(--dim); } .r2 { color: #4a8ad0; } .r3 { color: #d08a1a; }
+.wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>武將特性規劃</h1>
+<p class="lead">三國英傑傳 · 200 種特性、共鳴、相生與名組合　｜　這一頁直接讀遊戲的資料檔 <code>js/data/traits.js</code>，改資料這裡就跟著變。</p>
+
+<h2>規則</h2>
+<div class="card">
+<p><b>每位武將兩個特性。</b>名將是指定的（呂布「萬夫莫敵＋飛將」、諸葛亮「臥龍＋八陣」……），其他人依能力抽：武力高的偏向勇、騎，智力高的偏向謀、奇，政治高的偏向政，魅力高的偏向魅、仁。稀有度：普通約 70%、稀有 25%、傳說 5%（傳說特性大多保留給名將）。</p>
+<p><b>特性之間怎麼配合</b>（由弱到強）：</p>
+<ol>
+<li><b>共鳴</b>：同一位武將的兩個特性屬於同一系，兩個特性都變成 1.5 倍，而且多一個該系的共鳴效果。</li>
+<li><b>相生</b>：兩個特性屬於互補的兩系（例如謀＋火、騎＋速）。同一人有，或隊伍裡相鄰兩人各有一個，都算。</li>
+<li><b>名組合</b>：特定的兩個特性。在同一人身上叫「個人絕技」；分在隊伍兩人身上叫「合擊」，兩個人都得到效果。名組合很強，是組隊的目標。</li>
+</ol>
+<p><b>怎麼改變特性</b>（計畫）：等級 20、40 時「覺醒」，把一個普通特性升成同系的稀有特性；拜師時有機會學到師父的一個特性；少數奇遇、奇人會傳授特性；「洗髓丹」等道具可以重抽一個。</p>
+</div>
+
+<h2>流派（15 系）</h2>
+<div class="wrap"><table id="schools"></table></div>
+
+<h2>200 種特性</h2>
+<div class="chips" id="filter"></div>
+<div class="grid" id="traits"></div>
+
+<h2>相生（互補的兩系）</h2>
+<div class="wrap"><table id="syn"></table></div>
+
+<h2>名組合</h2>
+<div class="wrap"><table id="combos"></table></div>
+
+<h2>名將的特性</h2>
+<div class="grid" id="famous"></div>
+
+<h2>一起做的：隨機事件與裝備</h2>
+<div class="card">
+<p><b>新增 120 個隨機事件</b>，大部分和特性有關，讓特性在地圖上也有用：</p>
+<ul>
+<li>特性觸發（約 50 個）：隊伍裡有「醫術」可以救治瘟疫村莊；「獵戶」能追蹤猛獸巢穴；「水性」能救起落水的商人；「外交」能化解兩村械鬥；「相馬」能在馬市挑到千里馬……</li>
+<li>名組合觸發（約 20 個）：湊齊「火計＋東風」會遇到奇人傳授火攻兵書；「義氣＋結交」會遇到想結拜的豪傑……</li>
+<li>時局事件（約 30 個）：配合大疫、大旱、黃巾再起、外族入寇、豐年太平、合縱出現的事件。</li>
+<li>其他（約 20 個）：武將之間因特性起衝突或結交（兩個「狂戰」吵架、「清廉」看不慣「山賊出身」）。</li>
+</ul>
+<p><b>新增 100 件裝備</b>，和特性配合：</p>
+<ul>
+<li>流派裝備（每系 4 件，共 60 件）：例如「火龍扇」給火系特性再 +20%、「連弩機」給弓系的連擊、「八卦鏡」給奇系。</li>
+<li>套裝（10 套，每套 3 至 4 件，共 40 件）：湊齊一套才有額外效果，例如「虎豹騎套裝」（騎兵攻擊與先制）、「臥龍套裝」（策略消耗大減）。</li>
+<li>裝備畫面會標出「和這位武將的特性配合」。</li>
+</ul>
+</div>
+</main>
+<script type="module">
+import { SCHOOLS, TRAITS, RESONANCE, SYNERGY, COMBOS, FAMOUS, fxText, TRAIT } from '../js/data/traits.js';
+import { POWERS } from '../js/data/relics.js';
+const R_N = ['', '普通', '稀有', '傳說'];
+const chip = (s) => `<span class="s" style="background:${SCHOOLS[s][1]}">${s}</span>`;
+const fx = (o) => Object.entries(o).map(([k, v]) => fxText(POWERS, k, v)).join('、');
+const count = (s) => TRAITS.filter((t) => t.s.includes(s)).length;
+document.getElementById('schools').innerHTML = '<tr><th>系</th><th>擅長</th><th>特性數</th><th>共鳴（兩個特性同系）</th></tr>' + Object.entries(SCHOOLS).map(([s, [n]]) => `<tr><td>${chip(s)}</td><td>${n}</td><td>${count(s)}</td><td><b>${RESONANCE[s][0]}</b>：${fx(RESONANCE[s][1])}</td></tr>`).join('');
+const inCombo = (n) => COMBOS.filter((c) => c[0] === n || c[1] === n).map((c) => c[2]);
+let cur = null;
+function draw() {
+  const list = TRAITS.filter((t) => !cur || (cur === '傳說' ? t.r === 3 : t.s.includes(cur)));
+  document.getElementById('traits').innerHTML = list.map((t) => `<div class="t"><span class="r r${t.r}">${R_N[t.r]}</span><b>${t.n}</b> ${t.s.map(chip).join('')}<small>${t.d}</small><ul>${Object.entries(t.fx).map(([k, v]) => `<li>${fxText(POWERS, k, v)}</li>`).join('')}</ul>${inCombo(t.n).length ? `<small>名組合：${[...new Set(inCombo(t.n))].join('、')}</small>` : ''}</div>`).join('');
+  document.querySelectorAll('#filter .chip').forEach((b) => b.classList.toggle('on', (b.dataset.k || null) === cur));
+}
+document.getElementById('filter').innerHTML = `<button class="chip" data-k="">全部 ${TRAITS.length}</button>` + Object.keys(SCHOOLS).map((s) => `<button class="chip" data-k="${s}">${s} ${count(s)}</button>`).join('') + `<button class="chip" data-k="傳說">傳說 ${TRAITS.filter((t) => t.r === 3).length}</button>`;
+document.getElementById('filter').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (!b) return; cur = b.dataset.k || null; draw(); });
+draw();
+document.getElementById('syn').innerHTML = '<tr><th>兩系</th><th>名稱</th><th>效果</th></tr>' + SYNERGY.map(([a, b, n, o, d]) => `<tr><td>${chip(a)}${chip(b)}</td><td><b>${n}</b></td><td>${d}</td></tr>`).join('');
+document.getElementById('combos').innerHTML = '<tr><th>特性</th><th>名組合</th><th>效果</th><th></th></tr>' + COMBOS.map(([a, b, n, o, d]) => `<tr><td>${a} ＋ ${b}</td><td><b>${n}</b></td><td>${fx(o)}</td><td><small>${d}</small></td></tr>`).join('');
+document.getElementById('famous').innerHTML = Object.entries(FAMOUS).map(([g, [a, b]]) => { const c = COMBOS.find((x) => (x[0] === a && x[1] === b) || (x[0] === b && x[1] === a)), sh = TRAIT[a].s.find((s) => TRAIT[b].s.includes(s));
+  return `<div class="t"><b>${g}</b><small>${a}（${R_N[TRAIT[a].r]}）＋ ${b}（${R_N[TRAIT[b].r]}）</small><small>${c ? `★ 個人絕技「${c[2]}」` : sh ? `共鳴「${RESONANCE[sh][0]}」` : ''}</small></div>`; }).join('');
+</script>
+</body>
+</html>
