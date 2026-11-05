@@ -46,14 +46,21 @@ function refine(src) {
     if (D === C && D !== B && C !== A) e2 = C; if (B === D && B !== A && D !== C) e3 = D;
     const o = (y * 2) * W2 + x * 2; b[o] = e0; b[o + 1] = e1; b[o + W2] = e2; b[o + W2 + 1] = e3;
   }
-  // rim light: little-endian RGBA in a Uint32 (0xAABBGGRR)
-  const lum = (c) => (c & 255) * 0.3 + ((c >>> 8) & 255) * 0.59 + ((c >>> 16) & 255) * 0.11, dark = (c) => !(c >>> 24) || lum(c) < 42;
-  const tint = (c, k) => { const r = Math.min(255, Math.max(0, (c & 255) * k)), g = Math.min(255, Math.max(0, ((c >>> 8) & 255) * k)), bl = Math.min(255, Math.max(0, ((c >>> 16) & 255) * k)); return ((c >>> 24) << 24 | bl << 16 | g << 8 | r) >>> 0; };
-  const src2 = b.slice();
+  // little-endian RGBA in a Uint32 (0xAABBGGRR)
+  const R_ = (c) => c & 255, G_ = (c) => (c >>> 8) & 255, B_ = (c) => (c >>> 16) & 255, A_ = (c) => c >>> 24;
+  const lum = (c) => R_(c) * 0.3 + G_(c) * 0.59 + B_(c) * 0.11;
+  const tint = (c, k) => ((A_(c) << 24) | (Math.min(255, B_(c) * k) << 16) | (Math.min(255, G_(c) * k) << 8) | Math.min(255, R_(c) * k)) >>> 0;
+  const src2 = b.slice(), N = [-W2, 1, W2, -1];
+  // the outline is the dark ring next to the transparent outside (not the eyes, brows or a dark beard inside)
+  const ring = new Uint8Array(W2 * H2);
+  for (let y = 1; y < H2 - 1; y++) for (let x = 1; x < W2 - 1; x++) { const i = y * W2 + x, c = src2[i]; if (A_(c) && lum(c) < 42 && N.some((d) => !A_(src2[i + d]))) ring[i] = 1; }
+  const skin = (c) => { if (!A_(c) || lum(c) < 100) return false; const r = R_(c), g = G_(c), bl = B_(c); return r - g >= 8 && r - g <= 64 && g - bl >= 12 && g - bl <= 72; };
   for (let y = 1; y < H2 - 1; y++) for (let x = 1; x < W2 - 1; x++) {
-    const i = y * W2 + x, c = src2[i]; if (dark(c)) continue;
-    if (dark(src2[i - W2]) || dark(src2[i - 1])) b[i] = tint(c, 1.16);
-    else if (dark(src2[i + W2]) || dark(src2[i + 1])) b[i] = tint(c, 0.84);
+    const i = y * W2 + x, c = src2[i]; if (!A_(c) || ring[i] || lum(c) < 42) continue;
+    // a fine line where the face meets hair, helmet, beard or collar: the cheek and the chin stay sharp
+    if (skin(c) && N.some((d) => { const o = src2[i + d]; return A_(o) && !ring[i + d] && !skin(o) && Math.abs(lum(o) - lum(c)) > 22; })) { b[i] = tint(c, 0.7); continue; }
+    // a soft rim of light only along the silhouette, on the side that faces the light
+    if (ring[i - W2] || ring[i - 1]) b[i] = tint(c, 1.12);
   }
   const cv = document.createElement('canvas'); cv.width = W2; cv.height = H2; cv.getContext('2d').putImageData(out, 0, 0); return cv;
 }
