@@ -130,7 +130,8 @@ export class Screens {
     for (const c of CITY_POS) { const o = G.cities[c.id].owner, f = o && G.factions[o]; x.fillStyle = f ? f.color : '#ddd'; x.strokeStyle = '#000'; x.lineWidth = 1; x.fillRect(c.x * s - 3, c.y * s - 3, 6, 6); x.strokeRect(c.x * s - 3, c.y * s - 3, 6, 6); if (big) { x.fillStyle = '#fff'; x.font = '10px sans-serif'; x.strokeStyle = '#000'; x.lineWidth = 2.5; x.strokeText(G.cities[c.id].name, c.x * s + 5, c.y * s + 4); x.fillText(G.cities[c.id].name, c.x * s + 5, c.y * s + 4); } }
     if (big) for (const q of M.places) { x.fillStyle = q.kind === 'county' ? '#f0e8d0' : q.kind === 'village' ? '#c8955a' : this.g.H.places?.[q.id]?.boss ? '#6a6a6a' : '#1a1010'; x.strokeStyle = '#000'; x.lineWidth = 1; if (q.kind === 'cave') { x.beginPath(); x.moveTo(q.x * s, q.y * s - 3); x.lineTo(q.x * s + 3, q.y * s + 2); x.lineTo(q.x * s - 3, q.y * s + 2); x.closePath(); x.fill(); x.stroke(); } else { x.beginPath(); x.arc(q.x * s, q.y * s, q.kind === 'county' ? 2.5 : 1.8, 0, Math.PI * 2); x.fill(); x.stroke(); } }
     for (const m of this.g.H.missions.filter((m) => !m.done)) { x.fillStyle = '#111'; x.fillRect(m.x * s - 2, m.z * s - 2, 4, 4); }
-    const P = this.g.pos, px = P.town != null ? CITY_POS[P.town].x : P.x, pz = P.town != null ? CITY_POS[P.town].y : P.z;
+    // where the party is: in a town, the town; on the land, where it is now (part-way through a step, too)
+    const P = this.g.pos, tp = this.g.town?.C?.pos, px = P.town != null ? CITY_POS[P.town].x : tp ? tp.x : this.g.mode === 'world' ? P.fx ?? P.x : P.x, pz = P.town != null ? CITY_POS[P.town].y : tp ? tp.y : this.g.mode === 'world' ? P.fz ?? P.z : P.z;
     x.fillStyle = '#ffec4a'; x.strokeStyle = '#000'; x.lineWidth = 1.5; x.beginPath(); x.arc(px * s, pz * s, big ? 5 : 3.5, 0, Math.PI * 2); x.fill(); x.stroke();
   }
   minimap() { const cv = document.getElementById('minimap'); if (!cv || !this.g.world) return; this.drawMap(cv, 1, false); }
