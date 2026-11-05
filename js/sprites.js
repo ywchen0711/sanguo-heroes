@@ -90,6 +90,10 @@ const FAMOUS = {
   貂蟬: { skin: '#f8dcc0', beard: null, hat: 'lady', hatC: '#1a1010', body: '#e85a8a', trim: '#f8e0f0', cape: '#f8c8d8', wpn: null, robe: true, lady: true },
   孟獲: { skin: '#8a5a38', beard: 'spiky', beardC: '#1a1410', hat: 'feather', hatC: '#c8a040', body: '#8a6a2a', trim: '#e8c860', cape: '#5a3a1a', wpn: 'hammer' },
   華佗: { skin: '#f0c8a0', beard: 'long', beardC: '#e8e8e8', hat: 'scholar', hatC: '#4a4a3a', body: '#8a9a7a', trim: '#e8e8d8', cape: null, wpn: null, robe: true },
+  Jeff: { skin: '#f0c8a0', beard: 'short', beardC: '#3a2a1a', hat: 'crown', hatC: '#ffd86a', body: '#2a6ad8', trim: '#ffd86a', cape: '#e8e8f0', wpn: 'sword', brow: 'thick', eyes: 'big', armor: 'scale', mark: 'earring', hair: '#3a2a1a' },
+  Erin: { skin: '#f8dcc0', beard: null, hat: 'lady', hatC: '#ff8ab8', body: '#e84a8a', trim: '#ffd86a', cape: '#f8c8e8', wpn: 'fan', robe: true, lady: true, pin: '#ff8ab8', hairStyle: 'long', eyes: 'big', mark: 'blush', hair: '#6a3a1a' },
+  Josh: { skin: '#f0c8a0', beard: null, hat: 'helmet', hatC: '#e83a3a', body: '#e83a3a', trim: '#ffd86a', cape: '#2a2a3a', wpn: 'halberd', brow: 'angry', eyes: 'big', armor: 'stripe', hair: '#1a1410' },
+  Jasper: { skin: '#f4d0a8', beard: null, hat: 'band', hatC: '#3ad88a', body: '#2a9a5a', trim: '#e8e8f0', cape: '#1a4a3a', wpn: 'twin', brow: 'straight', eyes: 'big', armor: 'scale', hairStyle: 'tail', mark: 'scar', hair: '#2a1a10' },
   于吉: { skin: '#f0c8a0', beard: 'long', beardC: '#f0f0f0', hat: 'taoist', hatC: '#3a3a3a', body: '#e8e8e0', trim: '#5a5a5a', cape: null, wpn: 'staff', robe: true },
 };
 const HAIRS = ['#1a1410', '#2a1a10', '#3a2a1a', '#141018'], SKINS = ['#f0c8a0', '#e8b890', '#f4d0a8', '#d8a078', '#e8c098'];
@@ -131,7 +135,7 @@ export function assignLooks(gens) {
 export const lookSig = (name) => (TRAITS.has(name) ? sigOf(TRAITS.get(name)) : null);
 // a look for any general: g = { name, war, int, lead, cha }, color = their warlord's colour
 export function lookFor(g, color = '#7a7a8a') {
-  const F = FAMOUS[g.name]; if (F) return { ...F, hair: F.beardC || '#1a1410', key: g.name };
+  const F = FAMOUS[g.name]; if (F) return { ...F, hair: F.hair || F.beardC || '#1a1410', key: g.name };
   const T = TRAITS.get(g.name) || traitsFor(g, 0), robeLike = T.armor === 'robe';
   return { skin: T.skin, hair: T.hair, hairStyle: T.hairStyle, brow: T.brow, eyes: T.eyes, beard: T.beard, beardC: T.beardC, hat: T.hat,
     hatC: T.lady ? T.pin : T.scholar ? shade(T.robe, 0.45) : shade(color, T.hatTone), body: robeLike ? T.robe : color, trim: T.trim,

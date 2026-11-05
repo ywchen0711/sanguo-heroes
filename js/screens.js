@@ -54,10 +54,11 @@ export class Screens {
     assignLooks(G.gens);
     const pool = G.gens.filter((g) => (g.status === 'serving' || g.status === 'free') && !g.hidden);
     for (;;) {
-      const how = await this.ui.choose([{ k: 'rand', n: '隨機武將' }, { k: 'famous', n: '從名將中挑選' }, { k: 'faction', n: '依勢力挑選' }, { k: 'search', n: '搜尋名字' }, { k: null, n: '← 返回' }], { title: '扮演哪一位武將？' });
+      const how = await this.ui.choose([{ k: 'rand', n: '隨機武將' }, { k: 'super', n: '超級武將', d: 'Jeff、Erin、Josh、Jasper：五項能力全部 100，各有名劍與法術' }, { k: 'famous', n: '從名將中挑選' }, { k: 'faction', n: '依勢力挑選' }, { k: 'search', n: '搜尋名字' }, { k: null, n: '← 返回' }], { title: '扮演哪一位武將？' });
       if (!how) return this.setup();
       let pid = null;
       if (how === 'rand') pid = pool[Math.floor(Math.random() * pool.length)].id;
+      if (how === 'super') pid = await this.pickGen(G, G.gens.filter((g) => g.hidden && g.status === 'free'), '超級武將');
       if (how === 'famous') pid = await this.pickGen(G, pool.slice().sort((a, b) => tot(b) - tot(a)).slice(0, 80), '名將');
       if (how === 'faction') { const fs = Object.values(G.factions).filter((f) => f.alive); const fid = await this.ui.choose([...fs.map((f) => ({ k: f.id, n: `<span style="color:${f.color}">■</span> ${f.name}軍`, sub: `${citiesOf(G, f.id).length} 城　${gensOf(G, f.id).length} 人` })), { k: '-', n: '在野武將' }, { k: null, n: '← 返回' }], { title: '勢力' }); if (fid) pid = await this.pickGen(G, pool.filter((g) => fid === '-' ? g.status === 'free' : g.fac === fid).sort((a, b) => tot(b) - tot(a)), fid === '-' ? '在野' : G.factions[fid].name + '軍'); }
       if (how === 'search') { const q = prompt('輸入武將名字（例如：趙雲）'); if (q) { const hits = pool.filter((g) => g.name.includes(q.trim())); if (!hits.length) { this.ui.toast('找不到這位武將（可能還沒出生，或已經去世）'); continue; } pid = await this.pickGen(G, hits, '搜尋結果'); } }

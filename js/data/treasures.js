@@ -54,11 +54,12 @@ export const SPELLS = {
 // who knows which spells when the game starts
 export const SPELL_HOLDERS = { 諸葛亮: ['zhen', 'feng'], 于吉: ['yao', 'lei'], 華佗: ['zhi'], 黃承彥: ['zhen'], 司馬懿: ['dun'], 張魯: ['yao'], 孟節: ['zhi'], 龐統: ['huan'], 龐德公: ['huan'] };
 
-// four hidden generals: they may appear at a random time and place in any game
+// the four super generals: in every game from the first year, free in some city, everything at 100, each with a famous
+// sword and spells of their own; anyone may play one of them
 //   name, lead, war, int, pol, cha, sword, spells
 export const HIDDEN = [
-  ['Jeff', 99, 88, 97, 95, 99, 'ganjiang', ['zhen', 'feng']],
-  ['Josh', 96, 100, 86, 72, 92, 'chixiao', ['lei']],
-  ['Jasper', 97, 95, 98, 88, 95, 'taia', ['dun', 'huan']],
-  ['Erin', 92, 84, 99, 96, 98, 'moye', ['feng', 'zhi', 'yao']],
+  ['Jeff', 100, 100, 100, 100, 100, 'ganjiang', ['zhen', 'feng', 'dun']],
+  ['Josh', 100, 100, 100, 100, 100, 'chixiao', ['lei', 'yao']],
+  ['Jasper', 100, 100, 100, 100, 100, 'taia', ['dun', 'huan', 'lei']],
+  ['Erin', 100, 100, 100, 100, 100, 'moye', ['feng', 'zhi', 'zhen']],
 ];

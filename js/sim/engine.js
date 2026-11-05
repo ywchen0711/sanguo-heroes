@@ -69,10 +69,10 @@ export function newGame(o = {}) {
       fac0: fac === '-' ? null : fac, home: byName[city].id, kin: kin || null, appear: S.allStars ? start : Math.max(start, b + 15), appearMonth: 1 + Math.floor(r() * 12),
       fac: null, city: byName[city].id, status: 'unborn', loyalty: 0, merit: 0, task: null, kills: 0, duelsWon: 0 };
   });
-  // the four hidden generals: each may turn up somewhere, some time, in any game
+  // the four super generals: in every game from the start, free in some city (see HIDDEN)
   for (const [name, lead, war, int, pol, cha, sword, spells] of HIDDEN) {
-    const comes = r() < 0.6, ay = start + 1 + Math.floor(r() * 35), city = Math.floor(r() * G.cities.length);
-    G.gens.push({ id: G.gens.length, name, born: ay - 18, died: ay + 45 + Math.floor(r() * 15), deathMonth: 1 + Math.floor(r() * 12), lead, war, int, pol, cha,
+    const comes = true, ay = start, city = Math.floor(r() * G.cities.length);
+    G.gens.push({ id: G.gens.length, name, born: start - 24 - Math.floor(r() * 6), died: start + 90, deathMonth: 1 + Math.floor(r() * 12), lead, war, int, pol, cha,
       base: { lead, war, int, pol, cha }, spells: [], spells0: spells, sword, hidden: true, fac0: null, home: city, kin: 'chenfam', appear: comes ? ay : 9999, appearMonth: 1 + Math.floor(r() * 12),
       fac: null, city, status: 'unborn', loyalty: 0, merit: 0, task: null, kills: 0, duelsWon: 0 });
   }
@@ -100,6 +100,8 @@ export function newGame(o = {}) {
     if (h) give(G, it, G.byName[h[0]]);
     else if (hideIn) it.city = hideIn === '*' ? Math.floor(r() * G.cities.length) : byName[hideIn].id;
   }
+  // the super generals carry their swords and know their spells from the first day
+  for (const g of G.gens) if (g.hidden && g.status === 'free') { const it = G.items.find((x) => x.key === g.sword); if (it && it.holder == null) { it.city = null; give(G, it, g); } for (const s of g.spells0) learn(g, s); g.known = true; }
   // the warlord the player rules (null: just watch)
   G.player = o.player && G.factions[o.player] ? o.player : null; G.pending = []; G.decided = []; G.auto = { mode: 'manual', askWar: true }; G.nextProp = 1;
   record(G, 'start', 'start', { s: S.id }, null, 3);
