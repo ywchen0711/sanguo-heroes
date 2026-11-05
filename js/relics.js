@@ -46,7 +46,8 @@ export function relicLabel(e) {
   return it.shop ? it.n : `<span style="color:${it.color}">${it.n}</span>${it.lv > 1 ? `<small> Lv${it.lv}</small>` : ''}`;
 }
 // ---------------------------------------------------------------- finding them
-const WEIGHTS = (lv) => lv < 8 ? [60, 30, 9, 1, 0] : lv < 16 ? [35, 38, 20, 6, 1] : lv < 25 ? [20, 32, 30, 14, 4] : [10, 25, 33, 22, 10];
+// even early on there is a thin chance of something wonderful (the last two numbers): that is the fun of it
+const WEIGHTS = (lv) => lv < 8 ? [58, 30, 9, 2.4, 0.6] : lv < 16 ? [35, 37, 20, 6.5, 1.5] : lv < 25 ? [20, 32, 30, 14, 4] : [10, 25, 33, 22, 10];
 export function rollGrade(lv, min = 1) {
   const w = WEIGHTS(lv).map((x, i) => (i + 1 < min ? 0 : x)), tot = w.reduce((a, b) => a + b, 0) || 1; let r = Math.random() * tot;
   for (let i = 0; i < 5; i++) { r -= w[i]; if (r < 0) return i + 1; } return Math.max(min, 1);
@@ -54,6 +55,15 @@ export function rollGrade(lv, min = 1) {
 export function rollRelic(lv, min = 1, slot = null) {
   const g = rollGrade(lv, min), pool = RELIC_IDS.filter((id) => RELICS[id].grade === g && (!slot || RELICS[id].slot === slot));
   return pool[Math.floor(Math.random() * pool.length)];
+}
+// a jackpot: a treasure of the top grades, whatever the level, with a fanfare
+export function jackpot(game, slot = null) {
+  const g = Math.random() < 0.35 ? 5 : 4, pool = RELIC_IDS.filter((id) => RELICS[id].grade === g && (!slot || RELICS[id].slot === slot)), id = pool[Math.floor(Math.random() * pool.length)];
+  const R = RELICS[id]; giveRelic(game, id, true);
+  game.ui.banner(`<b style="color:${GRADE_C[g]};font-size:20px">★ ${g === 5 ? '天降神兵' : '稀世珍寶'} ★</b><br>得到 <b style="color:${GRADE_C[g]}">${R.n}</b>　<small>${GRADE_N[g]}・${SLOT_N[R.slot]}</small>`, 7000);
+  game.audio?.sfx('level'); setTimeout(() => game.audio?.sfx('coin'), 250); setTimeout(() => game.audio?.sfx('level'), 500);
+  (game.H.jackpots ||= []).push({ id, y: game.G.year });
+  return id;
 }
 export function giveRelic(game, id, quiet) {
   const H = game.H, R = RELICS[id]; H.bag ||= [];

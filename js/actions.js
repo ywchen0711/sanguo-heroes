@@ -8,7 +8,7 @@ import { serve, die, record, pickGovernor, destroy, give, hostile, allied, citie
 import { itemName, spellName } from './sim/text.js';
 import { EQUIP, WEAPONS, ARMORS, HORSES, ITEMS, RANKS, rankOf, newRec, solMax, spMax, bstats, gainExp, startLv, STAT_N, expNeed, shopItems, usable, FORGE, forgeOf, eqName, TROOPS, hasHorse } from './hero.js';
 import { deed, bump, hasT, checkTitles, knownAs, TITLES } from './deeds.js';
-import { itemOf, isRelic, relicFx, partyFx, rollRelic, giveRelic, relicExp, powerLines as powerLinesOf, RELICS, PRICE, GRADE_N, GRADE_C, SLOT_N } from './relics.js';
+import { itemOf, isRelic, relicFx, partyFx, rollRelic, giveRelic, jackpot, relicExp, powerLines as powerLinesOf, RELICS, PRICE, GRADE_N, GRADE_C, SLOT_N } from './relics.js';
 import { equipScreen } from './equip.js';
 import { addBond, offerOaths, versus, drink, isSworn, isRival, bondOf, bondsHTML } from './bonds.js';
 import { mark, dexScreen } from './dex.js';
@@ -84,7 +84,8 @@ export class Actions {
       if (hid.length && Math.random() < (hasT(this.H, 'tanxian') ? 0.55 : 0.35)) { const it = pick(hid); give(this.G, it, this.me); this.H.fame += 40; record(this.G, 'item', 'itemFind', { g: this.me.name, c: q.name, it: it.key }, this.g.myFaction(), 2, { g: this.me.id }); await this.ui.say('', `寶箱裡竟然是傳說中的「${itemName(it.key)}」！\n${Object.entries(it.fx).map(([k, v]) => `${STAT_N[k]} +${v}`).join('　')}`); return; }
       const t = q.tier, opts = [`item:ore*${1 + rint(0, t)}`, `gold+${30 + t * 30} item:ore${t >= 3 ? ' item:ore2' : ''}`, `gold+${60 + t * 70 + rint(0, 60)}`, `gold+${40 + t * 40} item:med2`, `item:med*2 item:book`, `eq:w${Math.min(7, 2 + t + rint(0, 1))}`, `eq:a${Math.min(7, 2 + t + rint(0, 1))}`, `gold+${30 + t * 30} item:rice item:wine`];
       const notes = await this.g.events.effects(pick(opts).split(' '), c, {});
-      if (Math.random() < 0.4) { const id = rollRelic(this.avgLv(), Math.min(5, q.tier)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
+      if (Math.random() < 0.02 + q.tier * 0.01) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
+      else if (Math.random() < 0.4) { const id = rollRelic(this.avgLv(), Math.min(5, q.tier)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', '打開了寶箱！\n' + notes.join('　')); this.g.hud(); return;
     }
     const i = M.odd.indexOf(th); await this.caveOdd(th.kind, i, st, q, c);
@@ -124,7 +125,8 @@ export class Actions {
       bump(this.H, 'caves'); deed(this.g, `入${q.name}，誅${B.name}`); for (const id of this.H.party) addBond(this.g, id, 5); checkTitles(this.g);
       if (this.me.status === 'serving') { this.me.merit += 10 * t; this.promote(); }
       this.H.st.missions++;
-      { const id = rollRelic(this.avgLv() + 4, Math.min(5, q.tier + 1)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
+      if (Math.random() < 0.08 + q.tier * 0.04) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
+      else { const id = rollRelic(this.avgLv() + 4, Math.min(5, q.tier + 1)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', `打倒了${q.name}的${B.name}！\n${notes.join('　')}`); this.g.hud(); return;
     }
     if (n.special === 'elder') {
@@ -428,6 +430,7 @@ export class Actions {
     const G = this.G, seed = (C.id + 1) * 7919 + Math.floor(G.t / 3) * 104729; let a = seed >>> 0 || 1; const r = () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; };
     const ids = Object.keys(RELICS), maxG = Math.min(5, C.size + 1), out = [];
     for (let i = 0; i < 40 && out.length < 4; i++) { const id = ids[Math.floor(r() * ids.length)]; if (RELICS[id].grade <= maxG && !out.includes(id)) out.push(id); }
+    if (r() < 0.08) { const top = ids.filter((id) => RELICS[id].grade === 5); out[out.length - 1] = top[Math.floor(r() * top.length)]; } // a piece of the top grade, rarely
     return out.sort((x, y) => RELICS[x].grade - RELICS[y].grade);
   }
   async merchant(C) {
@@ -606,6 +609,10 @@ export class Actions {
       // a treasure left on the field: likelier from a named general or a chief
       const named = foes.some((x) => x.gid != null || x.boss), chance = (named ? 0.14 : 0.05) + partyFx(g, 'drop');
       if (!o.drill && !o.noRelic && Math.random() < chance) { const id = rollRelic(this.avgLv(), named ? 2 : 1); giveRelic(g, id, true); msg += `\n得到寶物「<b style="color:${GRADE_C[RELICS[id].grade]}">${RELICS[id].n}</b>」！（${GRADE_N[RELICS[id].grade]}・${SLOT_N[RELICS[id].slot]}）`; }
+      // a jackpot: very rarely, a treasure of the top grades from any fight (likelier from a general or a chief)
+      if (!o.drill && !o.noRelic && Math.random() < (named ? 0.04 : 0.012) + partyFx(g, 'drop') / 4) { const id = jackpot(g); msg += `\n★ 天降至寶！得到「<b style="color:${GRADE_C[RELICS[id].grade]}">${RELICS[id].n}</b>」（${GRADE_N[RELICS[id].grade]}）！`; }
+      // beaten generals now and then leave their own famous treasure behind (Red Hare from Lü Bu…)
+      if (!o.drill && !o.noRelic) for (const u of foes) { if (u.gid == null) continue; const own = G.items.filter((it) => it.holder === u.gid); if (own.length && Math.random() < 0.06) { const it = own[Math.floor(Math.random() * own.length)]; give(G, it, this.me); this.H.fame += 30; msg += `\n★ ${G.gens[u.gid].name}敗走，丟下了「${itemName(it.key)}」！`; g.audio.sfx('level'); this.ui.banner(`<b style="color:#ffc84a;font-size:20px">★ 奪得名寶 ★</b><br>${G.gens[u.gid].name}的「${itemName(it.key)}」歸你了！`, 6500); break; } }
       const mend = partyFx(g, 'mend'); if (mend && !o.drill) { for (const p of party) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * mend)); msg += `\n救護兵醫治了傷兵（兵力 +${Math.round(mend * 100)}%）。`; }
       if (!o.drill) { const ru = relicExp(g, 1 + foes.length); if (ru.length) msg += '\n' + ru.join('\n'); }
     }

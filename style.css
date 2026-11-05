@@ -19,6 +19,10 @@ body.playing #hud, body.playing #minimap { display: block; }
 #minimap { position: fixed; right: 10px; top: 10px; z-index: 5; display: none; width: 140px; height: 140px; border: 2px solid var(--edge); border-radius: 6px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5); image-rendering: pixelated; }
 #toasts { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 19; display: flex; flex-direction: column-reverse; gap: 6px; align-items: center; pointer-events: none; width: min(92vw, 720px); }
 .toast { background: var(--panel); border: 1px solid var(--edge); border-radius: 5px; padding: 6px 14px; font-size: 14px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5); transition: opacity 0.5s, transform 0.5s; text-align: center; }
+#banners { position: fixed; left: 50%; top: 13%; transform: translateX(-50%); z-index: 40; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; width: min(92vw, 560px); }
+.banner { background: linear-gradient(180deg, rgba(60, 36, 8, 0.94), rgba(28, 16, 4, 0.94)); border: 2px solid #ffc84a; border-radius: 8px; padding: 12px 26px; font-size: 16px; text-align: center; box-shadow: 0 0 28px rgba(255, 200, 74, 0.55), 0 4px 14px rgba(0, 0, 0, 0.6); animation: banner-in 0.6s cubic-bezier(.2, 1.6, .4, 1); transition: opacity 0.7s, transform 0.7s; }
+.banner small { color: var(--dim); } .banner.out { opacity: 0; transform: translateY(-12px); }
+@keyframes banner-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
 .toast small { color: var(--dim); margin-right: 6px; } .toast.out { opacity: 0; transform: translateY(8px); }
 #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 40; }
 /* ---------------------------------------------------------------- menus and talk */

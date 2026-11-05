@@ -70,6 +70,8 @@ export class UI {
   async yesno(q, name, look) { return (await this.ask(q, [{ k: true, n: '是' }, { k: false, n: '否' }], name, look)) === true; }
   async ask(q, opts, name, look) { const el = document.createElement('div'); el.className = 'talk done'; el.innerHTML = `${look ? this.portrait(look) : ''}<div class="t-body">${name ? `<div class="t-name">${name}</div>` : ''}<div class="t-text">${q.replace(/\n/g, '<br>')}</div></div>`; this.layer.appendChild(el); const r = await this.choose(opts, { cls: 'small yn', q }); el.remove(); return r; }
   portrait(look) { const c = frameCanvas(personSheet(look), 0, 1); return `<img class="t-port" src="${c.toDataURL()}">`; }
+  // a big moment (a jackpot): a banner at the top of the screen, where no dialog covers it
+  banner(html, ms = 6000) { let host = document.getElementById('banners'); if (!host) { host = document.createElement('div'); host.id = 'banners'; document.body.appendChild(host); } const t = document.createElement('div'); t.className = 'banner'; t.innerHTML = html; host.appendChild(t); setTimeout(() => t.classList.add('out'), ms); setTimeout(() => t.remove(), ms + 700); }
   toast(html, ms = 2600) { const host = document.getElementById('toasts'); while (host.children.length >= 5) host.firstChild.remove(); const t = document.createElement('div'); t.className = 'toast'; t.innerHTML = html; host.appendChild(t); setTimeout(() => t.classList.add('out'), ms); setTimeout(() => t.remove(), ms + 500); }
   // ---------------------------------------------------------------- a full panel (status, chronicle, map …); resolves when closed
   panel(html, o = {}) {
