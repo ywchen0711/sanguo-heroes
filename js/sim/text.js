@@ -44,6 +44,15 @@ export function fmt(e, lang = 'zh') {
       if (!p.s || p.s === '190') return en ? 'Dong Zhuo seizes the court. Warlords rise across the land, and the lords east of the passes march against him.' : '董卓專權，天下群雄並起。關東諸侯起兵討伐董卓。';
       const S = SCEN[p.s]; return S ? S.desc[en ? 1 : 0] : '';
     }
+    case 'rivalDie': return `對手${p.g}去世了。`;
+    case 'rivalRank': return `對手${p.g}升為${p.f}軍的${p.r}。`;
+    case 'rivalJoin': return `${p.x}加入了對手${p.g}的隊伍。`;
+    case 'rivalFind': return `對手${p.g}找到了寶物${I()}。`;
+    case 'rivalKill': return `對手${p.g}在決鬥中斬殺了${p.x}！`;
+    case 'rivalServe': return `對手${p.g}投效${p.f}軍。`;
+    case 'rivalTake': return `對手${p.g}率軍攻下${p.c}！`;
+    case 'rivalLeave': return `對手${p.g}離開了${p.f}軍。`;
+    case 'rivalRise': return `對手${p.g}在${p.c}起兵，自立為王！`;
     case 'unify': return en ? `${N('g')} unifies the realm! The ${N('f')} army brings peace within the four seas.` : `${p.g}統一天下！${p.f}軍平定四海。`;
     case 'end': return en ? 'The realm remains divided, and the age of warlords goes on…' : '天下未定，群雄割據之世仍將延續……';
     case 'seek': return en ? `${N('g')} seeks out the ${N('f')} army and joins it.` : `${p.g}慕名投奔${p.f}軍。`;

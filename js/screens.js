@@ -7,6 +7,7 @@ import { CITY_POS, W, H, T } from './world.js';
 import { personSheet, frameCanvas, lookFor, assignLooks } from './sprites.js';
 import { RANKS, rankOf, solMax, spMax, bstats, EQUIP, score, expNeed, tacticsOf, TACTICS, STAT_N, eqName, armsOf, TROOPS } from './hero.js';
 import { biography, rewritten, knownAs, titleName } from './deeds.js';
+import { rivalH, rankIdx } from './sim/rivals.js';
 import { isSworn, bondOf } from './bonds.js';
 import { dexCount } from './dex.js';
 
@@ -63,7 +64,9 @@ export class Screens {
       if (pid == null) continue;
       const g = G.gens[pid], f = g.status === 'serving' && G.factions[g.fac];
       const ok = await this.ui.ask(`${g.name}　${G.year - g.born}歲\n${f ? `${f.name}軍${f.lord === g.id ? '・君主' : ''}` : '在野'}　所在：${G.cities[g.city].name}\n統率 ${g.lead}　武力 ${g.war}　智力 ${g.int}　政治 ${g.pol}　魅力 ${g.cha}`, [{ k: true, n: '就是他了' }, { k: false, n: '重新選擇' }], g.name, lookFor(g, f ? f.color : '#7a6a5a'));
-      if (ok) return { scenario: sc, years, pid, seed };
+      if (!ok) continue;
+      const rivals = await this.ui.choose([0, 3, 5, 8].map((n) => ({ k: n, n: n ? `${n} 位電腦對手` : '不要對手', d: n ? `另外 ${n} 位武將也由電腦扮演：和你一樣闖蕩、投靠明主、升官、攻城，甚至自立為王。最後比誰統一天下，或誰的功績最高。` : '只有你一位主角，天下照常運轉。' })), { title: '對手', noBack: true });
+      return { scenario: sc, years, pid, seed, rivals };
     }
   }
   pickGen(G, list, title) {
@@ -97,6 +100,15 @@ export class Screens {
     const G = this.g.G, list = G.log.slice(-160).reverse().filter((e) => e.level >= 1);
     await this.ui.panel(list.map((e) => `<p class="lv${e.level}"><small>${dateStr(e.year, e.month)}</small>　${fmt(e)}</p>`).join(''), { title: '年表', cls: 'wide' });
   }
+  // the player and the computer players, ranked by the same reckoning as the end
+  board(end) {
+    const G = this.g.G, H = this.g.H; if (!(G.rivals || []).length) return '';
+    const rows = [{ me: true, g: G.gens[H.pid], sc: score(G, H), H }, ...G.rivals.map((R) => ({ g: G.gens[R.id], sc: score(G, rivalH(G, R)), R }))].sort((a, b) => b.sc.total - a.sc.total);
+    const what = (x) => { const g = x.g, f = g.status === 'serving' && G.factions[g.fac]; if (g.status === 'dead') return '已故'; if (!f) return '在野'; if (f.lord === g.id) return `${f.name}軍之主（${citiesOf(G, f.id).length} 城）`; return `${f.name}軍・${['從事', '校尉', '都尉', '中郎將', '將軍', '大將軍'][rankIdx(g.merit)]}`; };
+    const st = (x) => x.me ? x.H.st : x.R.st;
+    return `<h3>${end ? '最終排名' : '群雄榜'}</h3><table class="score board">${rows.map((x, i) => `<tr class="${x.me ? 'me' : ''}"><td>${i + 1}</td><td><b>${x.g.name}</b>${x.me ? '（你）' : ''}</td><td>${what(x)}</td><td>勝 ${st(x).wins}　城 ${st(x).cities.length}　斬 ${st(x).kills.length}</td><td>${x.sc.total} 分</td><td>${x.sc.title}</td></tr>`).join('')}</table>`;
+  }
+  async rivals() { await this.ui.panel(this.board(false) + '<p class="dim">對手和你用同樣的方式計分。對手的大事會出現在年表和消息裡。</p>', { title: '群雄榜', cls: 'wide' }); }
   // the realm: a map of who holds what, and the warlords ranked
   async realm() {
     const G = this.g.G, fs = Object.values(G.factions).filter((f) => f.alive && citiesOf(G, f.id).length).sort((a, b) => citiesOf(G, b.id).length - citiesOf(G, a.id).length);
@@ -126,7 +138,8 @@ export class Screens {
     this.g.mode = 'end'; this.g.locked = true; if (this.g.auto?.on) this.g.auto.toggle(false);
     const sc = score(G, H);
     const fs = Object.values(G.factions).filter((f) => f.alive && citiesOf(G, f.id).length).sort((a, b) => citiesOf(G, b.id).length - citiesOf(G, a.id).length);
-    const realm = G.over && G.over !== 'time' ? `<p class="big">${G.factions[G.over].name}統一了天下！</p>` : `<p class="big">${G.year}年，天下仍未統一。</p><p>${fs.slice(0, 5).map((f) => `<span style="color:${f.color}">■</span>${f.name}（${citiesOf(G, f.id).length} 城）`).join('　')}</p>`;
+    const board = this.board(true), uni = G.over && G.over !== 'time' && (G.rivals || []).find((R) => G.gens[R.id].fac === G.over && G.gens[R.id].status === 'serving');
+    const realm = G.over && G.over !== 'time' ? `<p class="big">${G.factions[G.over].name}統一了天下！${uni ? `（對手${G.gens[uni.id].name}${G.factions[G.over].lord === uni.id ? '親手' : '輔佐'}統一）` : ''}</p>` : `<p class="big">${G.year}年，天下仍未統一。</p><p>${fs.slice(0, 5).map((f) => `<span style="color:${f.color}">■</span>${f.name}（${citiesOf(G, f.id).length} 城）`).join('　')}</p>`;
     const rows = sc.rows.map(([n, v, p]) => `<tr><td>${n}</td><td>${v}</td><td>${p >= 0 ? '+' : ''}${p}</td></tr>`).join('');
     const kills = H.st.kills.length ? `<p>討取：${H.st.kills.join('、')}</p>` : '', cities = H.st.cities.length ? `<p>攻陷：${H.st.cities.join('、')}</p>` : '';
     let best = null; try { best = JSON.parse(localStorage.getItem(BEST) || 'null'); } catch (e) {}
@@ -135,7 +148,7 @@ export class Screens {
     const bio = biography(this.g, sc), rw = rewritten(G, H);
     const bioHTML = `<div class="bio-scroll"><h3>《${g.name}傳》</h3>${bio.map((l) => `<p>${l}</p>`).join('')}</div>`;
     const rwHTML = rw.length ? `<h3>改寫的歷史</h3>${rw.map((t) => `<p>✦ ${t}</p>`).join('')}` : '<p class="dim">這一生沒有改變歷史的大勢。</p>';
-    await this.ui.panel(`${realm}${bioHTML}${rwHTML}<h3>${g.name}的一生</h3><table class="score">${rows}<tr class="tot"><td>總計</td><td></td><td>${sc.total}</td></tr></table><p class="big">評價：「${sc.title}」</p>${kills}${cities}<p>武將圖鑑：${dexCount(H)} 人</p><p><button class="copy-bio">複製列傳文字</button></p><p class="dim">按確定回到標題畫面。</p>`, { title: '功績結算', cls: 'wide',
+    await this.ui.panel(`${realm}${board}${bioHTML}${rwHTML}<h3>${g.name}的一生</h3><table class="score">${rows}<tr class="tot"><td>總計</td><td></td><td>${sc.total}</td></tr></table><p class="big">評價：「${sc.title}」</p>${kills}${cities}<p>武將圖鑑：${dexCount(H)} 人</p><p><button class="copy-bio">複製列傳文字</button></p><p class="dim">按確定回到標題畫面。</p>`, { title: '功績結算', cls: 'wide',
       onOpen: (box) => { const b = box.querySelector('.copy-bio'); b.onclick = () => { navigator.clipboard?.writeText(`《${g.name}傳》\n` + bio.join('\n') + (rw.length ? '\n\n改寫的歷史：\n' + rw.join('\n') : '')).then(() => { b.textContent = '已複製！'; }, () => { b.textContent = '無法複製'; }); }; } });
     location.reload();
   }

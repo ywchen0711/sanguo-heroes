@@ -14,6 +14,7 @@ import { PREFER } from '../data/allegiance.js';
 import { SCEN } from '../data/scenarios.js';
 import { ITEMS, SPELL_HOLDERS, HIDDEN } from '../data/treasures.js';
 import { lifeMonth, lifeBattle, note } from './life.js';
+import { rivalsMonth } from './rivals.js';
 
 // Sanguo Heroes: the player's general (isPlayer) and the companions who travel with them (follow = the player's id) are
 // moved by the player, not by the simulation: they take no monthly job, are not sent to war or moved about, and are
@@ -188,6 +189,7 @@ export function step(G) {
   lapse(G);
   lifecycle(G);
   lifeMonth(G, { r: G.r, refresh, gensIn, busy, citiesOf });   // every general's own month (see life.js)
+  if (G.rivals) rivalsMonth(G, { record, refresh, busy, give, die, serve, hostile, hostileTo: () => false, siege, citiesOf, destroy }); // the computer players (rivals.js)
   economy(G);
   events(G);
   for (const fid of shuffle(G, Object.keys(G.factions))) { const f = G.factions[fid]; if (!f.alive) continue; domestic(G, f); }
@@ -747,4 +749,4 @@ function checkFactions(G) {
 export function run(G, months, until) { for (let i = 0; i < months && !G.over; i++) { step(G); if (until && until(G)) break; } return G; }
 
 // ---------------------------------------------------------------- for the game: what the player does goes through these
-export { die, serve, captives, destroy, pickGovernor, record, give, stash, hide, refresh, holds, gensIn, freeIn, lordOf, hostile, allied, succession, frontDist, alive as factionAlive };
+export { siege, die, serve, captives, destroy, pickGovernor, record, give, stash, hide, refresh, holds, gensIn, freeIn, lordOf, hostile, allied, succession, frontDist, alive as factionAlive };

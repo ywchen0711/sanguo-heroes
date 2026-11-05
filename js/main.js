@@ -17,6 +17,7 @@ import { Screens } from './screens.js';
 import { Events } from './events.js';
 import { Story } from './story.js';
 import { AutoPlay } from './auto.js';
+import { pickRivals } from './sim/rivals.js';
 import { deed, histDeaths, checkTitles, hasT, knownAs } from './deeds.js';
 import { mourn } from './bonds.js';
 import { mark } from './dex.js';
@@ -44,6 +45,8 @@ class Game {
   start(o) {
     const G = this.G = newGame({ seed: o.seed ?? (Date.now() & 0x7fffffff), scenario: o.scenario });
     const g = G.gens[o.pid]; g.isPlayer = true; g.died = Math.max(g.died, G.year + o.years + 1);
+    // the computer players: they live as long as the player does (unless killed)
+    if (o.rivals) { G.rivals = pickRivals(G, o.rivals, g.id, G.r); for (const R of G.rivals) { const x = G.gens[R.id]; x.died = Math.max(x.died, G.year + o.years + 1); } }
     const f = g.status === 'serving' ? G.factions[g.fac] : null, lord = f && f.lord === g.id;
     this.H = { pid: g.id, gold: lord ? 1500 : f ? 500 : 300, fame: Math.round((g.lead + g.war + g.int + g.pol + g.cha) / 4) + (lord ? 200 : 0), items: { med: 3, rice: 1 }, party: [], rec: { [g.id]: newRec(g) },
       st: { wins: 0, battles: 0, bandits: 0, duels: 0, kills: [], cities: [], missions: 0, bestRank: 0 }, endYear: G.year + o.years, years: o.years, days: 0, missions: [], seenLog: G.log.length, scenario: o.scenario, startYear: G.year, news: [] };
@@ -197,13 +200,13 @@ class Game {
     const here = this.G.gens.filter((g) => !busy(g) && (g.status === 'serving' || g.status === 'free') && g.city === C.id && !g.held);
     const serving = here.filter((g) => g.status === 'serving').sort((a, b) => (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, 6), free = here.filter((g) => g.status === 'free').slice(0, 4);
     const spots = [[11, 7], [18, 7], [12, 8], [17, 8], [10, 8], [19, 8]], fspots = [[22, 10], [25, 10], [23, 14], [26, 14]];
-    serving.forEach((g, i) => { const [x, z] = spots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
+    serving.forEach((g, i) => { const [x, z] = spots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b>${g.rivalHero ? '<i style="color:#ff9a6a">★對手</i>' : ''}`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
     for (const g of [...serving, ...free]) mark(this, g.id, 1);
     for (const id of sagesHere(this)) {
       const [x, z] = M.cave ? this.freeSpot(M.boss[0] + 2, M.boss[1] - 1) : this.freeSpot(M.spawn[0], Math.max(2, M.spawn[1] - 4)); const S = SAGES[id], a = this.view.addActor(personSheet(S.look()), x, z, { scale: 0.95 });
       a.label = this.view.addLabel(`<b style="color:#c8b8ff">${S.n}</b>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, home: [x, z], special: 'sage', sage: id });
     }
-    free.forEach((g, i) => { const [x, z] = fspots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b><i>在野</i>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
+    free.forEach((g, i) => { const [x, z] = fspots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b><i>${g.rivalHero ? '<span style="color:#ff9a6a">★對手</span>' : '在野'}</i>`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
   }
   // a walkable tile near (x, z) that nobody stands on
   freeSpot(x0, z0) {
@@ -324,7 +327,7 @@ class Game {
     const regen = this.perk().regen; for (const p of this.partyList()) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * regen));
     // the news: big events everywhere, and anything about my own faction
     const mine = before.fac;
-    const big = logs.filter((e) => e.level >= 3 || (e.level >= 2 && (e.fac === mine || e.kind === 'war' || e.kind === 'death')) || (mine && e.fac === mine && ['war', 'defect', 'succession', 'fall'].includes(e.kind)) || e.def === mine);
+    const big = logs.filter((e) => e.level >= 3 || (e.kind === 'rival' && e.level >= 2) || (e.level >= 2 && (e.fac === mine || e.kind === 'war' || e.kind === 'death')) || (mine && e.fac === mine && ['war', 'defect', 'succession', 'fall'].includes(e.kind)) || e.def === mine);
     this.H.news.unshift(...logs.filter((e) => e.level >= 2).map((e) => `${dateStr(e.year, e.month)}　${fmt(e)}`)); this.H.news.length = Math.min(this.H.news.length, 80);
     big.slice(0, 4).forEach((e, i) => setTimeout(() => this.ui.toast(`<small>${dateStr(e.year, e.month)}</small> ${fmt(e)}`, 4200), i * 700));
     // what changed for me

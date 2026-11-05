@@ -159,3 +159,4 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 .life h4 { margin: 4px 0; color: var(--gold); } .life h4 small { color: var(--dim); font-weight: 400; }
 .life p { margin: 2px 0; } .life p small { color: var(--dim); }
 .h-name .h-bot { font-style: normal; color: #8affff; font-size: 12px; margin-left: 6px; }
+.score.board td { padding: 3px 8px; } .score.board tr.me td { color: var(--gold); background: rgba(255, 216, 106, 0.08); }
