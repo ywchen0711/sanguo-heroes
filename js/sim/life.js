@@ -33,7 +33,16 @@ export function initLife(G, g) {
   const h = hash(g.name + 'pot'), age = G.year - g.born, young = age < 25;
   const pot = STAT.map((k, i) => Math.min(100, g.base[k] + 3 + ((h >>> (i * 3)) % 7) + (young ? 6 : age < 35 ? 3 : 0)));
   const lv = Math.max(1, Math.min(45, Math.round((g.base.lead + g.base.war + g.base.int) / 30 - 3 + Math.max(0, age - 18) / 3)));
-  return (g.life = { type: typeOf(g), lv, exp: 0, pot, mentor: null, friends: {}, log: [] });
+  const L = (g.life = { type: typeOf(g), lv, exp: 0, pot, mentor: null, friends: {}, log: [] });
+  // a few have already seen a lot of fighting: Lv20, 30, 40 or 50 from the start, their numbers grown to match
+  G.lifeSalt ??= Math.floor(G.r() * 1e9);
+  const roll = (hash(g.name + 'vet' + G.lifeSalt) % 10000) / 10000, vet = age < 18 ? 0 : roll < 0.006 ? 50 : roll < 0.021 ? 40 : roll < 0.051 ? 30 : roll < 0.111 ? 20 : 0;
+  if (vet > lv) {
+    pot.forEach((v, i) => (pot[i] = Math.min(100, v + Math.round(vet / 10))));
+    for (let n = Math.round((vet - lv) / 2), i = 0; n > 0 && i < 200; i++) { const k = STAT[(hash(g.name + i + G.lifeSalt) >>> 0) % 5], j = STAT.indexOf(k); if (g.base[k] < pot[j]) { g.base[k]++; g[k]++; n--; } }
+    L.lv = vet; L.vet = vet;
+  }
+  return L;
 }
 export function note(G, g, code, arg) {
   const L = g.life || initLife(G, g), last = L.log[L.log.length - 1];
