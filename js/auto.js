@@ -5,7 +5,17 @@
 import { CITY_POS, T, WALK } from './world.js';
 import { hostile, allied, citiesOf } from './sim/engine.js';
 import { WEAPONS, ARMORS, HORSES, EQUIP, rankOf, solMax } from './hero.js';
-import { itemOf } from './relics.js';
+import { itemOf, isRelic, wear, giveRelic, RELICS, PRICE } from './relics.js';
+import { priceMul } from './disaster.js';
+
+// what the computer plays for (方針): how often it does each thing, and how much it dares
+export const STYLES = {
+  balance: { n: '均衡', d: '什麼都做一點：任務、機會、洞穴、攻城' },
+  grind: { n: '練功', d: '專心變強：剿匪、闖洞穴、練兵場操練，不攻城', rest: 0.45, opp: 0.4, bounty: 1, siege: 0, cave: 0.45, town: 0.25 },
+  loot: { n: '打寶', d: '專找寶物：洞穴寶箱和洞主、四處探訪、寶物商人，幾乎不攻城', rest: 0.45, opp: 0.5, bounty: 0.5, siege: 0.02, cave: 0.75, town: 0.5 },
+  war: { n: '積極攻城', d: '擴張地盤：兵一補滿就攻城，打得更遠、更敢打', rest: 0.6, opp: 0.5, bounty: 0.4, siege: 0.95, cave: 0.05, town: 0.5 },
+};
+Object.assign(STYLES.balance, { rest: 0.45, opp: 0.6, bounty: 1, siege: 0.6, cave: 0.2, town: 0.5 });
 
 const STEP = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const RISKY = /忘掉|生死|斬首|斬殺|下野|離開這個|背叛|高價賣|視而不見|不關我的事|按兵不動|太危險|重新選擇|稱王天下/;
@@ -13,10 +23,14 @@ const RISKY_Q = /生死決鬥|離開.+軍嗎|賣掉|結束，結算|提前結算
 export class AutoPlay {
   constructor(game) { this.g = game; this.on = false; this.path = []; this.want = null; this.wait = 0; this.tasks = []; this.stuckN = 0; this.lastCity = null; this.restDay = -99; }
   get G() { return this.g.G; } get H() { return this.g.H; }
-  toggle(v = !this.on) {
+  // the level a party wants before a cave of this danger (those set on training or treasure dare a little sooner)
+  caveLv(tier) { return (this.style.cave >= 0.4 ? 1 : 6) + tier * 4; }
+  get style() { return STYLES[this.H?.autoMode] || STYLES.balance; }
+  toggle(v = !this.on, mode) {
+    if (mode) this.H.autoMode = mode;
     this.on = v; this.path = []; this.tasks = []; this.target = null;
     this.g.battle.auto = v ? true : this.g.battle.auto;
-    this.g.ui.toast(v ? '<b style="color:#8affff">🤖 電腦代玩開始</b><br><small>按 P 或方向鍵取回控制</small>' : '🤖 電腦代玩結束，回到手動操作', 3000);
+    this.g.ui.toast(v ? `<b style="color:#8affff">🤖 電腦代玩開始・${this.style.n}</b><br><small>${this.style.d}<br>按 P 或方向鍵取回控制</small>` : '🤖 電腦代玩結束，回到手動操作', 3000);
     this.g.hud();
   }
   // ---------------------------------------------------------------- answering: the option it wants, or the first safe one
@@ -84,33 +98,41 @@ export class AutoPlay {
     const G = this.G, H = this.H, P = this.g.pos, me = this.g.me, mine = this.g.myFaction(), pt = this.party();
     const cities = G.cities.map((c) => ({ ...CITY_POS[c.id], C: c }));
     // 1. hurt: back to the nearest friendly city to rest
-    if (pt.sol < pt.max * 0.45 && this.H.days - this.restDay > 3) { const own = mine ? this.near(cities.filter((c) => c.C.owner === mine), P)[0] : null, any = this.near(cities, P)[0], home = own && own[1] < any[1] + 25 ? own : any; if (home && this.goCity(home[0].C, ['in'])) return; }
+    const S = this.style;
+    if (pt.sol < pt.max * S.rest && this.H.days - this.restDay > 3) { const own = mine ? this.near(cities.filter((c) => c.C.owner === mine), P)[0] : null, any = this.near(cities, P)[0], home = own && own[1] < any[1] + 25 ? own : any; if (home && this.goCity(home[0].C, ['in'])) return; }
     if (pt.sol < pt.max * 0.45) { if (this.wander()) return; }
+    // training and treasure: the caves first
+    if (S.cave >= 0.4 && Math.random() < S.cave && this.tryCave(S, pt, P, true)) return;
     // 2b. the chances of the month (情勢): the nearest one that can still be made in time, most of the time
     const opps = (H.opps || []).filter((o) => !o.done && !o.missed && o.k !== 'bandit' && o.k !== 'border').map((o) => { const c = CITY_POS[o.k === 'escort' && o.stage ? o.to : o.cid]; return [o, Math.hypot(c.x - P.x, c.y - P.z)]; })
-      .filter(([o, d]) => d < 60 && (o.k !== 'gap' || (this.g.board.canSiege(G.cities[o.cid]) && pt.sol > pt.max * 0.7))).sort((a, b) => a[1] - b[1]);
-    if (opps.length && Math.random() < 0.6) { const [o] = opps[0], C = G.cities[o.k === 'escort' && o.stage ? o.to : o.cid]; if (this.goCity(C, [o.k === 'gap' ? 'siege' : 'in'])) { this.target = C.name + '・' + o.k; if (o.k === 'talent') this.tasks = ['talent']; return; } }
+      .filter(([o, d]) => d < 60 && (o.k !== 'gap' || (S.siege >= 0.5 && this.g.board.canSiege(G.cities[o.cid]) && pt.sol > pt.max * 0.7))).sort((a, b) => a[1] - b[1]);
+    if (opps.length && Math.random() < S.opp) { const [o] = opps[0], C = G.cities[o.k === 'escort' && o.stage ? o.to : o.cid]; if (this.goCity(C, [o.k === 'gap' ? 'siege' : 'in'])) { this.target = C.name + '・' + o.k; if (o.k === 'talent') this.tasks = ['talent']; return; } }
     // 2. a bounty to hunt
     const m = H.missions.filter((x) => !x.done).sort((a, b) => Math.hypot(a.x - P.x, a.z - P.z) - Math.hypot(b.x - P.x, b.z - P.z))[0];
-    if (m && this.walkTo((x, z) => x === m.x && z === m.z)) { this.want = null; this.target = m.boss; return; }
+    if (m && Math.random() < S.bounty && this.walkTo((x, z) => x === m.x && z === m.z)) { this.want = null; this.target = m.boss; return; }
     // 3. strong enough: lay siege to a weak enemy city nearby
     const canSiege = mine ? (this.g.isLord() || rankOf(me.merit) >= 1) : H.fame >= 100;
-    if (canSiege && pt.sol > pt.max * 0.8) {
-      const prey = this.near(cities.filter((c) => c.C.owner && c.C.owner !== mine && (!mine || hostile(G, mine, c.C.owner)) && !(mine && allied(G, mine, c.C.owner)) && c.C.troops < pt.sol * 1.6), P).filter(([, d]) => d < 40)[0];
-      if (prey && Math.random() < 0.6 && this.goCity(prey[0].C, ['siege'])) return;
+    const bold = S === STYLES.war;
+    if (canSiege && S.siege > 0 && pt.sol > pt.max * (bold ? 0.65 : 0.8)) {
+      const prey = this.near(cities.filter((c) => c.C.owner && c.C.owner !== mine && (!mine || hostile(G, mine, c.C.owner)) && !(mine && allied(G, mine, c.C.owner)) && c.C.troops * this.g.board.gapMul(c.C.id) < pt.sol * (bold ? 3 : 1.6)), P).filter(([, d]) => d < (bold ? 65 : 40))[0];
+      if (prey && Math.random() < S.siege && this.goCity(prey[0].C, ['siege'])) return;
     }
     // 4. no lord yet: go and serve the strongest one near
-    if (!mine && H.fame >= 60 && Math.random() < 0.5) { const lordCity = this.near(cities.filter((c) => c.C.owner), P).slice(0, 6).sort((a, b) => citiesOf(G, b[0].C.owner).length - citiesOf(G, a[0].C.owner).length)[0]; if (lordCity && this.goCity(lordCity[0].C, ['in'])) { this.tasks = ['serve']; return; } }
+    if (!mine && H.fame >= (bold ? 30 : 60) && Math.random() < (bold ? 0.9 : 0.5)) { const lordCity = this.near(cities.filter((c) => c.C.owner), P).slice(0, 6).sort((a, b) => citiesOf(G, b[0].C.owner).length - citiesOf(G, a[0].C.owner).length)[0]; if (lordCity && this.goCity(lordCity[0].C, ['in'])) { this.tasks = ['serve']; return; } }
     // 5. a cave the party is ready for, or now and then a county or a village (not the one just left)
-    if (Math.random() < 0.2) {
-      const done = (q) => q.kind === 'cave' && (H.places?.[q.id]?.boss || pt.lv < 6 + q.tier * 4);
-      const q = this.near(this.g.world.places.filter((q) => q.name !== this.lastCity && !done(q) && (q.kind === 'cave' || Math.random() < 0.3)).map((q) => ({ ...q, z: q.y })), P).filter(([, d]) => d < 30)[0];
-      if (q && this.walkTo((x, z) => x === q[0].x && z === q[0].y)) { this.want = null; this.target = q[0].name; return; }
-    }
+    if (Math.random() < S.cave && this.tryCave(S, pt, P)) return;
     // 6. otherwise a city now and then (shopping, bounties, work), or a walk in the country for the fights
     // shops and inns are open to anyone: one of the nearest few cities, whoever holds it
-    if (Math.random() < 0.5) { const c = this.near(cities.filter((c) => c.C.name !== this.lastCity), P).filter(([, d]) => d < 45).slice(0, 4)[Math.floor(Math.random() * 4)]; if (c && this.goCity(c[0].C, ['in'])) return; }
+    if (Math.random() < S.town) { const c = this.near(cities.filter((c) => c.C.name !== this.lastCity), P).filter(([, d]) => d < 45).slice(0, 4)[Math.floor(Math.random() * 4)]; if (c && this.goCity(c[0].C, ['in'])) return; }
     for (let k = 0; k < 20; k++) { const a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 10, x = Math.round(P.x + Math.cos(a) * d), z = Math.round(P.z + Math.sin(a) * d); const t = this.g.world.at(x, z); if (WALK[t] && t !== T.CITY && t < 15 && this.walkTo((xx, zz) => xx === x && zz === z)) { this.want = null; this.target = '野外'; return; } }
+  }
+  // a cave the party is ready for (or a county or a village now and then, not the one just left); true if on the way
+  tryCave(S, pt, P, only) {
+    const H = this.H;
+      const done = (q) => q.kind === 'cave' && (H.places?.[q.id]?.boss || pt.lv < this.caveLv(q.tier) || (pt.lv < 6 + q.tier * 4 && (H.places?.[q.id]?.chests.length || 0) >= 3));
+      const q = this.near(this.g.world.places.filter((q) => q.name !== this.lastCity && !done(q) && (q.kind === 'cave' || (!only && Math.random() < 0.3))).map((q) => ({ ...q, z: q.y })), P).filter(([, d]) => d < (S === STYLES.loot ? 65 : S.cave >= 0.4 ? 45 : 30))[0];
+      if (q && this.walkTo((x, z) => x === q[0].x && z === q[0].y)) { this.want = null; this.target = q[0].name; return true; }
+    return false;
   }
   // ---------------------------------------------------------------- in a town: a short list of errands, then out of the gate
   inTown() {
@@ -120,7 +142,7 @@ export class AutoPlay {
       const list = [];
       if (M.cave) { // a cave: its chests, then its master, if the party is strong enough
         const st = H.places?.[M.place.id];
-        if (pt.lv >= 6 + M.place.tier * 4) { for (const c of M.chests) if (!st?.chests.includes(c.i)) list.push({ thing: c }); const b = this.g.npcs.find((n) => n.special === 'boss'); if (b) list.push({ npc: b }); }
+        if (pt.lv >= this.caveLv(M.place.tier)) { for (const c of M.chests) if (!st?.chests.includes(c.i)) list.push({ thing: c }); const b = this.g.npcs.find((n) => n.special === 'boss'); if (b && pt.lv >= 6 + M.place.tier * 4) list.push({ npc: b }); } // the master only when strong enough
       } else {
         if (pt.sol < pt.max * 0.9 || this.g.partyList().some((p) => p.rec.sp < p.spMax * 0.5)) list.push({ door: 'inn' });
         if (H.gold > 400) list.push({ door: 'arms' });
@@ -128,6 +150,9 @@ export class AutoPlay {
         const talent = (H.opps || []).some((o) => o.k === 'talent' && !o.done && !o.missed && o.cid === M.C.id);
         if (H.party.length < this.g.partyMax() && (H.gold > 250 || talent)) list.push({ door: 'tavern' });
         if (this.g.board.restless(M.C) && M.C.morale < 65 && H.gold >= 200) list.push({ door: 'gov', calm: true });
+        const S = this.style;
+        if (S === STYLES.grind && M.doors.some((d) => d.id === 'drill')) list.push({ door: 'drill' });
+        if (S === STYLES.loot) { list.push({ door: 'tavern', search: true }); if (M.C.size >= 2 && M.C.id >= 0 && H.gold > 1500) list.push({ door: 'goods', relic: true }); }
         if (this.tasks.includes('serve') && !mine) list.push({ door: 'gov', want: ['serve'] });
         else if (own) list.push({ door: 'gov' });
         else if (H.missions.filter((m) => !m.done).length < 2) list.push({ door: 'tavern', bounty: true });
@@ -146,10 +171,13 @@ export class AutoPlay {
     const A = this.g.act, H = this.H, e = this.errand || {}; this.errand = null;
     const mine = this.g.myFaction(), f = mine && this.G.factions[mine];
     if (door.id === 'inn') { const cost = 8 * (H.party.length + 1); this.restDay = H.days; if (H.gold < cost) { for (const p of this.g.partyList()) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * 0.12)); await A.passDays(3); this.g.ui.toast('🤖 沒錢住店，在馬廄歇了三天', 2500); } if (H.gold >= cost) { H.gold -= cost; for (const p of this.g.partyList()) { p.rec.sp = p.spMax; p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * 0.25)); } await A.passDays(1); this.g.saveGame(); } if (C.owner && C.owner === mine) await A.draft(C, true); else if (H.gold > 300) await this.hire(); return true; }
-    if (door.id === 'arms') { this.shop(C); return true; }
+    if (door.id === 'arms') { this.shop(C); this.gear(); return true; }
+    if (door.id === 'drill') { this.want = ['train']; await A.drill(C); this.want = null; return true; }
+    if (door.id === 'goods' && e.relic) { this.buyRelic(C); return true; }
     if (door.id === 'goods') { while ((H.items.med || 0) < 4 && H.gold >= 30) { H.gold -= 30; H.items.med = (H.items.med || 0) + 1; } return true; }
     if (door.id === 'tavern') {
       if (e.bounty) { this.want = [true]; await A.missionOffer(C, null); this.want = null; return true; }
+      if (e.search) { await A.search(C); return true; }
       const free = this.G.gens.filter((x) => x.status === 'free' && x.city === C.id && x.follow == null && !x.isPlayer).sort((a, b) => (b.seek > this.G.t) - (a.seek > this.G.t) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int));
       if (free[0] && H.party.length < this.g.partyMax()) { this.want = [true]; await A.recruit(free[0]); this.want = null; }
       return true;
@@ -165,6 +193,22 @@ export class AutoPlay {
       return true;
     }
     return true; // anything else: just pass by
+  }
+  // the treasure merchant: the best piece the money allows (keeping something back)
+  buyRelic(C) {
+    const H = this.H, A = this.g.act, pm = priceMul(this.g, C.id), key = `${C.id}:${Math.floor(this.G.t / 3)}`; H.bought ||= {};
+    const stock = A.merchantStock(C).filter((id) => !(H.bought[key] || []).includes(id)).sort((a, b) => RELICS[b].grade - RELICS[a].grade);
+    const id = stock.find((id) => Math.round(PRICE[RELICS[id].grade] * pm) <= H.gold - 300); if (!id) return;
+    H.gold -= Math.round(PRICE[RELICS[id].grade] * pm); (H.bought[key] ||= []).push(id); giveRelic(this.g, id); this.gear();
+  }
+  // put on the best treasures in the bag (a higher grade, or the same grade and more)
+  gear() {
+    const H = this.H; if (!(H.bag || []).length) return;
+    for (const p of this.g.partyList()) for (const k of ['w', 'a', 'h', 'x']) {
+      const cur = itemOf(p.rec.eq?.[k]), score = (it) => (it ? (it.grade || 0) * 100 + it.v : -1);
+      const best = (H.bag || []).filter((e) => isRelic(e) && itemOf(e)?.slot === k).sort((a, b) => score(itemOf(b)) - score(itemOf(a)))[0];
+      if (best && score(itemOf(best)) > score(cur)) { wear(H, p.rec, k, best); this.g.ui.toast(`🤖 ${p.g.name}裝備了${itemOf(best).n}`, 2000); }
+    }
   }
   async hire() { const A = this.g.act; this.want = [true]; const C = this.g.town.C; await A.draft(C, false); this.want = null; }
   // buy the best arms the money allows, for whoever gains most

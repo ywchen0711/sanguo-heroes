@@ -154,7 +154,7 @@ export class Actions {
   // ---------------------------------------------------------------- the menu
   async menu() {
     if (this.ui.busy) return;
-    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'board', n: '情勢', d: '時局、機會（有期限）、民心', sub: (this.H.opps || []).filter((o) => !o.done && !o.missed).length || '' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'save', n: '存檔' }, { k: 'auto', n: this.g.auto.on ? '電腦代玩：開' : '電腦代玩：關', d: '讓電腦替你玩（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
+    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'board', n: '情勢', d: '時局、機會（有期限）、民心', sub: (this.H.opps || []).filter((o) => !o.done && !o.missed).length || '' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'save', n: '存檔' }, { k: 'auto', n: this.g.auto.on ? `電腦代玩：開（${this.g.auto.style.n}）` : '電腦代玩：關', d: '讓電腦替你玩，可以選方針：均衡、練功、打寶、積極攻城（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
     if (k === 'status') await this.g.screens.status();
     if (k === 'party') await this.partyMenu();
     if (k === 'equip') await equipScreen(this.g);
@@ -169,7 +169,11 @@ export class Actions {
     if (k === 'save') { if (this.g.mode !== 'town') { this.ui.toast('只能在城裡存檔（客棧或選單）'); } this.g.saveGame() ? this.ui.toast('已存檔') : this.ui.toast('存檔失敗'); }
     if (k === 'end' && await this.ui.yesno('要現在結束，結算功績嗎？')) this.g.screens.ending();
     if (k === 'sound') { this.g.audio.on = !this.g.audio.on; }
-    if (k === 'auto') this.g.auto.toggle();
+    if (k === 'auto') {
+      const { STYLES } = await import('./auto.js'), cur = this.H.autoMode || 'balance';
+      const m = await this.ui.choose([...Object.entries(STYLES).map(([id, s]) => ({ k: id, n: `${s.n}${this.g.auto.on && id === cur ? '（目前）' : ''}`, d: s.d })), ...(this.g.auto.on ? [{ k: 'off', n: '停止代玩' }] : [])], { title: '電腦代玩：方針' });
+      if (m === 'off') this.g.auto.toggle(false); else if (m) this.g.auto.toggle(true, m);
+    }
   }
   async people() {
     const H = this.H, ts = (H.titles || []).map((id) => TITLES.find((t) => t.id === id)).filter(Boolean);
