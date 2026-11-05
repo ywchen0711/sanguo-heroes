@@ -193,7 +193,7 @@ export function step(G) {
   lapse(G);
   lifecycle(G);
   lifeMonth(G, { r: G.r, refresh, gensIn, busy, citiesOf });   // every general's own month (see life.js)
-  if (G.rivals) rivalsMonth(G, { record, refresh, busy, give, die, serve, hostile, hostileTo: () => false, siege, citiesOf, destroy }); // the computer players (rivals.js)
+  if (G.rivals) rivalsMonth(G, rivalE()); // the computer players (rivals.js)
   economy(G);
   events(G);
   eraMonth(G, { record, citiesOf });                            // the age, and coalitions against the overgrown (era.js)
@@ -761,3 +761,6 @@ export function run(G, months, until) { for (let i = 0; i < months && !G.over; i
 
 // ---------------------------------------------------------------- for the game: what the player does goes through these
 export { siege, die, serve, captives, destroy, pickGovernor, record, give, stash, hide, refresh, holds, gensIn, freeIn, lordOf, hostile, allied, succession, frontDist, alive as factionAlive };
+
+// what the rivals (rivals.js, roam.js) may do to the world
+export const rivalE = () => ({ record, refresh, busy, give, die, serve, hostile, hostileTo: () => false, siege, citiesOf, destroy });

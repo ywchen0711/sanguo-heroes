@@ -18,6 +18,7 @@ import { Events } from './events.js';
 import { Story } from './story.js';
 import { AutoPlay } from './auto.js';
 import { Board } from './board.js';
+import { Roam } from './roam.js';
 import { fromOld } from './data/ranks.js';
 import { fameOf, fameCheck } from './fame.js';
 import { govern } from './govern.js';
@@ -35,7 +36,7 @@ const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 
 
 class Game {
   constructor() {
-    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this);
+    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
@@ -73,7 +74,7 @@ class Game {
     this.load2();
     if (d.pos.place != null) this.enterPlace(this.world.places[d.pos.place], true, d.pos); else if (d.pos.town != null) this.enterTown(d.pos.town, true, d.pos); else this.enterWorld(d.pos.x, d.pos.z, d.pos.dir);
   }
-  load2() { this.world ||= buildWorld(); this.mode = 'world'; document.body.classList.add('playing'); assignLooks(this.G.gens); }
+  load2() { this.world ||= buildWorld(); this.G.roam = true; this.mode = 'world'; document.body.classList.add('playing'); assignLooks(this.G.gens); }
   get me() { return this.G.gens[this.H.pid]; }
   // the party as [{ g, rec, look, solMax, spMax }]
   partyList() { syncParty(this); const cmd = this.perk().troop; return [this.H.pid, ...this.H.party].map((id) => { const g = this.G.gens[id], rec = this.H.rec[id]; rec.cmd = cmd; return { g, rec, look: this.lookOf(g), solMax: solMax(g, rec), spMax: spMax(g, rec) }; }); }
@@ -103,9 +104,9 @@ class Game {
   // counties, villages and caves on the land
   placeProps() {
     return this.world.places.map((q) => { const C = this.G.cities[q.near], f = C.owner && this.G.factions[C.owner], col = f ? f.color : '#9a9a9a';
-      const st = this.H.places?.[q.id], done = q.kind === 'cave' && st?.boss;
+      const st = this.H.places?.[q.id], done = q.kind === 'cave' && st?.boss ? (st.by ? `被${st.by}平定` : '已平定') : '';
       return { kind: q.kind, x: q.x + 0.5, z: q.y + 0.5, y: this.world.hAt(q.x, q.y), color: col, placeId: q.id, labelY: q.kind === 'cave' ? 1.5 : 1.3, labelClass: 'place ' + q.kind,
-        label: q.kind === 'county' ? `<b>${q.name}</b>${f ? `<i style="color:${col}">${f.name}</i>` : ''}` : q.kind === 'cave' ? `<b>${q.name}</b><i>${done ? '已平定' : '★'.repeat(q.tier)}</i>` : `<b>${q.name}</b>` }; });
+        label: q.kind === 'county' ? `<b>${q.name}</b>${f ? `<i style="color:${col}">${f.name}</i>` : ''}` : q.kind === 'cave' ? `<b>${q.name}</b><i>${done || '★'.repeat(q.tier)}</i>` : `<b>${q.name}</b>` }; });
   }
   // a county, a village or a cave stands in for a city: its owner is the nearest city's
   placeC(q) {
@@ -204,7 +205,7 @@ class Game {
     const M = this.town, C = M.C; this.npcs = [];
     for (const n of M.npcs) { const a = this.view.addActor(personSheet(n.look), n.x, n.z, { scale: 0.95 }); this.npcs.push({ ...n, a, home: [n.x, n.z], t: Math.random() * 3 }); }
     // the generals in this city: those who serve here wait before the hall, the free ones by the tavern
-    const here = this.G.gens.filter((g) => !busy(g) && (g.status === 'serving' || g.status === 'free') && g.city === C.id && !g.held);
+    const here = this.G.gens.filter((g) => !busy(g) && (g.status === 'serving' || g.status === 'free') && g.city === C.id && !g.held && (!g.rivalHero || this.roam.inCity(g.id, C.id)));
     const serving = here.filter((g) => g.status === 'serving').sort((a, b) => (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, 6), free = here.filter((g) => g.status === 'free').slice(0, 4);
     const spots = [[11, 7], [18, 7], [12, 8], [17, 8], [10, 8], [19, 8]], fspots = [[22, 10], [25, 10], [23, 14], [26, 14]];
     serving.forEach((g, i) => { const [x, z] = spots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b>${g.rivalHero ? '<i style="color:#ff9a6a">★對手</i>' : ''}`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
@@ -226,7 +227,7 @@ class Game {
     // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
     try {
-      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
+      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); this.roam.tick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
       if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
@@ -273,7 +274,8 @@ class Game {
     const k = this.world.at(P.x, P.z); this.onRoad = k === T.ROAD || k === T.BRIDGE;
     this.screens.minimap(); // the map in the corner keeps up with every step
     // ten steps on the land make a day, thirty days a month
-    this.steps = (this.steps || 0) + 1; this.H.walk = (this.H.walk || 0) + 1;
+    this.steps = (this.steps || 0) + 1; this.H.walk = (this.H.walk || 0) + 1; this.roam.step(1);
+    if (this.roam.meet()) return;
     if (this.H.walk % 10 === 0) { this.H.days++; if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; } }
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
@@ -346,7 +348,7 @@ class Game {
     if (before.fac && !now) { this.ui.toast(`<b style="color:#ff8a6a">${G.factions[before.fac]?.name || ''}軍滅亡了，你成了在野之身。</b>`, 5000); for (const id of this.H.party) { const m = G.gens[id]; if (m.status === 'serving') { m.status = 'free'; m.fac = null; } } }
     else if (before.fac && now && before.fac !== now) this.ui.toast(`<b>你所屬的勢力併入了${G.factions[now].name}軍。</b>`, 5000);
     if (!before.lord && this.isLord()) this.ui.toast(`<b style="color:#ffd86a">你繼承了${G.factions[now].name}軍之主的地位！</b>`, 5000);
-    noteDisasters(this, logs);
+    noteDisasters(this, logs); this.roam.month();
     govern(this);
     this.board.month();
     { const loyal = partyFx(this, 'loyal'), mine = this.myFaction(); if (loyal) for (const id of this.H.party) { const x = G.gens[id]; if (x.status === 'serving') x.loyalty = Math.min(100, x.loyalty + Math.round(loyal * 10)); } if (mine && this.isLord()) G.factions[mine].diplo = Math.min(0.3, partyFx(this, 'diplo')); }
