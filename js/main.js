@@ -273,10 +273,10 @@ class Game {
     }
     const k = this.world.at(P.x, P.z); this.onRoad = k === T.ROAD || k === T.BRIDGE;
     this.screens.minimap(); // the map in the corner keeps up with every step
-    // ten steps on the land make a day, thirty days a month
+    // thirty steps on the land make a day, thirty days a month
     this.steps = (this.steps || 0) + 1; this.H.walk = (this.H.walk || 0) + 1; this.roam.step(1);
     if (this.roam.meet()) return;
-    if (this.H.walk % 10 === 0) { this.H.days++; if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; } }
+    if (this.H.walk % 30 === 0) { this.H.days++; if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; } }
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }

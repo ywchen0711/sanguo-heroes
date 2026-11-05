@@ -151,15 +151,16 @@ export const POWERS = {
   bossDmg: ['斬將', [0.06, 0.09, 0.13, 0.18, 0.24], (v) => `對武將與頭目傷害 +${pc(v)}`],
   lowAtk: ['背水', [0.1, 0.15, 0.2, 0.28, 0.36], (v) => `兵力不到三成時攻擊 +${pc(v)}`],
   beastDmg: ['獵獸', [0.1, 0.15, 0.22, 0.3, 0.4], (v) => `對猛獸傷害 +${pc(v)}`],
+  thunder: ['雷法', [0.1, 0.15, 0.22, 0.3, 0.4], (v) => `落雷威力 +${pc(v)}（身上有雷法的武將戰鬥中都會使用落雷）`],
   infPow: ['步戰', [0.1, 0.14, 0.18, 0.24, 0.3], (v) => `率領步兵時攻擊 +${pc(v)}`],
 };
 const pc = (v) => `${Math.round(v * 100)}%`;
 export const SLOT_N = { w: '武器', a: '防具', h: '坐騎', x: '輔助' };
-export const GRADE_N = ['', '凡品', '良品', '上品', '珍品', '神品'];
-export const GRADE_C = ['', '#e8e0d0', '#8ae07a', '#6ab0ff', '#d08aff', '#ffc84a'];
+export const GRADE_N = ['', '凡品', '良品', '上品', '珍品', '神品', '神器'];
+export const GRADE_C = ['', '#e8e0d0', '#8ae07a', '#6ab0ff', '#d08aff', '#ffc84a', '#ff5a5a'];
 // the main number each slot adds, by grade
 const BASE = { w: [6, 10, 15, 21, 28], a: [5, 9, 14, 20, 27], h: [4, 7, 11, 15, 20], x: [1, 2, 3, 4, 6] };
-export const PRICE = [0, 400, 1100, 2600, 5600, 12000];
+export const PRICE = [0, 400, 1100, 2600, 5600, 12000, 40000];
 // the catalogue: id -> { id, n, slot, grade, v, stat (for accessories), p1, p2, d }
 export const RELICS = {};
 LINES.forEach(([slot0, p1, p2, d, names, school], li) => {
@@ -169,4 +170,31 @@ LINES.forEach(([slot0, p1, p2, d, names, school], li) => {
 SETS.forEach(([sn, school, pieces, , , stat], si) => {
   ['w', 'a', 'h', 'x'].forEach((slot, i) => { const [n, p1] = pieces[i], id = `s${si}${slot}`; RELICS[id] = { id, n, slot, stat: slot === 'x' ? stat : null, grade: 4, v: BASE[slot][3], p1, p2: null, d: `「${sn}」套裝的一件（${school}系）`, set: si }; });
 });
-export const RELIC_IDS = Object.keys(RELICS);
+// 神器 (grade 6): twenty pieces far above everything else, never sold, found only by great luck - from a chest, a
+// fallen foe or a cave's master, and far likelier for a party that finds treasure (尋寶). Each has its own powers.
+// [slot (x:stat for an accessory), name, main number, { power: value }, flavour]
+export const ULTS = [
+  ['w', '軒轅劍', 40, { crit: 0.2, pierce: 0.35, bossDmg: 0.3 }, '黃帝斬蚩尤之劍，劍身刻著日月星辰'],
+  ['w', '天罡偃月刀', 42, { sweep: 0.6, stun: 0.18, crit: 0.12 }, '一刀落下，三十六天罡都要退避'],
+  ['w', '九霄方天戟', 41, { combo: 0.3, sweep: 0.45, duelDmg: 0.3 }, '戟上兩道月牙，一刺一掃都是殺招'],
+  ['w', '雷神鎚', 40, { thunder: 0.6, stun: 0.2, breakdef: 0.35 }, '鎚一落地，晴空便響起霹靂'],
+  ['w', '九天玄雷扇', 34, { thunder: 0.5, tacDmg: 0.3, tacCost: 0.3 }, '扇面畫著雷雲，輕輕一搧便是電光'],
+  ['w', '射日神弓', 40, { bowPow: 0.4, first: 1, pierce: 0.3 }, '傳說射下九個太陽的弓'],
+  ['a', '女媧補天甲', 38, { physRes: 0.3, tacRes: 0.4, regen: 0.08 }, '五色石煉成的寶甲'],
+  ['a', '不滅金身', 36, { revive: 0.7, lowHeal: 0.6, physRes: 0.2 }, '穿上之後，彷彿死不了'],
+  ['a', '玄武神甲', 40, { block: 0.4, counter: 0.5, auraDef: 0.12 }, '龜甲蛇鱗，北方神獸的守護'],
+  ['a', '九天雷衣', 34, { thunder: 0.3, tacRes: 0.3, spRegen: 10 }, '衣上電光流轉，邪術近身即散'],
+  ['a', '尋龍寶衣', 34, { drop: 0.2, dodge: 0.2, gold: 0.6 }, '摸金之人的祖傳寶衣，寶物好像會自己找上門'],
+  ['h', '追日神駒', 28, { first: 1, spd: 30, cavPow: 0.4 }, '一日千里，追得上太陽'],
+  ['h', '麒麟', 26, { again: 0.2, spd: 24, auraAtk: 0.1 }, '祥瑞之獸，出現便是聖人在世'],
+  ['h', '雷獸', 26, { thunder: 0.3, spd: 24, firstAtk: 0.4 }, '一聲吼叫，天上便打雷'],
+  ['h', '金蟾神駒', 24, { drop: 0.2, gold: 0.8, flee: 1 }, '口吐金錢的神蟾化成的坐騎'],
+  ['x:cha', '傳國玉璽', 12, { recruit: 0.3, fame: 0.5, auraAtk: 0.12 }, '受命於天，既壽永昌'],
+  ['x:int', '天雷正法', 12, { tacDmg: 0.4, thunder: 0.4, spRegen: 12 }, '記載著召喚天雷的真法'],
+  ['x:lead', '孫武兵法真本', 12, { auraAtk: 0.12, auraDef: 0.12, solMax: 0.3 }, '兵聖親筆的兵法原本'],
+  ['x:pol', '聚寶盆', 12, { drop: 0.25, gold: 1, mend: 0.15 }, '放一枚錢進去，第二天就滿了'],
+  ['x:war', '長生仙丹爐', 12, { regen: 0.1, revive: 0.5, healPow: 0.6 }, '煉出的仙丹能起死回生'],
+];
+ULTS.forEach(([slot0, n, v, ps, d], i) => { const [slot, stat] = slot0.split(':'); const id = `u${i}`; RELICS[id] = { id, n, slot, stat: stat || null, grade: 6, v, p1: null, p2: null, ps, d, ult: true }; });
+export const ULT_IDS = ULTS.map((_, i) => `u${i}`);
+export const RELIC_IDS = Object.keys(RELICS).filter((id) => !RELICS[id].ult);

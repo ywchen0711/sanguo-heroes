@@ -9,10 +9,10 @@ import { itemName, spellName } from './sim/text.js';
 import { SIEGE_RANK } from './data/ranks.js';
 import { EQUIP, WEAPONS, ARMORS, HORSES, ITEMS, RANKS, rankOf, newRec, solMax, spMax, bstats, gainExp, startLv, STAT_N, expNeed, shopItems, usable, FORGE, forgeOf, eqName, TROOPS, hasHorse } from './hero.js';
 import { deed, bump, hasT, checkTitles, knownAs, TITLES } from './deeds.js';
-import { itemOf, isRelic, relicFx, partyFx, rollRelic, giveRelic, jackpot, relicExp, powerLines as powerLinesOf, RELICS, PRICE, GRADE_N, GRADE_C, SLOT_N } from './relics.js';
+import { itemOf, isRelic, relicFx, partyFx, rollRelic, giveRelic, jackpot, tryUlt, relicExp, powerLines as powerLinesOf, RELICS, PRICE, GRADE_N, GRADE_C, SLOT_N } from './relics.js';
 import { equipScreen } from './equip.js';
 import { addBond, offerOaths, versus, drink, isSworn, isRival, bondOf, bondsHTML } from './bonds.js';
-import { mark, dexScreen } from './dex.js';
+import { mark, dexScreen, traitDex, traitCard } from './dex.js';
 import { TYPE_N } from './sim/life.js';
 import { PERKS, perkText } from './hero.js';
 import { meetSage, sageOpts, sageGen, sageRumor } from './sages.js';
@@ -92,7 +92,8 @@ export class Actions {
       if (hid.length && Math.random() < (hasT(this.H, 'tanxian') ? 0.55 : 0.35)) { const it = pick(hid); give(this.G, it, this.me); this.H.fame += 40; record(this.G, 'item', 'itemFind', { g: this.me.name, c: q.name, it: it.key }, this.g.myFaction(), 2, { g: this.me.id }); await this.ui.say('', `寶箱裡竟然是傳說中的「${itemName(it.key)}」！\n${Object.entries(it.fx).map(([k, v]) => `${STAT_N[k]} +${v}`).join('　')}`); return; }
       const t = q.tier, opts = [`item:ore*${1 + rint(0, t)}`, `gold+${30 + t * 30} item:ore${t >= 3 ? ' item:ore2' : ''}`, `gold+${60 + t * 70 + rint(0, 60)}`, `gold+${40 + t * 40} item:med2`, `item:med*2 item:book`, `eq:w${Math.min(7, 2 + t + rint(0, 1))}`, `eq:a${Math.min(7, 2 + t + rint(0, 1))}`, `gold+${30 + t * 30} item:rice item:wine`];
       const notes = await this.g.events.effects(pick(opts).split(' '), c, {});
-      if (Math.random() < 0.02 + q.tier * 0.01) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
+      const ult = tryUlt(this.g, 'chest'); if (ult) notes.push(`★★ 神器「${RELICS[ult].n}」`);
+      else if (Math.random() < 0.02 + q.tier * 0.01) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       else if (Math.random() < 0.4 + (q.tier >= 4 ? 0.15 : 0)) { const id = rollRelic(this.avgLv(), Math.min(4, q.tier)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', '打開了寶箱！\n' + notes.join('　')); this.g.hud(); return;
     }
@@ -134,6 +135,7 @@ export class Actions {
       if (this.me.status === 'serving') { this.me.merit += 10 * t; this.promote(); }
       this.H.st.missions++;
       if (Math.random() < 0.12 + q.tier * 0.04) { this.H.items.xisui = (this.H.items.xisui || 0) + 1; notes.push('洗髓丹'); }
+      const ult = tryUlt(this.g, 'boss'); if (ult) notes.push(`★★ 神器「${RELICS[ult].n}」`);
       if (Math.random() < 0.08 + q.tier * 0.04) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       else { const id = rollRelic(this.avgLv() + 4, Math.min(5, q.tier >= 4 ? q.tier : q.tier + 1)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', `打倒了${q.name}的${B.name}！\n${notes.join('　')}`); this.g.hud(); return;
@@ -160,7 +162,7 @@ export class Actions {
   // ---------------------------------------------------------------- the menu
   async menu() {
     if (this.ui.busy) return;
-    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'board', n: '情勢', d: '時局、機會（有期限）、民心', sub: (this.H.opps || []).filter((o) => !o.done && !o.missed).length || '' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'save', n: '存檔' }, { k: 'auto', n: this.g.auto.on ? `電腦代玩：開（${this.g.auto.style.n}）` : '電腦代玩：關', d: '讓電腦替你玩，可以選方針：均衡、練功、打寶、積極攻城（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
+    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'board', n: '情勢', d: '時局、機會（有期限）、民心', sub: (this.H.opps || []).filter((o) => !o.done && !o.missed).length || '' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'tdex', n: '特性圖鑑', d: '特性、名組合、誰有哪個特性、神器錄' }, { k: 'save', n: '存檔' }, { k: 'auto', n: this.g.auto.on ? `電腦代玩：開（${this.g.auto.style.n}）` : '電腦代玩：關', d: '讓電腦替你玩，可以選方針：均衡、練功、打寶、積極攻城（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
     if (k === 'status') await this.g.screens.status();
     if (k === 'party') await this.partyMenu();
     if (k === 'equip') await equipScreen(this.g);
@@ -172,6 +174,7 @@ export class Actions {
     if (k === 'rivals') await this.g.screens.rivals();
     if (k === 'people') await this.people();
     if (k === 'dex') await dexScreen(this.g);
+    if (k === 'tdex') await traitDex(this.g);
     if (k === 'save') { if (this.g.mode !== 'town') { this.ui.toast('只能在城裡存檔（客棧或選單）'); } this.g.saveGame() ? this.ui.toast('已存檔') : this.ui.toast('存檔失敗'); }
     if (k === 'end' && await this.ui.yesno('要現在結束，結算功績嗎？')) this.g.screens.ending();
     if (k === 'sound') { this.g.audio.on = !this.g.audio.on; }
@@ -227,13 +230,13 @@ export class Actions {
     const sameSide = f && mine === x.fac, look = this.g.lookOf(x), age = G.year - x.born;
     mark(this.g, x.id, 1); addBond(this.g, x.id, 1);
     const info = `${x.name}（${age}歲）${x.life ? `　【${TYPE_N[x.life.type]}】Lv${x.life.lv}${x.life.vet ? '・身經百戰' : ''}` : ''}${f ? `　${f.name}軍${G.factions[x.fac].lord === x.id ? '・君主' : ''}` : '　在野'}\n統率 ${x.lead}　武力 ${x.war}　智力 ${x.int}　政治 ${x.pol}　魅力 ${x.cha}${G.items.some((it) => it.holder === x.id) ? `\n寶物：${G.items.filter((it) => it.holder === x.id).map((it) => itemName(it.key)).join('、')}` : ''}\n特性：${traitsOf(x).map((t) => `<b>${t}</b>`).join('、')}${(() => { const c = combosWith(G, x, this.g.partyList().map((p) => p.g)); return (c.own ? `　★ 絕技「${c.own}」` : '') + c.with.slice(0, 2).map((w) => `\n<b style="color:#ffd86a">★ 和${w.g.name}能組成「${w.n}」</b>`).join(''); })()}`;
-    const opts = [{ k: 'talk', n: '交談' }, ...sageOpts(x)];
+    const opts = [{ k: 'talk', n: '交談' }, { k: 'traits', n: '查看特性', d: traitsOf(x).join('・') }, ...sageOpts(x)];
     if (!f) opts.push({ k: 'recruit', n: '招募' });
     if (sameSide && !this.g.H.party.includes(x.id) && G.factions[x.fac].lord !== x.id) opts.push({ k: 'invite', n: '邀請同行', d: `依官階而定（${this.g.perk().n}）` });
     if (!f || sameSide) opts.push({ k: 'spar', n: '切磋' });
     if (!sameSide) opts.push({ k: 'duel', n: '挑戰（生死決鬥）' });
     opts.push({ k: null, n: '離開' });
-    const c = await this.ui.ask(info, opts, x.name, look);
+    let c; for (;;) { c = await this.ui.ask(info, opts, x.name, look); if (c !== 'traits') break; await this.ui.panel(traitCard(this.g, x), { title: `${x.name}的特性`, cls: 'wide' }); }
     if (c === 'talk') await this.ui.say(x.name, this.lineOf(x, f, sameSide), look);
     if (['heal', 'wuqin', 'fu'].includes(c)) await sageGen(this.g, x, c);
     if (c === 'recruit') await this.recruit(x, n);
@@ -461,7 +464,7 @@ export class Actions {
       const bag = H.bag || []; if (!bag.length) return;
       const k = await this.ui.choose(bag.map((e, i) => { const it = itemOf(e); return { k: i, n: it.shop ? it.n : `<span style="color:${it.color}">${it.n}</span>${it.lv > 1 ? ` Lv${it.lv}` : ''}`, sub: `${Math.round(it.price / 2)} 金`, d: it.shop ? `${SLOT_N[it.slot]}・商店貨` : `${GRADE_N[it.grade]}・${SLOT_N[it.slot]}　${powerLinesOf(e).map((l) => `【${l.n}】${l.d}`).join('　')}` }; }).concat([{ k: null, n: '返回' }]), { title: `出售　金 ${H.gold}`, cls: 'wide' });
       if (k == null) return;
-      const e = bag[k], it = itemOf(e); if (!it.shop && it.grade >= 4 && !await this.ui.yesno(`真的要賣掉${GRADE_N[it.grade]}「${it.n}」嗎？`)) continue;
+      const e = bag[k], it = itemOf(e); if (it.grade === 6) { this.ui.toast('神器無價，不能賣'); continue; } if (!it.shop && it.grade >= 4 && !await this.ui.yesno(`真的要賣掉${GRADE_N[it.grade]}「${it.n}」嗎？`)) continue;
       H.bag.splice(k, 1); H.gold += Math.round(it.price / 2); this.g.audio.sfx('coin');
     }
   }
@@ -542,7 +545,7 @@ export class Actions {
   // ---------------------------------------------------------------- time passing (in town: rest, work, search)
   async passDays(n, msg) {
     if (msg) this.ui.toast(msg);
-    for (let i = 0; i < n; i++) { this.g.roam.step(10); this.H.days++; if (this.H.days % 30 === 0) { this.g.monthTick(); if (this.g.mode === 'title') return; } }
+    for (let i = 0; i < n; i++) { this.g.roam.step(30); this.H.days++; if (this.H.days % 30 === 0) { this.g.monthTick(); if (this.g.mode === 'title') return; } }
     this.g.hud();
   }
   // ---------------------------------------------------------------- missions: a bandit chief somewhere near a city
@@ -628,6 +631,9 @@ export class Actions {
       if (!o.drill && !o.noRelic && Math.random() < chance) { const id = rollRelic(this.avgLv(), named ? 2 : 1); giveRelic(g, id, true); msg += `\n得到寶物「<b style="color:${GRADE_C[RELICS[id].grade]}">${RELICS[id].n}</b>」！（${GRADE_N[RELICS[id].grade]}・${SLOT_N[RELICS[id].slot]}）`; }
       // a jackpot: very rarely, a treasure of the top grades from any fight (likelier from a general or a chief)
       if (!o.drill && !o.noRelic && Math.random() < (named ? 0.04 : 0.012) + partyFx(g, 'drop') / 4) { const id = jackpot(g); msg += `\n★ 天降至寶！得到「<b style="color:${GRADE_C[RELICS[id].grade]}">${RELICS[id].n}</b>」（${GRADE_N[RELICS[id].grade]}）！`; }
+      // a 神器: hardly ever, unless the party is set on finding treasure
+      if (!o.drill && !o.noRelic) { const id = tryUlt(g, named ? 'named' : 'fight'); if (id) msg += `
+★★ 神器現世！得到「<b style="color:${GRADE_C[6]}">${RELICS[id].n}</b>」！`; }
       // beaten generals now and then leave their own famous treasure behind (Red Hare from Lü Bu…)
       if (!o.drill && !o.noRelic) for (const u of foes) { if (u.gid == null) continue; const own = G.items.filter((it) => it.holder === u.gid); if (own.length && Math.random() < 0.06) { const it = own[Math.floor(Math.random() * own.length)]; give(G, it, this.me); this.H.fame += 30; msg += `\n★ ${G.gens[u.gid].name}敗走，丟下了「${itemName(it.key)}」！`; g.audio.sfx('level'); this.ui.banner(`<b style="color:#ffc84a;font-size:20px">★ 奪得名寶 ★</b><br>${G.gens[u.gid].name}的「${itemName(it.key)}」歸你了！`, 6500); break; } }
       const mend = partyFx(g, 'mend'); if (mend && !o.drill) { for (const p of party) p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * mend)); msg += `\n救護兵醫治了傷兵（兵力 +${Math.round(mend * 100)}%）。`; }

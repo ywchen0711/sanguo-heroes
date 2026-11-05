@@ -6,7 +6,9 @@ import { frameCanvas, personSheet } from './sprites.js';
 import { checkTitles } from './deeds.js';
 import { TYPE_N, TYPE_D, lifeLine, lvNeed } from './sim/life.js';
 import { fmt } from './sim/text.js';
-import { traitsOf, traitHTML, combosWith } from './traits.js';
+import { traitsOf, traitHTML, combosWith, TRAITS, TRAIT, SCHOOLS, COMBOS, groupTraits, actHTML, fxLine, chip } from './traits.js';
+import { RESONANCE, SYNERGY, fxText } from './data/traits.js';
+import { POWERS, RELICS, ULT_IDS, GRADE_C, SLOT_N, powerLines } from './relics.js';
 
 const BIO = Object.fromEntries(BIOS.map(([n, zi, t]) => [n, { zi: zi === '—' ? '' : zi, t }]));
 export const DEX_N = ['', '見過', '交過手', '曾為同伴'];
@@ -63,4 +65,71 @@ function lifeHTML(G, g) {
     <div class="dim">經驗 ${L.exp}/${lvNeed(L.lv)}${room.length ? '　潛力：' + room.join('、') : '　已經到達極限'}</div>
     ${L.mentor != null && nm(L.mentor) ? `<div>師父：${nm(L.mentor)}</div>` : ''}${L.pupil != null && nm(L.pupil) ? `<div>徒弟：${nm(L.pupil)}</div>` : ''}${L.sworn != null && nm(L.sworn) ? `<div>結義兄弟：${nm(L.sworn)}</div>` : ''}${fr.length ? `<div>好友：${fr.join('、')}</div>` : ''}
     ${all.length ? `<h4>年表</h4>${all.map((e) => `<p><small>${e.y}年</small>　${e.t}</p>`).join('')}` : ''}</div>`;
+}
+
+// ---------------------------------------------------------------- 特性圖鑑: every trait, by school or by what it does, the
+// named combinations, who you know that has each one (to build a party around one thing: 落雷, 尋寶…), and the 神器
+const R_N = ['', '普通', '稀有', '傳說'];
+const EFF_N = { war: '武力', int: '智力', lead: '統率', pol: '政治', cha: '魅力', horse: '相馬', farm: '開墾', comm: '經商', morale: '安民', train: '練兵', build: '築城', loyal: '忠誠', merit: '功績', price: '殺價', diplo: '外交', bond: '好感', event: '奇遇' };
+const effName = (k) => POWERS[k]?.[0] || EFF_N[k] || k;
+const fxOf = (fx) => Object.entries(fx).map(([k, v]) => fxText(POWERS, k, v)).join('、');
+const holders = (G, n) => G.gens.filter((g) => g.status !== 'dead' && (!g.hidden || g.known) && traitsOf(g).includes(n));
+const knownTo = (H, g) => g.isPlayer || H.dex?.[g.id] || H.party.includes(g.id);
+// a general's traits, in full: what each does, what the two make together, and with whom in the party
+export function traitCard(game, x) {
+  const G = game.G, ts = traitsOf(x), mine = groupTraits([x]).get(x.id), c = combosWith(G, x, game.partyList().map((p) => p.g));
+  const more = ts.flatMap((n) => COMBOS.filter((k) => (k[0] === n || k[1] === n) && !(ts.includes(k[0]) && ts.includes(k[1]))));
+  return `<div class="traits">${ts.map((n) => `${traitHTML(n)}<p class="dim">${TRAIT[n]?.d || ''}　（${R_N[TRAIT[n]?.r] || ''}）</p>`).join('')}</div>
+    ${mine?.act.length ? `<h4>本身的組合</h4>${actHTML(mine.act)}<p class="dim">合計：${fxLine(mine.fx)}</p>` : ''}
+    ${c.with.length ? `<h4>和隊伍的組合</h4>${c.with.map((w) => `<div class="combo-tip">★ 和${w.g.name}能組成「${w.n}」：${fxOf(COMBOS.find((k) => k[2] === w.n)[3])}</div>`).join('')}` : ''}
+    ${more.length ? `<h4>還能組成</h4>${more.map((k) => `<div class="dim">「${k[2]}」：${k[0]}＋${k[1]}（${fxOf(k[3])}）</div>`).join('')}` : ''}`;
+}
+async function traitPage(game, t) {
+  const G = game.G, H = game.H, all = holders(G, t.n), known = all.filter((g) => knownTo(H, g)).sort((a, b) => (b.lead + b.war + b.int) - (a.lead + a.war + a.int));
+  const where = (g) => (g.isPlayer ? '你自己' : H.party.includes(g.id) ? '隊伍中' : g.status === 'serving' ? `${G.factions[g.fac]?.name || ''}軍・${G.cities[g.city]?.name || ''}` : g.status === 'free' ? `在野・${G.cities[g.city]?.name || ''}` : '尚未出仕');
+  const combos = COMBOS.filter((k) => k[0] === t.n || k[1] === t.n);
+  await game.ui.panel(`${traitHTML(t.n)}<p>${t.d}　<span class="dim">${R_N[t.r]}・${t.s.map((s) => SCHOOLS[s][0]).join('、')}系</span></p>
+    <h4>共鳴與相生</h4>${t.s.map((s) => `<div>${chip(s)} 一個人兩個特性都是${SCHOOLS[s][0]}系：共鳴「${RESONANCE[s][0]}」，兩個特性都 ×1.5，再加${fxOf(RESONANCE[s][1])}</div>`).join('')}
+    ${SYNERGY.filter(([a, b]) => t.s.includes(a) || t.s.includes(b)).map(([a, b, n, , d]) => `<div class="dim">${a}＋${b}「${n}」：${d}</div>`).join('')}
+    ${combos.length ? `<h4>名組合</h4>${combos.map((k) => `<div class="combo-tip">★「${k[2]}」＝${k[0]}＋${k[1]}：${fxOf(k[3])}　<span class="dim">${k[4]}</span></div>`).join('')}` : ''}
+    <h4>有這個特性的人（${all.length} 人，你認識 ${known.length} 人）</h4>
+    ${known.length ? known.slice(0, 30).map((g) => `<div>${g.name}　<span class="dim">${traitsOf(g).join('・')}　統${g.lead} 武${g.war} 智${g.int}　${where(g)}</span></div>`).join('') : '<div class="dim">還沒遇到。和更多武將交談，圖鑑就會收錄。</div>'}
+    ${all.length > known.length ? `<div class="dim">還有 ${all.length - known.length} 人你還沒見過。</div>` : ''}`, { title: `特性・${t.n}`, cls: 'wide' });
+}
+async function traitList(game, list, title) {
+  const G = game.G, H = game.H; let start = 0;
+  const C = ['', '#e8e0d0', '#6ab0ff', '#ffc84a'];
+  for (;;) {
+    const opts = list.sort((a, b) => b.r - a.r).map((t) => { const all = holders(G, t.n); return { k: t.n, n: `<b style="color:${C[t.r]}">${t.n}</b> ${t.s.map(chip).join('')}`, sub: `${R_N[t.r]}　認識 ${all.filter((g) => knownTo(H, g)).length}/${all.length} 人`, d: fxOf(t.fx) }; });
+    const k = await game.ui.choose(opts, { title, cls: 'wide tall', start }); if (k == null) return;
+    start = opts.findIndex((o) => o.k === k); await traitPage(game, TRAIT[k]);
+  }
+}
+export async function traitDex(game) {
+  const ui = game.ui, H = game.H;
+  for (;;) {
+    const got = new Set([...(H.bag || []).map((e) => e.id), ...game.partyList().flatMap((p) => Object.values(p.rec.eq || {}).map((e) => e?.id)), ...(H.ults || []).map((u) => u.id)]);
+    const k = await ui.choose([
+      { k: 'school', n: '依流派', d: '十五個系；一個武將的兩個特性同系就會共鳴' },
+      { k: 'fx', n: '依效果', d: '例如「雷法」「尋寶」：組一支特性隊' },
+      { k: 'combo', n: '名組合', sub: `${COMBOS.length} 組`, d: '兩個特定的特性：同一人身上是絕技，隊裡兩人各有一個是合擊' },
+      { k: 'ult', n: '神器錄', sub: `${ULT_IDS.filter((id) => got.has(id)).length}/${ULT_IDS.length}`, d: '寶箱、戰鬥、洞主極少掉落；隊伍的尋寶越高越容易' },
+    ], { title: '特性圖鑑' });
+    if (k == null) return;
+    if (k === 'school') for (;;) {
+      const s = await ui.choose(Object.entries(SCHOOLS).map(([s, [n]]) => ({ k: s, n: `${chip(s)} ${n}`, sub: `${TRAITS.filter((t) => t.s.includes(s)).length} 個`, d: `共鳴「${RESONANCE[s][0]}」：${fxOf(RESONANCE[s][1])}` })), { title: '依流派', cls: 'wide tall' });
+      if (s == null) break; await traitList(game, TRAITS.filter((t) => t.s.includes(s)), `${SCHOOLS[s][0]}系`);
+    }
+    if (k === 'fx') for (;;) {
+      const keys = [...new Set(TRAITS.flatMap((t) => Object.keys(t.fx).filter((x) => t.fx[x] > 0)))];
+      const e = await ui.choose(keys.map((x) => ({ k: x, n: effName(x), sub: `${TRAITS.filter((t) => t.fx[x] > 0).length} 個` })), { title: '依效果', cls: 'wide tall' });
+      if (e == null) break; await traitList(game, TRAITS.filter((t) => t.fx[e] > 0), `效果・${effName(e)}`);
+    }
+    if (k === 'combo') { let start = 0; for (;;) {
+      const opts = COMBOS.map((c, i) => ({ k: i, n: `★ ${c[2]}`, sub: `${c[0]}＋${c[1]}`, d: `${fxOf(c[3])}　${c[4]}` }));
+      const i = await ui.choose(opts, { title: '名組合', cls: 'wide tall', start }); if (i == null) break; start = i;
+      const c = COMBOS[i], pick = await ui.choose([{ k: c[0], n: `看「${c[0]}」` }, { k: c[1], n: `看「${c[1]}」` }], { title: c[2] }); if (pick) await traitPage(game, TRAIT[pick]);
+    } }
+    if (k === 'ult') await ui.panel(ULT_IDS.map((id) => { const R = RELICS[id]; return `<div class="eq-d"><b style="color:${got.has(id) ? GRADE_C[6] : '#8a7a70'}">${R.n}</b>　<small>神器・${SLOT_N[R.slot]}　${got.has(id) ? '★ 已取得' : '未取得'}</small><p class="dim">${R.d}</p><p>${powerLines({ id, lv: 1 }).map((l) => `【${l.n}】${l.d}`).join('　')}</p></div>`; }).join(''), { title: `神器錄　${ULT_IDS.filter((id) => got.has(id)).length}/${ULT_IDS.length}`, cls: 'wide' });
+  }
 }

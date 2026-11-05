@@ -79,13 +79,13 @@ export class Battle {
     this.ensureView(); this.root.classList.add('on'); this.partyColor = o.color || '#3a6ad8';
     this.stage(o.terrain, o.siege); this.o = o; this.round = 0; this.log = [];
     const G = this.game.G, H = this.game.H, wounded = H?.wound > G?.t;
-    const EXTRA = ['fire', 'siege', 'wall', 'firstAtk', 'bossDmg', 'lowAtk', 'beastDmg', 'infPow', 'horse', 'stun', 'breakdef', 'counter', 'bowPow', 'navyPow', 'again', 'tacDmg', 'tacCost', 'tacHit', 'healPow', 'spRegen', 'steal', 'regen', 'physRes', 'tacRes', 'block', 'noConfuse', 'revive', 'lowHeal', 'startRouse', 'auraAtk', 'auraDef', 'duelHp', 'duelDmg'];
+    const EXTRA = ['thunder', 'fire', 'siege', 'wall', 'firstAtk', 'bossDmg', 'lowAtk', 'beastDmg', 'infPow', 'horse', 'stun', 'breakdef', 'counter', 'bowPow', 'navyPow', 'again', 'tacDmg', 'tacCost', 'tacHit', 'healPow', 'spRegen', 'steal', 'regen', 'physRes', 'tacRes', 'block', 'noConfuse', 'revive', 'lowHeal', 'startRouse', 'auraAtk', 'auraDef', 'duelHp', 'duelDmg'];
     const withRelics = (arms, r) => { const R = relicFx(r); for (const k of ['crit', 'combo', 'pierce', 'dodge']) arms[k] = (arms[k] || 0) + (R[k] || 0); arms.sweep = Math.max(arms.sweep || 0, R.sweep || 0); arms.first ||= !!R.first; arms.flee ||= !!R.flee; arms.cav = (arms.cav || 1) * (1 + (R.cavPow || 0)); for (const k of EXTRA) arms[k] = R[k] || 0; return arms; };
     const mk = (p) => { const g = p.g, r = p.rec, st = bstats(g, r), arms = withRelics(armsOf(G, g), r);
       if (g.isPlayer && wounded) { st.atk *= 0.85; st.def *= 0.85; }
       st.spd += arms.spd + (arms.first ? 999 : 0);
       const troop = r.troop === 'cav' && !hasHorse(G, g, r) ? 'inf' : r.troop || (hasHorse(G, g, r) ? 'cav' : p.look?.wpn === 'bow' ? 'bow' : 'inf');
-      return { side: 'party', g, rec: r, name: g.name, look: p.look, lv: r.lv, sol: r.sol, solMax: p.solMax, sp: r.sp, spMax: p.spMax, st, arms, troop, tactics: tacticsOf(g), status: {}, isPlayer: g.isPlayer }; };
+      return { side: 'party', g, rec: r, name: g.name, look: p.look, lv: r.lv, sol: r.sol, solMax: p.solMax, sp: r.sp, spMax: p.spMax, st, arms, troop, tactics: arms.thunder > 0 && !tacticsOf(g).includes('lei') ? [...tacticsOf(g), 'lei'] : tacticsOf(g), status: {}, isPlayer: g.isPlayer }; }; // 雷法 brings 落雷 with it
     const PT = H && !o.drill ? syncParty(this.game) : null;
     this.party = party.map(mk);
     const foeTroop = (f) => f.troop || (f.beast ? null : f.solKind === 'nomad' ? 'cav' : f.solKind === 'pirate' ? 'navy' : f.gid != null ? (hasHorse(G, G.gens[f.gid]) ? 'cav' : f.int > f.war + 10 ? 'bow' : 'inf') : o.siege ? 'bow' : 'inf');
@@ -228,7 +228,7 @@ export class Battle {
     const wits = Math.max(0.55, Math.min(1.5, 1 + (u.st.int - tint) / 120)), hit = Math.max(0.18, Math.min(0.97, 0.6 + (u.st.int - tint) / 110));
     let best = null, bv = blow * 1.1;
     for (const k of u.tactics) { const T = TACTICS[k]; if (T.kind !== 'dmg' || !can(k)) continue;
-      const v = (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * (T.tgt === 'all' ? n : 1) * wits * hit * (1 + (u.arms?.tacDmg || 0)) * (k === 'fire' || k === 'blaze' || k === 'feng' ? 1 + (u.arms?.fire || 0) : 1);
+      const v = (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * (T.tgt === 'all' ? n : 1) * wits * hit * (1 + (u.arms?.tacDmg || 0)) * (k === 'fire' || k === 'blaze' || k === 'feng' ? 1 + (u.arms?.fire || 0) : 1) * (k === 'lei' ? 1 + (u.arms?.thunder || 0) : 1);
       if (v > bv) { bv = v; best = k; } }
     return best;
   }
@@ -289,7 +289,7 @@ export class Battle {
           if (Math.random() > hitP) { this.float(t, '識破！', '#c8e8ff'); continue; }
           const terr = this.o.terrain, bonus = (o.k === 'rock' && terr === 'hill') || (o.k === 'flood' && (terr === 'marsh' || terr === 'coast')) || ((o.k === 'fire' || o.k === 'blaze') && terr === 'forest') ? 1.35 : o.k === 'fire' && terr === 'snow' ? 0.7 : 1;
           const fm = FORMS[this.form[u.side === 'party' ? 'party' : 'foe']]?.tac || 1, tm = u.side === 'party' && hasT(this.game.H, 'zhiduo') ? 1.1 : 1;
-          const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * (1 + ((o.k === 'fire' || o.k === 'blaze' || o.k === 'feng') ? u.arms?.fire || 0 : 0)) * (this.round === 1 ? 1 + (u.arms?.firstAtk || 0) : 1) * (this.o.siege && t.side === 'foe' ? 1 - (t.arms?.wall || 0) : 1);
+          const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * (1 + ((o.k === 'fire' || o.k === 'blaze' || o.k === 'feng') ? u.arms?.fire || 0 : 0)) * (o.k === 'lei' ? 1 + (u.arms?.thunder || 0) : 1) * (this.round === 1 ? 1 + (u.arms?.firstAtk || 0) : 1) * (this.o.siege && t.side === 'foe' ? 1 - (t.arms?.wall || 0) : 1);
           const sfU = 0.4 + 0.6 * Math.sqrt(Math.max(0, u.sol) / u.solMax), wits = clamp(1 + (u.st.int - t.st.int) / 120, 0.55, 1.5);   // wits against wits, carried out by the troops left
           const d = Math.round(HIT * (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2));
           if (u.side === 'party' && this.game.H) bump(this.game.H, 'tacs');
