@@ -3,6 +3,7 @@
 // hunts them down, serves a lord, works for merit, and lays siege when it is strong enough. P (or the menu) turns it
 // on and off; an arrow key takes the controls back.
 import { CITY_POS, T, WALK } from './world.js';
+import { governor, canGovern } from './govern.js';
 import { hostile, allied, citiesOf } from './sim/engine.js';
 import { WEAPONS, ARMORS, HORSES, EQUIP, rankOf, solMax } from './hero.js';
 import { itemOf, isRelic, wear, giveRelic, RELICS, PRICE } from './relics.js';
@@ -187,7 +188,8 @@ export class AutoPlay {
       if (e.want) { this.want = e.want; await A.gov(C); this.want = null; return true; }
       if (f && C.owner === mine) {
         if (H.missions.filter((m) => !m.done).length < 2) { this.want = [true]; await A.missionOffer(C, f); }
-        else { this.want = ['train', 'farm', 'comm']; await A.job(C, f); }
+        else if (canGovern(this.g, C) && !H.gov && this.g.perk().dom) { this.want = ['bal']; await governor(A, C, f); }
+        else { this.want = ['bf:comm', 'bf:farm', 'bf:def', 'bf:train', 'bf:tun', 'bf:acad', 'train', 'farm', 'comm']; await A.job(C, f); }
         await A.draft(C, true); this.want = null; return true;
       }
       return true;

@@ -23,6 +23,7 @@ export const busy = (g) => !!(g && (g.isPlayer || g.follow != null));
 
 // ---------------------------------------------------------------- random numbers (seeded, so a game can be replayed)
 import { eraMonth, harvestMul, taxMul, rebelMul, warPause, warBias } from './era.js';
+import { taxOf, harvestOf, upkeepOf, bLv, aiBuild } from './build.js';
 export function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pick = (r, a) => a[Math.floor(r() * a.length)];
@@ -282,10 +283,11 @@ function destroy(G, fid, by, key, p) {
 function economy(G) {
   for (const f of Object.values(G.factions)) if (f.alive) {
     const cs = citiesOf(G, f.id);
-    f.gold += Math.round(sum(cs, (c) => (c.comm * 0.13 + c.pop / 9000) * (0.4 + c.morale / 160)) * taxMul(G));
+    f.gold += Math.round(sum(cs, taxOf) * taxMul(G));
     f.gold -= gensOf(G, f.id).length * 2 + Math.round(sum(cs, (c) => c.troops) / 400);
-    if (G.month === 7) { const harvest = Math.round(sum(cs, (c) => (c.farm * 2.6 + c.pop / 320) * (0.4 + c.morale / 160)) * harvestMul(G)); f.food += harvest; }
-    f.food -= Math.round(sum(cs, (c) => c.troops) / 150);
+    if (G.month === 7) { const harvest = Math.round(sum(cs, harvestOf) * harvestMul(G)); f.food += harvest; }
+    f.food -= Math.round(sum(cs, upkeepOf));
+    for (const c of cs) if (bLv(c, 'train')) c.train = Math.min(100, c.train + bLv(c, 'train') * 2);
     if (f.food < 0) { f.food = 0; for (const c of cs) { c.troops = Math.round(c.troops * 0.93); c.morale = clamp(c.morale - 3, 0, 100); } if (G.r() < 0.1) record(G, 'famine', 'famine', { f: f.name }, f.id, 1); }
     f.gold = Math.max(0, f.gold);
   }
@@ -330,6 +332,8 @@ function domestic(G, f) {
       if (asks.has(g.id)) { propose(G, jobProposal(G, f, c, g, job, free)); continue; }
       g.task = job; doJob(G, f, c, g, job, free);
     }
+    // now and then the governor puts up something lasting
+    if (!isMine(G, f) && gs.length && r() < 0.025) aiBuild(G, f, c, isFront);
     // a capital with no general still grows slowly
     if (!gs.length) { c.farm = Math.min(c.farmMax, c.farm + 1); c.comm = Math.min(c.commMax, c.comm + 1); }
   }
@@ -370,7 +374,7 @@ function doJob(G, f, c, g, job, free) {
     case 'morale': c.morale = Math.min(100, c.morale + Math.round(1 + g.cha / 25 + r() * 2)); f.gold -= 10; g.merit += 1; break;
     case 'train': c.train = Math.min(100, c.train + Math.round(2 + g.lead / 14 + r() * 3)); g.merit += 1; break;
     case 'draft': { const n = Math.min(Math.round(600 + g.cha * 18 + r() * 600), Math.floor(c.pop / 15), f.gold * 8);
-      if (n <= 0) break; c.train = Math.round((c.train * c.troops + 35 * n) / (c.troops + n)); c.troops += n; c.pop -= Math.round(n / 2); f.gold -= Math.ceil(n / 8); c.morale = Math.max(0, c.morale - 1); g.merit += 1; break; }
+      if (n <= 0) break; c.train = Math.round((c.train * c.troops + (35 + bLv(c, 'train') * 10) * n) / (c.troops + n)); c.troops += n; c.pop -= Math.round(n / 2); f.gold -= Math.ceil(n / 8); c.morale = Math.max(0, c.morale - 1); g.merit += 1; break; }
     case 'reward': { const low = gensIn(G, c).filter((m) => m.loyalty < 100).sort((a, b) => a.loyalty - b.loyalty)[0]; if (low) { low.loyalty = Math.min(99, low.loyalty + 6 + Math.round(r() * 6)); f.gold -= 40; } break; }
     case 'search': {
       f.gold -= 10;
@@ -381,7 +385,7 @@ function doJob(G, f, c, g, job, free) {
       break; }
     case 'recruitGen': {
       const x = maxBy(free, (y) => y.lead + y.war + y.int + y.pol + y.cha + (y.known ? 50 : 0)); if (!x) break;
-      const lord = lordOf(G, f.id), p = 0.18 + g.cha / 250 + (lord.cha - 60) / 300 + (x.fac0 === f.id ? 0.2 : 0) - (x.refused || 0) * 0.05;
+      const lord = lordOf(G, f.id), p = 0.18 + g.cha / 250 + (lord.cha - 60) / 300 + (x.fac0 === f.id ? 0.2 : 0) - (x.refused || 0) * 0.05 + bLv(c, 'acad') * 0.06;
       if (r() < p) { serve(G, x, f.id, c.id, 60 + Math.round(r() * 25)); x.known = true; g.merit += 3;
         const big = x.lead + x.war + x.int + x.pol + x.cha;
         record(G, 'join', 'recruit', { g: g.name, x: x.name, f: f.name }, f.id, big > 360 ? 2 : 1, { g: x.id });
@@ -473,7 +477,7 @@ function absorb(G, f, o, envoy) {
 }
 
 // ---------------------------------------------------------------- 戰爭
-const wallBonus = (c) => 1.2 + Math.min(c.def, 1100) / 1600;
+const wallBonus = (c) => 1.2 + Math.min(c.def, 1100) / 1600 + bLv(c, 'def') * 0.12;
 // the ground of a campaign: on the Yangtze the southern navies are at home and northern armies flounder; the horsemen
 // of the west and the north are at their best on open ground. Returns [attacker, defender] multipliers.
 const RIVER_CITIES = new Set(['江陵', '江夏', '柴桑', '建業', '廬江', '吳', '永安', '江州']), HILL_CITIES = new Set(['漢中', '梓潼', '成都', '上庸', '永安', '江州', '建寧', '雲南', '武陵', '交趾']);

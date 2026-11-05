@@ -20,6 +20,7 @@ import { AutoPlay } from './auto.js';
 import { Board } from './board.js';
 import { fromOld } from './data/ranks.js';
 import { fameOf, fameCheck } from './fame.js';
+import { govern } from './govern.js';
 import { syncParty, awaken } from './traits.js';
 import { pickRivals } from './sim/rivals.js';
 import { deed, histDeaths, checkTitles, hasT, knownAs } from './deeds.js';
@@ -344,6 +345,7 @@ class Game {
     else if (before.fac && now && before.fac !== now) this.ui.toast(`<b>你所屬的勢力併入了${G.factions[now].name}軍。</b>`, 5000);
     if (!before.lord && this.isLord()) this.ui.toast(`<b style="color:#ffd86a">你繼承了${G.factions[now].name}軍之主的地位！</b>`, 5000);
     noteDisasters(this, logs);
+    govern(this);
     this.board.month();
     { const loyal = partyFx(this, 'loyal'), mine = this.myFaction(); if (loyal) for (const id of this.H.party) { const x = G.gens[id]; if (x.status === 'serving') x.loyalty = Math.min(100, x.loyalty + Math.round(loyal * 10)); } if (mine && this.isLord()) G.factions[mine].diplo = Math.min(0.3, partyFx(this, 'diplo')); }
     if (!before.lord && this.isLord()) deed(this, `繼${G.factions[now].name}之位`, true);

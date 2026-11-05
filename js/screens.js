@@ -12,6 +12,7 @@ import { isSworn, bondOf } from './bonds.js';
 import { dexCount } from './dex.js';
 import { traitsOf, traitHTML, actHTML, syncParty } from './traits.js';
 import { fameHTML } from './fame.js';
+import { govHTML } from './govern.js';
 import { PERKS, perkText } from './hero.js';
 
 const BEST = 'sanguo-heroes-best';
@@ -94,7 +95,7 @@ export class Screens {
         ${items.length ? `<div>寶物：${items.join('、')}</div>` : ''}<div class="dim">策略：${tac.join('、') || '無'}</div>
         ${gid !== H.pid ? `<div>${isSworn(H, gid) ? '<b style="color:#ffd86a">結義兄弟</b>' : `好感 ${bondOf(H, gid)}／100`}</div>` : ''}
         ${gid === H.pid && (H.titles || []).length ? `<div>稱號：${H.titles.map((t) => `「${titleName(t)}」`).join('')}</div>` : ''}${gid === H.pid && H.wound > G.t ? '<div style="color:#ff8a6a">負傷中（攻擊、防禦 -15%）</div>' : ''}
-        ${gid === H.pid ? `${fameHTML(H)}<div class="dim">${this.g.rank()}${this.g.perk().noble ? `・${this.g.perk().noble}` : ''}：${perkText(this.g.perk())}${g.status === 'serving' && !this.g.isLord() && RANKS[rankOf(g.merit) + 1] ? `<br>下一級「${RANKS[rankOf(g.merit) + 1][0]}」還要功績 ${RANKS[rankOf(g.merit) + 1][1] - g.merit}` : ''}</div>` : ''}
+        ${gid === H.pid ? `${fameHTML(H)}${govHTML(this.g)}<div class="dim">${this.g.rank()}${this.g.perk().noble ? `・${this.g.perk().noble}` : ''}：${perkText(this.g.perk())}${g.status === 'serving' && !this.g.isLord() && RANKS[rankOf(g.merit) + 1] ? `<br>下一級「${RANKS[rankOf(g.merit) + 1][0]}」還要功績 ${RANKS[rankOf(g.merit) + 1][1] - g.merit}` : ''}</div>` : ''}
         ${gid === H.pid ? `<div>功績 ${g.merit}　名聲 ${H.fame}　${this.g.rank()}　戰績 ${H.st.wins} 勝／一騎討 ${H.st.duels} 勝／討取 ${H.st.kills.length} 將／攻城 ${H.st.cities.length}</div>` : ''}</div></div>`;
     }).join('');
     await this.ui.panel(html, { title: '狀態', cls: 'wide' });
