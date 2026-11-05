@@ -94,18 +94,18 @@ export function buildVillage(name) {
 // chamber where its master waits; chests in the dead ends and side rooms, torches on the walls, and one or two strange
 // things (a hermit, an old stele, a spring, a skeleton with a letter). The cave is the same every time it is entered.
 export function buildCave(place) {
-  const W = 34, H = 34, r = (() => { let a = hash(place.name + place.x) || 1; return () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; }; })();
+  const tier = place.tier || 1, W = tier >= 5 ? 46 : tier >= 4 ? 40 : 34, H = W, MID = Math.floor(W / 2), r = (() => { let a = hash(place.name + place.x) || 1; return () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; }; })();
   const open = new Uint8Array(W * H), at = (x, z) => x > 0 && z > 0 && x < W - 1 && z < H - 2 && open[z * W + x];
   const dig = (x, z) => { if (x > 0 && z > 0 && x < W - 1 && z < H - 1) open[z * W + x] = 1; };
   // the main way, from the mouth at the bottom to the deep chamber at the top, wandering
-  let x = 17, z = H - 2; const main = [];
+  let x = MID, z = H - 2; const main = [];
   dig(x, z); dig(x - 1, z); dig(x + 1, z);
   while (z > 4) { const v = r(); if (v < 0.45) z--; else if (v < 0.72) x = Math.max(3, x - 1); else x = Math.min(W - 4, x + 1); dig(x, z); dig(x + 1, z); dig(x - 1, z); if (r() < 0.4) dig(x, z - 1); main.push([x, z]); }
   const boss = [x, Math.max(3, z - 1)];
   for (let dz = -2; dz <= 2; dz++) for (let dx = -3; dx <= 3; dx++) dig(boss[0] + dx, boss[1] + dz);
   // side passages ending in rooms
   const rooms = [];
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < 6 + (tier >= 4 ? 3 : 0) + (tier >= 5 ? 2 : 0); k++) {
     let [sx, sz] = main[Math.floor(r() * main.length)], dir = r() < 0.5 ? -1 : 1; const len = 4 + Math.floor(r() * 7);
     // one axis at a time, so every step joins the last by a side and not just a corner
     for (let i = 0; i < len; i++) { const nx = Math.max(2, Math.min(W - 3, sx + (r() < 0.7 ? dir : 0))); dig(nx, sz); const nz = Math.max(3, Math.min(H - 4, sz + (r() < 0.3 ? (r() < 0.5 ? -1 : 1) : 0))); dig(nx, nz); sx = nx; sz = nz; }
@@ -114,7 +114,7 @@ export function buildCave(place) {
   }
   // any pocket the diggers left cut off is joined to the cave by a straight tunnel to the nearest open tile that is
   for (let pass = 0; pass < 20; pass++) {
-    const seen = new Uint8Array(W * H), st = [[17, H - 2]]; seen[(H - 2) * W + 17] = 1;
+    const seen = new Uint8Array(W * H), st = [[MID, H - 2]]; seen[(H - 2) * W + MID] = 1;
     while (st.length) { const [x, z] = st.pop(); for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, nz = z + dz, k = nz * W + nx; if (nx > 0 && nz > 0 && nx < W - 1 && nz < H - 1 && open[k] && !seen[k]) { seen[k] = 1; st.push([nx, nz]); } } }
     let lost = -1; for (let k = 0; k < W * H; k++) if (open[k] && !seen[k]) { lost = k; break; }
     if (lost < 0) break;
@@ -125,9 +125,10 @@ export function buildCave(place) {
   }
   const props = [], npcs = [], chests = [];
   // chests in the rooms, the master in the deep chamber, strange things here and there
-  rooms.forEach(([cx, cz], i) => { if (i < 4) chests.push({ x: cx, z: cz - 1, i }); });
+  const nChest = tier >= 5 ? 7 : tier >= 4 ? 6 : 4;
+  rooms.forEach(([cx, cz], i) => { if (i < nChest) chests.push({ x: cx, z: cz - 1, i }); });
   const ODD = ['hermit', 'stele', 'spring', 'bones', 'shrine'], odd = [];
-  for (const [cx, cz] of rooms.slice(4)) odd.push({ x: cx, z: cz, kind: ODD[Math.floor(r() * ODD.length)] });
+  for (const [cx, cz] of rooms.slice(nChest)) odd.push({ x: cx, z: cz, kind: ODD[Math.floor(r() * ODD.length)] });
   if (r() < 0.6) { const [mx, mz] = main[Math.floor(main.length * (0.3 + r() * 0.4))]; if (at(mx + 1, mz)) odd.push({ x: mx + 1, z: mz, kind: ODD[Math.floor(r() * ODD.length)] }); }
   // nothing solid may close a passage: each chest, strange thing and hermit stands in a little room of its own
   for (const t of [...chests, ...odd]) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) dig(t.x + dx, t.z + dz);
@@ -136,5 +137,5 @@ export function buildCave(place) {
   main.forEach(([mx, mz], i) => { if (i % 6 === 3) { const tx = at(mx - 1, mz) ? mx + 2 : mx - 1; if (!at(tx, mz)) props.push({ kind: 'lantern', x: tx, z: mz, y: 0, wall: true }); } });
   const tile = (x, z) => { if (x < 0 || z < 0 || x >= W || z >= H) return null; const i = z * W + x; return open[i] ? { top: (x * 7 + z * 13) % 5 ? 2 : 6, side: 16, h: 0 } : { top: 16, side: 16, h: z >= H - 3 ? 0.4 : 0.85 + ((x * 5 + z * 3) % 3) * 0.12 }; }; // low walls, so the camera sees over them
   const solid = new Set([...chests.map((c) => c.z * W + c.x), ...odd.map((o) => o.z * W + o.x)]);
-  return { W, H, tile, walkable: (x, z) => x >= 0 && z >= 0 && x < W && z < H && open[z * W + x] === 1 && !solid.has(z * W + x), props, doors: [], npcs, chests, odd, boss, spawn: [17, H - 2], gate: { x0: 16, x1: 18, z: H - 1 }, sky: '#140e0a', fog: '#140e0a', fogNear: 20, fogFar: 38, dark: true, cave: true };
+  return { W, H, tile, walkable: (x, z) => x >= 0 && z >= 0 && x < W && z < H && open[z * W + x] === 1 && !solid.has(z * W + x), props, doors: [], npcs, chests, odd, boss, spawn: [MID, H - 2], gate: { x0: MID - 1, x1: MID + 1, z: H - 1 }, sky: place.deep ? '#08060a' : '#140e0a', fog: place.deep ? '#08060a' : '#140e0a', fogNear: place.deep ? 14 : 20, fogFar: place.deep ? 30 : 38, dark: true, cave: true };
 }

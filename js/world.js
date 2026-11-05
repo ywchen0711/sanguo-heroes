@@ -168,6 +168,10 @@ const COUNTIES = [['涿縣', 68, 18], ['易京', 65, 21], ['鉅鹿', 64, 31], ['
   ['臨沅', 41, 83], ['牂牁', 22, 84], ['越嶲', 10, 79], ['武都', 21, 49], ['金城', 14, 33], ['西平', 8, 36], ['臨洮', 15, 38], ['平陽', 46, 27], ['九原', 44, 7]];
 const VNAME = ['杏花村', '桃花塢', '柳樹屯', '白石村', '黃泥崗', '石橋鎮', '青龍集', '臥牛村', '清水灣', '落鳳坡', '老鴉嶺', '八里莊', '十里鋪', '雙溪村', '梅花村', '牛家莊', '張家村', '李家屯', '王家集', '趙家堡', '劉家莊', '陳家村', '孫家屯', '周家集', '吳家村', '鄭家莊', '馮家堡', '褚家村', '衛家集', '蔣家莊', '沈家村', '韓家屯', '楊家莊', '朱家集', '秦家村', '許家堡', '何家莊', '呂家村', '施家屯', '孔家集', '曹家莊', '嚴家村', '華家堡', '金家莊', '魏家村', '陶家屯', '姜家集', '謝家村', '鄒家莊', '喻家堡', '蘇家村', '潘家屯', '葛家集', '范家莊', '彭家村', '魯家堡', '馬家屯', '苗家集', '鳳家村', '方家莊', '俞家村', '任家屯', '袁家集', '柳家莊', '鮑家村'];
 const CNAME = ['黑風洞', '臥龍洞', '水簾洞', '白骨洞', '盤蛇洞', '藏兵洞', '仙人洞', '青牛洞', '蝙蝠洞', '火雲洞', '冰魄洞', '古墓穴', '黃巾密窟', '熊王洞', '虎嘯洞', '鬼哭洞', '百寶洞', '天書洞', '雷音洞', '幽冥洞', '玉泉洞', '金蠶洞', '飛狐洞', '千佛洞', '赤焰洞', '寒潭洞', '狼牙洞', '迷魂洞'];
+// the deeper places (three to five stars): more caves in the hills, and 地洞 (sinkholes and old underground halls)
+// that open in the plains, the forests and the deserts
+const CNAME2 = ['龍潭洞', '萬妖洞', '血池洞', '黑龍洞', '修羅洞', '九幽洞', '屍王洞', '天魔洞', '紫電洞', '玄冰洞', '焚天洞', '鎖龍洞', '盤古洞', '蚩尤洞', '餓鬼洞', '萬蛇洞', '絕情洞', '雷公洞', '白虎洞', '朱雀洞'];
+const DNAME = ['無底地洞', '地底迷宮', '秦王地宮', '萬人坑', '黃泉地洞', '鬼王地宮', '地心古城', '殭屍地窟', '始皇陵道', '蟲巢地洞', '伏魔地宮', '幽冥地府'];
 function placePlaces(t, hgt, deco, seed) {
   const id = (x, y) => y * W + x, r = (() => { let a = (seed * 2654435761) >>> 0 || 7; return () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; }; })();
   // what can be reached on foot from the first city
@@ -195,6 +199,20 @@ function placePlaces(t, hgt, deco, seed) {
     const rocky = [[0, -1], [1, -1], [-1, -1], [0, -2]].some(([dx, dy]) => [T.MOUNT, T.SNOW].includes(t[id(x + dx, y + dy)]));
     if (!rocky) continue;
     add('cave', CNAME[n], x, y, { tier: 1 + Math.floor(r() * 3) }); n++;
+  }
+  // (added later, after everything else, so the places of an old game keep their numbers and their spots)
+  const r2 = (() => { let a = (seed * 40503 + 977) >>> 0 || 9; return () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; }; })();
+  const deepTier = () => { const v = r2(); return v < 0.35 ? 3 : v < 0.72 ? 4 : 5; };
+  for (let k = 0, n = 0; k < 20000 && n < CNAME2.length; k++) {
+    const x = 3 + Math.floor(r2() * (W - 6)), y = 3 + Math.floor(r2() * (H - 6));
+    if (!ok(x, y, [T.HILL, T.FOREST, T.SNOW]) || !far(x, y, 6, 4)) continue;
+    if (![[0, -1], [1, -1], [-1, -1], [0, -2], [-1, 0], [1, 0]].some(([dx, dy]) => [T.MOUNT, T.SNOW].includes(t[id(x + dx, y + dy)]))) continue;
+    add('cave', CNAME2[n], x, y, { tier: deepTier() }); n++;
+  }
+  for (let k = 0, n = 0; k < 20000 && n < DNAME.length; k++) {
+    const x = 3 + Math.floor(r2() * (W - 6)), y = 3 + Math.floor(r2() * (H - 6));
+    if (!ok(x, y, [T.PLAIN, T.FOREST, T.DESERT, T.MEADOW]) || !far(x, y, 10, 8)) continue;
+    add('cave', DNAME[n], x, y, { tier: r2() < 0.45 ? 4 : 5, deep: true }); n++;
   }
   return places;
 }

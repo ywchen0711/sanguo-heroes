@@ -126,7 +126,7 @@ class Game {
     this.camTo(sx, sz, true); this.view.season(this.G.month); if (this.view.torch?.visible) this.view.torch.position.set(sx + 0.5, 1.6, sz + 0.5);
     this.audio.music(M.cave ? 'field' : 'town');
     this.hud();
-    if (!snap) { this.ui.toast(`<b>${q.name}</b>　${q.kind === 'county' ? '縣城' : q.kind === 'village' ? '村莊' : '洞穴　危險 ' + '★'.repeat(q.tier)}`); if (!M.cave) setTimeout(() => this.happen('town'), 500); }
+    if (!snap) { this.ui.toast(`<b>${q.name}</b>　${q.kind === 'county' ? '縣城' : q.kind === 'village' ? '村莊' : (q.deep ? '地洞' : '洞穴') + '　危險 ' + '★'.repeat(q.tier)}`); if (!M.cave) setTimeout(() => this.happen('town'), 500); }
   }
   // the master of a cave (until beaten) and its strange things
   caveThings(M, st) {

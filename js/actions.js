@@ -52,7 +52,7 @@ export class Actions {
   async placeGate(q) {
     if (q.kind === 'cave') {
       const st = this.H.places?.[q.id];
-      const c = await this.ui.ask(`${q.name}　危險 ${'★'.repeat(q.tier)}${st?.boss ? '（洞主已被打倒）' : ''}\n洞裡黑漆漆的，深處傳來奇怪的聲音……`, [{ k: true, n: '進去探險' }, { k: false, n: '離開' }]);
+      const c = await this.ui.ask(`${q.name}　危險 ${'★'.repeat(q.tier)}${st?.boss ? '（洞主已被打倒）' : ''}\n${q.deep ? '地面裂開一個大洞，石階一路往下，看不到底。陰風陣陣，像是有人在下面哭……' : '洞裡黑漆漆的，深處傳來奇怪的聲音……'}${q.tier >= 4 ? '\n（非常危險：建議隊伍等級 ' + (6 + q.tier * 4) + ' 以上）' : ''}`, [{ k: true, n: '進去探險' }, { k: false, n: '離開' }]);
       if (!c) { this.stepOff(q); return; }
     }
     await this.ui.fade(1, 200); this.g.enterPlace(q); await this.ui.fade(0, 200);
@@ -62,9 +62,11 @@ export class Actions {
   caveBoss(q) {
     const lv = this.avgLv() + q.tier * 2 + 1, k = (q.id * 7 + q.x) % 6;
     const kinds = [['山大王', 'bandit'], ['黑熊精', 'bear'], ['白額虎', 'whitetiger'], ['妖道', 'turban'], ['巨蟒', 'snake'], ['蝠王', 'bat']];
-    const [name, kind] = kinds[k], u = this.foe(name, kind, lv, null, true);
+    const deepN = q.deep ? ['地底魔王', '熊魔', '赤焰魔虎', '鬼王', '九頭蛇王', '血蝠老祖'] : ['綠林魔王', '熊王', '虎王', '天師', '蛇王', '蝠王老祖'];
+    const [name0, kind] = kinds[k], name = q.tier >= 4 ? deepN[k] : name0, u = this.foe(name, kind, lv, null, true);
     u.solMax = u.sol = Math.round(u.solMax * (1.2 + q.tier * 0.35));
-    if (kind === 'turban') { u.look = LOOKS.turbanBoss(); u.int = Math.min(98, 60 + q.tier * 10); u.spells = ['lei', 'yao']; u.sp = 80; }
+    if (kind === 'turban') { u.look = LOOKS.turbanBoss(); u.int = Math.min(98, 60 + q.tier * 10); u.spells = ['lei', 'yao']; u.sp = 80 + q.tier * 10; }
+    if (q.tier >= 4) { u.war = Math.min(110, u.war + (q.tier - 3) * 8); u.lead = Math.min(110, u.lead + (q.tier - 3) * 6); }
     return u;
   }
   avgLv() { const l = this.g.partyList(); return Math.round(l.reduce((t, p) => t + p.rec.lv, 0) / l.length); }
@@ -87,7 +89,7 @@ export class Actions {
       const t = q.tier, opts = [`item:ore*${1 + rint(0, t)}`, `gold+${30 + t * 30} item:ore${t >= 3 ? ' item:ore2' : ''}`, `gold+${60 + t * 70 + rint(0, 60)}`, `gold+${40 + t * 40} item:med2`, `item:med*2 item:book`, `eq:w${Math.min(7, 2 + t + rint(0, 1))}`, `eq:a${Math.min(7, 2 + t + rint(0, 1))}`, `gold+${30 + t * 30} item:rice item:wine`];
       const notes = await this.g.events.effects(pick(opts).split(' '), c, {});
       if (Math.random() < 0.02 + q.tier * 0.01) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
-      else if (Math.random() < 0.4) { const id = rollRelic(this.avgLv(), Math.min(5, q.tier)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
+      else if (Math.random() < 0.4 + (q.tier >= 4 ? 0.15 : 0)) { const id = rollRelic(this.avgLv(), Math.min(4, q.tier)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', '打開了寶箱！\n' + notes.join('　')); this.g.hud(); return;
     }
     const i = M.odd.indexOf(th); await this.caveOdd(th.kind, i, st, q, c);
@@ -120,7 +122,7 @@ export class Actions {
     if (n.special === 'boss') {
       const B = n.boss;
       await this.ui.say(B.name, pick(['什麼人敢闖進我的地盤？', '又有送死的來了！', '這洞裡的寶貝，全都是我的！', '哈哈哈，好久沒有開葷了！']), B.look);
-      const r = await this.fight([B, ...this.caveFoes(q).slice(0, 2)], { terrain: 'cave', title: `${B.name}現身了！`, noFlee: false });
+      const r = await this.fight([B, ...this.caveFoes(q).slice(0, q.tier >= 4 ? 3 : 2)], { terrain: 'cave', title: `${B.name}現身了！`, noFlee: false });
       if (r !== 'win') return;
       this.H.places[q.id].boss = true; this.g.view.removeActor(n.a); this.g.npcs = this.g.npcs.filter((x) => x !== n);
       const t = q.tier, notes = await this.g.events.effects([`gold+${150 + t * 150}`, `fame+${30 + t * 25}`, `eq:${pick(['w', 'a'])}${Math.min(7, 3 + t)}`, ...(t >= 2 ? ['eq:h' + (t >= 3 ? 3 : 2), 'item:ore2'] : ['item:ore*2'])], this.g.events.ctx('t'), {});
@@ -129,7 +131,7 @@ export class Actions {
       this.H.st.missions++;
       if (Math.random() < 0.12 + q.tier * 0.04) { this.H.items.xisui = (this.H.items.xisui || 0) + 1; notes.push('洗髓丹'); }
       if (Math.random() < 0.08 + q.tier * 0.04) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
-      else { const id = rollRelic(this.avgLv() + 4, Math.min(5, q.tier + 1)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
+      else { const id = rollRelic(this.avgLv() + 4, Math.min(5, q.tier >= 4 ? q.tier : q.tier + 1)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', `打倒了${q.name}的${B.name}！\n${notes.join('　')}`); this.g.hud(); return;
     }
     if (n.special === 'elder') {
