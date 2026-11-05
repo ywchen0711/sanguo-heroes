@@ -268,13 +268,14 @@ export class View {
   removeLabel(l) { l.el.remove(); this.labels = this.labels.filter((x) => x !== l); }
   // ---------------------------------------------------------------- actors: a sprite sheet on a billboard, with a blob shadow
   addActor(sheet, x, z, o = {}) {
-    const t = tex(sheet.canvas); t.repeat.set(1 / 3, 1 / 4); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    // each frame is read half a pixel in from its edges, so the neighbouring frame (the feet of the row above) never shows
+    const t = tex(sheet.canvas), iu = 0.5 / sheet.canvas.width, iv = 0.5 / sheet.canvas.height; t.repeat.set(1 / 3 - 2 * iu, 1 / 4 - 2 * iv); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
     // an upright board (not a camera-facing sprite: that would lean back into the wall behind a character), stretched
     // up so that seen from the tilted camera it keeps its proportions
     const s = new THREE.Mesh(this.boardGeo ||= new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ map: t, alphaTest: 0.5, fog: true, side: THREE.DoubleSide }));
     const k = o.scale || 1; this.sizeActor({ sprite: s }, 1.15 * k, 1.53 * k);
     const sh = new THREE.Mesh(this.shadowGeo ||= new THREE.CircleGeometry(0.32, 16).rotateX(-Math.PI / 2), this.shadowMat ||= new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.3, depthWrite: false }));
-    const a = { sheet, sprite: s, shadow: sh, tex: t, x, z, y: 0, dir: 0, frame: 1, walkT: 0, ...o };
+    const a = { sheet, sprite: s, shadow: sh, tex: t, iu, iv, x, z, y: 0, dir: 0, frame: 1, walkT: 0, ...o };
     this.scene.add(s, sh); this.actors.add(a); this.placeActor(a);
     return a;
   }
@@ -284,8 +285,8 @@ export class View {
   placeActor(a) {
     const h = a.y ?? 0; a.sprite.position.set(a.x + 0.5, h, a.z + 0.5); a.shadow.position.set(a.x + 0.5, h + 0.03, a.z + 0.5); a.sprite.rotation.y = this.yaw || 0;
     // a beast's sheet is two side-view frames facing left (face 2 turns it round); a person's is 4 directions x 3 frames
-    if (a.beast) { const flip = a.face === 2; a.tex.repeat.set((flip ? -1 : 1) / 2, 1); a.tex.offset.set(((a.bframe || 0) % 2) / 2 + (flip ? 0.5 : 0), 0); return; }
-    a.tex.offset.set(a.frame / 3, 1 - (this.viewRow(a.dir) + 1) / 4);
+    if (a.beast) { const flip = a.face === 2; a.tex.repeat.set((flip ? -1 : 1) * (1 / 2 - 2 * a.iu), 1 - 2 * a.iv); a.tex.offset.set(((a.bframe || 0) % 2) / 2 + (flip ? 0.5 - a.iu : a.iu), a.iv); return; }
+    a.tex.offset.set(a.frame / 3 + a.iu, 1 - (this.viewRow(a.dir) + 1) / 4 + a.iv);
   }
   // ---------------------------------------------------------------- the free camera
   // yaw: how far round the camera has turned (0 = looking north as before); zoom: 1 as before, less is closer
