@@ -39,7 +39,8 @@ export function rivalsMonth(G, E) {
     for (const id of R.party) { const x = G.gens[id]; x.city = g.city; if (lord0) x.follow = null; R.since[id] ??= G.t; if (!R.sworn.includes(id) && R.sworn.length < 3 && G.t - R.since[id] >= 24) { R.sworn.push(id); x.loyalty = 100; } }
     if (lord0) R.party = [];
     meet(G, R, g);
-    const turns = lord0 ? 3 : g.status === 'free' ? 5 : 4, once = new Set();
+    // as busy as the player: G.pace is how many fights the player has had a month lately (set by the game; 4 without one)
+    const base = G.pace || 4, turns = lord0 ? Math.max(3, Math.round(base / 3)) : g.status === 'free' ? base + 1 : base, once = new Set();
     for (let turn = 0; turn < turns; turn++) {
     const f = g.status === 'serving' && G.factions[g.fac], lord = f && f.lord === g.id, city = G.cities[g.city];
     if (g.status === 'dead') break;
@@ -50,9 +51,9 @@ export function rivalsMonth(G, E) {
     for (const k of once) w[k] = 0;
     let t = 0; for (const k in w) t += w[k]; let x = r() * t, act = 'bandit'; for (const k in w) { x -= w[k]; if (x < 0) { act = k; break; } }
     const merit = (n) => { if (g.status !== 'serving' || lord) return; const before = rankIdx(g.merit); g.merit += n; const after = rankIdx(g.merit); if (after > before) { R.st.bestRank = Math.max(R.st.bestRank, after); E.record(G, 'rival', 'rivalRank', { g: g.name, r: RANK_N[after], f: f.name }, g.fac, after >= 3 ? 2 : 1, { g: g.id }); } };
-    if (['travel', 'serve', 'siege', 'rise', 'recruit'].includes(act)) once.add(act);
+    if (['travel', 'serve', 'siege', 'rise', 'recruit', 'duel', 'treasure'].includes(act)) once.add(act);
     const fight = (n, plus) => n * (10 + (lv + plus) * 7 + (90 + (lv + plus) * 28) / 22);
-    if (act === 'bandit') { const n = 1 + Math.floor(r() * 4); R.st.battles += 1; if (r() < 0.88) { R.st.wins++; R.st.bandits += n; R.fame += n; gainR(G, R, g, fight(n, 0), 'war', E); merit(1); } }
+    if (act === 'bandit') { const n = 1 + Math.floor(r() * 4); R.st.battles += 1; if (r() < 0.88) { R.st.wins++; R.st.bandits += n; R.fame += n * 2; gainR(G, R, g, fight(n, 0), 'war', E); merit(1); } }
     if (act === 'bounty') { R.st.battles++; if (r() < 0.8) { R.st.wins++; R.st.missions++; R.fame += 20 + lv; gainR(G, R, g, fight(4, 2), null, E); merit(6); } }
     if (act === 'cave') { const tier = 1 + Math.floor(r() * 3); R.st.battles += 3; if (r() < Math.min(0.9, 0.35 + (lv - tier * 4) / 20)) { R.st.wins += 3; R.st.caves++; R.fame += 20 + tier * 15; gainR(G, R, g, fight(3, tier * 2) * 3, 'war', E); merit(6 * tier); const hid = G.items.filter((it) => it.city === g.city); if (hid.length && r() < 0.35) { const it = hid[Math.floor(r() * hid.length)]; E.give(G, it, g); E.record(G, 'rival', 'rivalFind', { g: g.name, it: it.key }, g.fac, 2, { g: g.id }); } } }
     if (act === 'work') { merit(3); gainR(G, R, g, 20, 'pol', E); }

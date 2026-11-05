@@ -328,6 +328,8 @@ class Game {
   // ---------------------------------------------------------------- a month goes by: the realm moves on
   monthTick() {
     const G = this.G, g = this.me, before = { fac: g.status === 'serving' ? g.fac : null, lord: this.isLord(), status: g.status };
+    // the rivals keep the player's pace: half as many turns again as the fights of the last six months, a month on average (half of a rival's turns are not fights)
+    { const P = this.H.pace ||= []; if (this.H.paceB != null) P.push(this.H.st.battles - this.H.paceB); this.H.paceB = this.H.st.battles; if (P.length > 6) P.shift(); if (P.length) G.pace = Math.max(4, Math.min(24, Math.round(P.reduce((a, b) => a + b, 0) / P.length * 1.5))); }
     const n0 = G.log.length; step(G);
     const logs = G.log.slice(n0); this.H.seenLog = G.log.length;
     // pay
