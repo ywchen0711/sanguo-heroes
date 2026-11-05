@@ -40,8 +40,10 @@ export class AutoPlay {
   }
   walkTo(goal) {
     const P = this.g.pos, M = this.g.mode === 'town' ? this.g.town : this.g.world;
-    const can = this.g.mode === 'town' ? (x, z) => this.g.canWalk(x, z) : (x, z) => !!WALK[M.at(x, z)];
-    this.path = this.bfs(M.W, M.H, can, P.x, P.z, goal) || []; return this.path.length > 0;
+    if (this.g.mode === 'town') { this.path = this.bfs(M.W, M.H, (x, z) => this.g.canWalk(x, z), P.x, P.z, goal) || []; return this.path.length > 0; }
+    // over the land: around the cities, counties, villages and caves on the way (stepping on one goes in), unless there is no other way
+    const open = (x, z) => !!WALK[M.at(x, z)], past = (x, z) => { const t = M.at(x, z); return open(x, z) && t !== T.CITY && t !== T.COUNTY && t !== T.VILLAGE && t !== T.CAVE; };
+    this.path = this.bfs(M.W, M.H, past, P.x, P.z, goal) || this.bfs(M.W, M.H, open, P.x, P.z, goal) || []; return this.path.length > 0;
   }
   hasStep() { return this.on && this.path.length > 0; }
   takeStep() {
@@ -95,7 +97,13 @@ export class AutoPlay {
     }
     // 4. no lord yet: go and serve the strongest one near
     if (!mine && H.fame >= 60 && Math.random() < 0.5) { const lordCity = this.near(cities.filter((c) => c.C.owner), P).slice(0, 6).sort((a, b) => citiesOf(G, b[0].C.owner).length - citiesOf(G, a[0].C.owner).length)[0]; if (lordCity && this.goCity(lordCity[0].C, ['in'])) { this.tasks = ['serve']; return; } }
-    // 5. otherwise a city now and then (shopping, bounties, work), or a walk in the country for the fights
+    // 5. a cave the party is ready for, or now and then a county or a village (not the one just left)
+    if (Math.random() < 0.2) {
+      const done = (q) => q.kind === 'cave' && (H.places?.[q.id]?.boss || pt.lv < 6 + q.tier * 4);
+      const q = this.near(this.g.world.places.filter((q) => q.name !== this.lastCity && !done(q) && (q.kind === 'cave' || Math.random() < 0.3)).map((q) => ({ ...q, z: q.y })), P).filter(([, d]) => d < 30)[0];
+      if (q && this.walkTo((x, z) => x === q[0].x && z === q[0].y)) { this.want = null; this.target = q[0].name; return; }
+    }
+    // 6. otherwise a city now and then (shopping, bounties, work), or a walk in the country for the fights
     // shops and inns are open to anyone: one of the nearest few cities, whoever holds it
     if (Math.random() < 0.5) { const c = this.near(cities.filter((c) => c.C.name !== this.lastCity), P).filter(([, d]) => d < 45).slice(0, 4)[Math.floor(Math.random() * 4)]; if (c && this.goCity(c[0].C, ['in'])) return; }
     for (let k = 0; k < 20; k++) { const a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 10, x = Math.round(P.x + Math.cos(a) * d), z = Math.round(P.z + Math.sin(a) * d); const t = this.g.world.at(x, z); if (WALK[t] && t !== T.CITY && t < 15 && this.walkTo((xx, zz) => xx === x && zz === z)) { this.want = null; this.target = '野外'; return; } }
