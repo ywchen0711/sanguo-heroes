@@ -22,6 +22,7 @@ import { Roam } from './roam.js';
 import { Crowd } from './crowd.js';
 import { Armies } from './armies.js';
 import { rankMonth, rankTag } from './martial.js';
+import { Outlaws } from './outlaws.js';
 import { fromOld } from './data/ranks.js';
 import { fameOf, fameCheck } from './fame.js';
 import { govern } from './govern.js';
@@ -39,7 +40,7 @@ const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 
 
 class Game {
   constructor() {
-    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet); this.camps = new Armies(this, personSheet);
+    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet); this.camps = new Armies(this, personSheet); this.outlaws = new Outlaws(this, personSheet);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
@@ -235,7 +236,7 @@ class Game {
     // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
     try {
-      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); this.roam.tick(dt); this.crowd.tick(dt); this.camps.tick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
+      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); this.roam.tick(dt); this.crowd.tick(dt); this.camps.tick(dt); this.outlaws.tick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
       if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
@@ -283,14 +284,14 @@ class Game {
     this.screens.minimap(); // the map in the corner keeps up with every step
     // thirty steps on the land make a day, thirty days a month
     this.steps = (this.steps || 0) + 1; this.H.walk = (this.H.walk || 0) + 1; this.roam.step(1); this.crowd.step(1);
-    if (this.roam.meet() || this.camps.meet() || this.crowd.meet()) return;
+    if (this.roam.meet() || this.camps.meet() || this.outlaws.meet() || this.crowd.meet()) return;
     if (this.H.walk % 30 === 0) { this.H.days++; if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; } }
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
     if (this.steps > 5 && this.board.walk()) { this.steps = 0; return; }
     if (this.steps > 3 && this.H.challenger && !this.auto.on) { this.steps = 0; this.act.rankChallenge(); return; }
-    if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (hasT(this.H, 'canbao') ? 0.6 : 1) * (1 - partyFx(this, 'encounter'))) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); return; }
+    if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (hasT(this.H, 'canbao') ? 0.6 : 1) * (1 - partyFx(this, 'encounter'))) { this.steps = 0; if (!this.outlaws.hunters()) this.act.encounter(regionAt(P.x, P.z), k); return; }
     if (this.H.walk % 10 === 0) this.happen('field');
     if (this.H.walk % 10 === 0) this.hud();
   }
@@ -359,7 +360,7 @@ class Game {
     if (!before.lord && this.isLord()) this.ui.toast(`<b style="color:#ffd86a">你繼承了${G.factions[now].name}軍之主的地位！</b>`, 5000);
     noteDisasters(this, logs); this.roam.month();
     govern(this);
-    this.board.month(); rankMonth(this);
+    this.board.month(); rankMonth(this); this.outlaws.month();
     { const loyal = partyFx(this, 'loyal'), mine = this.myFaction(); if (loyal) for (const id of this.H.party) { const x = G.gens[id]; if (x.status === 'serving') x.loyalty = Math.min(100, x.loyalty + Math.round(loyal * 10)); } if (mine && this.isLord()) G.factions[mine].diplo = Math.min(0.3, partyFx(this, 'diplo')); }
     if (!before.lord && this.isLord()) deed(this, `繼${G.factions[now].name}之位`, true);
     if (before.fac && !now) deed(this, `${G.factions[before.fac]?.name || ''}亡，${g.name}流落在野`);
@@ -392,7 +393,7 @@ class Game {
     const sol = this.partyList().reduce((s, p) => s + p.rec.sol, 0), max = this.partyList().reduce((s, p) => s + p.solMax, 0);
     const tt = knownAs(this.H), hurt = this.H.wound > G.t, bot = this.auto?.on;
     el.innerHTML = `<div class="h-name"><b>${g.name}</b>${tt ? `<em class="h-title">「${tt}」</em>` : ''}<span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍・' + this.rank() : '在野'}</span>${hurt ? '<em class="h-hurt">負傷</em>' : ''}${bot ? `<em class="h-bot">🤖 代玩・${this.auto.style.n}</em>` : ''}</div>
-      <div class="h-row"><span>${dateStr(G.year, G.month)}${this.H.days % 30 + 1}日</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span></div>
+      <div class="h-row"><span>${dateStr(G.year, G.month)}${this.H.days % 30 + 1}日</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span>${this.H.wanted ? `<span style="color:#ff8a6a">通緝 ${this.H.wanted * 10}金</span>` : ''}</div>
       <div class="h-row"><span>兵力 ${sol}/${max}</span><span>Lv ${this.H.rec[this.H.pid].lv}</span><span>隊伍 ${this.H.party.length + 1}</span></div>`;
     this.screens.minimap();
   }

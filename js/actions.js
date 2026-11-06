@@ -60,6 +60,7 @@ export class Actions {
       const c = await this.ui.ask(`${q.name}　危險 ${'★'.repeat(q.tier)}${st?.boss ? '（洞主已被打倒）' : ''}\n${q.deep ? '地面裂開一個大洞，石階一路往下，看不到底。陰風陣陣，像是有人在下面哭……' : '洞裡黑漆漆的，深處傳來奇怪的聲音……'}${q.tier >= 4 ? '\n（非常危險：建議隊伍等級 ' + (6 + q.tier * 4) + ' 以上）' : ''}`, [{ k: true, n: '進去探險' }, { k: false, n: '離開' }]);
       if (!c) { this.stepOff(q); return; }
     }
+    if (q.kind === 'village' && this.g.outlaws.raided(q) && !(await this.g.outlaws.village(q))) { this.stepOff(q); return; }
     await this.ui.fade(1, 200); this.g.enterPlace(q); await this.ui.fade(0, 200);
   }
   stepOff(q) { const P = this.g.pos; [P.x, P.z] = this.g.landNear(q.x, q.y + 1, q.x, q.y); this.g.tiles = this.g.tiles.map(() => [P.x, P.z]); this.g.prevTiles = null; this.g.place(1); this.g.camTo(P.x, P.z, true); }
@@ -791,6 +792,7 @@ export class Actions {
   // ---------------------------------------------------------------- a city on the land: go in, or lay siege
   async cityGate(cid) {
     const G = this.G, C = G.cities[cid], mine = this.g.myFaction(), f = C.owner && G.factions[C.owner], me = this.me;
+    if (C.owner && C.owner !== mine && !(await this.g.outlaws.gate(C))) { this.stepBack(); return; }
     const enemy = f && mine ? hostile(G, mine, f.id) && C.owner !== mine : !!f && !mine;
     const canSiege = f && C.owner !== mine && !(mine && allied(G, mine, f.id)) && (mine ? (this.g.isLord() || rankOf(me.merit) >= SIEGE_RANK) : this.H.fame >= 100);
     if (f && C.owner !== mine && (canSiege || enemy)) {
