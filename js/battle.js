@@ -350,6 +350,7 @@ export class Battle {
     return Math.max(1, Math.round(d * HIT));
   }
   hit(t, d, by, magic) {
+    d = Math.max(0, Math.round(d) || 0);   // no blow may heal
     // a companion who loves the player throws himself in front of the blow that would rout them (once a battle)
     if (t.isPlayer && by && t.sol - d <= 0 && !this.guarded && this.game.H) { const sh = this.party.find((x) => !x.isPlayer && x.sol > d * 0.5 && bondOf(this.game.H, x.g.id) >= 80); if (sh) { this.guarded = true; this.float(t, `${sh.name}挺身擋刀！`, '#ffd86a', true); t = sh; } }
     t.sol = Math.max(0, t.sol - d); this.float(t, d, magic ? '#ffb04a' : '#ffffff', d > t.solMax * 0.25);
