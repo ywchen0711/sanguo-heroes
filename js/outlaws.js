@@ -116,7 +116,7 @@ export class Outlaws {
   }
   rumor() { const rd = this.raids(), out = []; for (const id in rd) if (rd[id] > this.G.t) { const q = this.g.world.places[id]; if (q) out.push(`聽說${q.name}被山賊佔了，村民苦不堪言。`); } return out.slice(0, 3); }
   async help(c, look) {
-    const act = this.g.act, H = this.H, lv = act.avgLv(), base = pick(['山賊', '流寇', '響馬']);
+    const act = this.g.act, H = this.H, lv = act.foeLv(), base = pick(['山賊', '流寇', '響馬']);
     const foes = Array.from({ length: R(2, 4) }, (_, i) => act.foe(i ? base : base + '頭目', 'bandit', Math.max(1, lv + R(-1, 1)), null, !i));
     this.g.audio.sfx('encounter'); const r = await act.fight(foes, { terrain: act.terrainAt(), title: '救援商隊！' });
     this.free(c); if (r !== 'win') return;
@@ -124,7 +124,7 @@ export class Outlaws {
     await this.g.ui.say('商人', `恩人哪！這點謝禮請一定收下。\n（金 +${gold}、名聲 +4）`, look);
   }
   async rob(c, look) {
-    const act = this.g.act, H = this.H, lv = act.avgLv();
+    const act = this.g.act, H = this.H, lv = act.foeLv();
     const foes = Array.from({ length: R(2, 3) }, (_, i) => act.foe(i ? '鏢師' : '總鏢頭', 'soldier', Math.max(1, lv + 1), '#8a7a5a', !i));
     this.g.audio.sfx('encounter'); const r = await act.fight(foes, { terrain: act.terrainAt(), title: '打劫商隊！', ambush: true });
     if (r !== 'win') return;
@@ -137,7 +137,7 @@ export class Outlaws {
   // bounty hunters on the road (instead of bandits, now and then, the higher the price the more often)
   hunters() {
     const H = this.H, w = H.wanted || 0; if (w < 10 || Math.random() > Math.min(0.5, w / 120)) return false;
-    const act = this.g.act, lv = act.avgLv() + Math.min(6, Math.floor(w / 25));
+    const act = this.g.act, lv = act.foeLv() + Math.min(6, Math.floor(w / 25));
     const foes = Array.from({ length: Math.min(4, 2 + Math.floor(w / 40)) }, (_, i) => act.foe(i ? '捕快' : '賞金獵人', 'soldier', lv, '#3a3a4a', !i));
     (async () => { await this.g.ui.say('賞金獵人', `${this.g.me.name}！你的人頭值 ${this.bounty()} 金，乖乖受死吧！`, LOOKS.soldier('#3a3a4a')); this.g.audio.sfx('encounter'); const r = await act.fight(foes, { terrain: act.terrainAt(), title: '賞金獵人！' }); if (r === 'win') { H.wanted += 3; this.g.hud(); } })();
     return true;
@@ -148,7 +148,7 @@ export class Outlaws {
     const pay = w * 4, f = C.owner && this.G.factions[C.owner];
     const k = await this.g.ui.ask(`城門守衛盯著你看：「你不就是告示上懸賞 ${this.bounty()} 金的那個人嗎？」`, [{ k: 'pay', n: `賄賂（${pay} 金）`, d: '通緝減半', off: H.gold < pay }, { k: 'fight', n: '硬闖', d: '和守衛打一場，通緝加重' }, { k: null, n: '離開' }], '守衛', LOOKS.soldier(f ? f.color : '#8a7a6a'));
     if (k === 'pay') { H.gold -= pay; H.wanted = Math.floor(w / 2); this.g.hud(); return true; }
-    if (k === 'fight') { const act = this.g.act, lv = act.avgLv() + 1, foes = Array.from({ length: 3 }, (_, i) => act.foe(i ? '守城士兵' : '城門校尉', 'soldier', lv, f ? f.color : '#8a7a6a', !i)); const r = await act.fight(foes, { terrain: 'city', title: '硬闖城門！' }); H.wanted += 10; return r === 'win'; }
+    if (k === 'fight') { const act = this.g.act, lv = act.foeLv() + 1, foes = Array.from({ length: 3 }, (_, i) => act.foe(i ? '守城士兵' : '城門校尉', 'soldier', lv, f ? f.color : '#8a7a6a', !i)); const r = await act.fight(foes, { terrain: 'city', title: '硬闖城門！' }); H.wanted += 10; return r === 'win'; }
     return false;
   }
   // a village taken: the bandits' stockade at its gate
@@ -156,7 +156,7 @@ export class Outlaws {
     const act = this.g.act, H = this.H, ui = this.g.ui;
     const k = await ui.ask(`${q.name}被山賊佔據了！\n村口立起了寨柵，村民被關在裡面，哭聲隱約可聞……`, [{ k: 'go', n: '攻打山寨', d: '打退山賊，解救村民' }, { k: null, n: '離開' }], q.name);
     if (k !== 'go') return false;
-    const lv = act.avgLv() + 2, base = pick(['山賊', '黃巾餘黨', '流寇']), kind = base === '黃巾餘黨' ? 'turban' : 'bandit';
+    const lv = act.foeLv() + 2, base = pick(['山賊', '黃巾餘黨', '流寇']), kind = base === '黃巾餘黨' ? 'turban' : 'bandit';
     const foes = [act.foe(pick(['黑風寨主', '獨眼龍', '過山虎', '鑽天鷂', '混世魔王']), kind, lv + 1, null, true), ...Array.from({ length: R(2, 4) }, () => act.foe(base, kind, lv))];
     this.g.audio.sfx('encounter'); const r = await act.fight(foes, { terrain: act.terrainAt(), title: `攻打${q.name}的山寨！` });
     if (r !== 'win') return false;

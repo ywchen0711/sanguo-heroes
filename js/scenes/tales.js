@@ -25,7 +25,7 @@ export const TALES = [
       begin(s);
       await s.say('', '深夜的黃河上漂來一條沒有槳手的大船，船頭點著綠幽幽的燈籠。\n船上傳來唸咒的聲音：「蒼天已死，黃天當立……」');
       if (!await s.yes('要登上鬼船看個究竟嗎？')) { await s.say('', '那條船順著河水漂遠了，燈籠一盞一盞熄滅。'); return; }
-      const lv = s.g.act.avgLv() + 4, sorc = (n, b) => { const f = s.g.act.foe(n, 'turban', lv + (b ? 3 : 0), null, b); f.int = Math.min(98, 75 + lv / 2); f.spells = ['lei', 'huan']; f.sp = 200; return f; };
+      const lv = s.g.act.foeLv() + 4, sorc = (n, b) => { const f = s.g.act.foe(n, 'turban', lv + (b ? 3 : 0), null, b); f.int = Math.min(98, 75 + lv / 2); f.spells = ['lei', 'huan']; f.sp = 200; return f; };
       const ok = await s.waves([() => [sorc('太平道術士'), sorc('太平道術士'), s.foe('黃巾死士', 'turban', null, 2)], () => [sorc('鬼面大祭司', true), sorc('太平道術士')]], { titles: ['太平道的術士！', '船艙深處的大祭司！'], terrain: 'river', night: true });
       if (!ok) return;
       const n = s.relic(3, 6); s.fame(90);
@@ -52,7 +52,7 @@ export const TALES = [
       const ok = await s.waves([() => [s.foe('海賊', 'pirate', null, 1), s.foe('海賊', 'pirate', null, 1), s.foe('海賊', 'pirate', null, 2)], () => [s.foe('鬼鯊的副手', 'pirate', null, 4), s.foe('海賊', 'pirate', null, 2)]], { titles: ['海賊登岸了！', '旗艦上的精銳！'], terrain: 'coast' });
       if (!ok) return;
       await s.say('鬼鯊', '有兩下子！敢不敢和我一對一？贏了，我的寶藏都歸你！', look);
-      const r = await s.duelWith('海賊王「鬼鯊」', look, s.g.act.avgLv() + 6, 92, 75, 55);
+      const r = await s.duelWith('海賊王「鬼鯊」', look, s.g.act.foeLv() + 6, 92, 75, 55);
       if (r !== 'win') { s.fame(60); await s.say('鬼鯊', '哈哈哈！下次再來吧！', look); return; }
       const n = s.relic(3, 6); s.gold(800); s.fame(140);
       await s.say('', `鬼鯊跪在甲板上投降了。船艙裡堆滿了搶來的金銀珠寶——\n得到 800 金和「${n}」！`);

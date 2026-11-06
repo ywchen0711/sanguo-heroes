@@ -10,7 +10,7 @@ import { LOOKS, shade, soldierSheet } from './sprites.js';
 import { TACTICS, tacticsOf, bstats, ITEMS, usable, armsOf, hasHorse, TROOPS, troopMul, FORMS } from './hero.js';
 import { hasT, bump } from './deeds.js';
 import { battleMods } from './bonds.js';
-import { relicFx, CAP, slotV } from './relics.js';
+import { relicFx, CAP } from './relics.js';
 import { groupTraits, comboLines, syncParty } from './traits.js';
 import { FX } from './fx.js';
 import { diff } from './hardship.js';
@@ -93,9 +93,6 @@ export class Battle {
     const PT = H && !o.drill ? syncParty(this.game) : null;
     this.party = party.map(mk);
     const foeTroop = (f) => f.troop || (f.beast ? null : f.solKind === 'nomad' ? 'cav' : f.solKind === 'pirate' ? 'navy' : f.gid != null ? (hasHorse(G, G.gens[f.gid]) ? 'cav' : f.int > f.war + 10 ? 'bow' : 'inf') : o.siege ? 'bow' : 'inf');
-    // the enemy's arms keep pace with the party's: they too find better blades and armour as the years go on (難度: share)
-    if (H && !o.drill) { const pl = party.map((p) => p.rec), avg = (k) => pl.reduce((s, r) => s + slotV(r, k), 0) / Math.max(1, pl.length), k = diff(this.game).gear ?? 0.8, w = avg('w') * k, a = avg('a') * k;
-      for (const f of foes) { f.wpn = Math.max(f.wpn || 0, Math.round(w * (f.boss || f.gid != null ? 1.1 : 1))); f.arm = Math.max(f.arm || 0, Math.round(a * (f.boss || f.gid != null ? 1.1 : 1))); } }
     this.foes = foes.map((f) => { const arms = armsOf(G, f.gid != null ? G.gens[f.gid] : { id: -9 });
       return { side: 'foe', ...f, arms, troop: foeTroop(f), st: { atk: f.war + (f.wpn || 0), def: f.lead * 0.6 + (f.arm || 0) * 1.6 + f.lv + (o.siege ? f.wall ?? 18 : 0), int: f.int, spd: (f.war + f.lead) / 2 + f.lv * 0.3 + arms.spd + (arms.first ? 999 : 0), lead: f.lead, war: f.war }, tactics: f.beast ? [] : tacticsOf({ int: f.int, spells: f.spells || [] }), status: {}, spMax: f.sp, solLook: f.solLook || LOOKS.soldier(f.color || '#8a4a3a') }; });
     const named = this.foes.filter((f) => f.gid != null), FT = named.length ? groupTraits(named.map((f) => G.gens[f.gid])) : null;

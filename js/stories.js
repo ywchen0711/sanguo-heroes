@@ -53,7 +53,7 @@ export class Stories {
       if (s.kind === 'kin') { await ui.say(x.name, `……是你嗎？${s.who}！\n（兩人抱頭痛哭。這麼多年了，終於找到了。）`, this.g.lookOf(x)); await this.done(+id); return true; }
       if (s.kind === 'master') {
         await ui.say('隱世高人', `${x.name}，你回來了。讓我看看你這些年學了些什麼——還有你身邊這些人，配不配做你的同伴！`);
-        const act = this.g.act, lv = act.avgLv() + 4, foes = [act.foe('隱世高人', 'turban', lv + 2, null, true), act.foe('門下弟子', 'bandit', lv), act.foe('門下弟子', 'bandit', lv)];
+        const act = this.g.act, lv = act.foeLv() + 4, foes = [act.foe('隱世高人', 'turban', lv + 2, null, true), act.foe('門下弟子', 'bandit', lv), act.foe('門下弟子', 'bandit', lv)];
         foes[0].int = Math.min(98, 80 + lv / 3); foes[0].spells = ['feng', 'lei'];
         const r = await act.fight(foes, { terrain: 'forest', title: '師父的考驗' });
         if (r === 'win') { await ui.say('隱世高人', '好，好！你沒有辜負我。這最後一招，我傳給你。'); await this.done(+id); }

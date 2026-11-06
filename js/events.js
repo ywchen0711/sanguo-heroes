@@ -179,7 +179,7 @@ export class Events {
       if (t === 'recruit') { const x = vars._free || G.gens.find((y) => y.status === 'free' && !busy(y) && y.city === (c.town?.id ?? -1)); if (x && H.party.length < this.g.partyMax()) { x.follow = H.pid; H.party.push(x.id); const { newRec } = await import('./hero.js'); H.rec[x.id] ||= newRec(x); if (this.g.myFaction()) { const { serve } = await import('./sim/engine.js'); serve(G, x, this.g.myFaction(), g.city, 85); } notes.push(`${x.name}加入了隊伍！`); this.g.respawnParty(); } continue; }
       if (t === 'mission') { const C = c.town || this.nearCity(), ms = this.g.act.newMission(C, g.status === 'serving'); if (ms && H.missions.filter((x) => !x.done).length < 3) { H.missions.push(ms); notes.push(`接下了討伐「${ms.boss}」的任務`); if (this.g.mode === 'world') this.g.missionMarks(); } continue; }
       if ((m = /^fight:(\w+):(\d+)(?::\+(\d+))?$/.exec(t))) {
-        const lv0 = Math.round(party.reduce((s, p) => s + p.rec.lv, 0) / party.length) + +(m[3] || 0), foes = [];
+        const lv0 = this.g.act.foeLv() + +(m[3] || 0), foes = [];
         const names = { bandit: '山賊', turban: '黃巾賊', nomad: '騎兵', barbarian: '蠻兵', pirate: '海賊', wolf: '野狼', tiger: '猛虎', bear: '棕熊', boar: '山豬', soldier: '官兵' };
         for (let i = 0; i < +m[2]; i++) foes.push(this.g.act.foe(names[m[1]] + (i === 0 && +m[2] > 2 ? '頭目' : ''), m[1], Math.max(1, lv0 + (i ? 0 : 1)), null, i === 0 && +m[2] > 2));
         const r = await this.g.act.fight(foes, { terrain: this.g.mode === 'town' ? 'city' : this.g.act.terrainAt() });

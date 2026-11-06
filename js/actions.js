@@ -68,7 +68,7 @@ export class Actions {
   stepOff(q) { const P = this.g.pos; [P.x, P.z] = this.g.landNear(q.x, q.y + 1, q.x, q.y); this.g.tiles = this.g.tiles.map(() => [P.x, P.z]); this.g.prevTiles = null; this.g.place(1); this.g.camTo(P.x, P.z, true); }
   // the master of a cave, the same every time: a bandit king, a great beast, or a sorcerer
   caveBoss(q) {
-    const lv = this.avgLv() + q.tier * 2 + 1, k = (q.id * 7 + q.x) % 6;
+    const lv = this.foeLv(false) + q.tier * 2 + 1, k = (q.id * 7 + q.x) % 6;
     const kinds = [['山大王', 'bandit'], ['黑熊精', 'bear'], ['白額虎', 'whitetiger'], ['妖道', 'turban'], ['巨蟒', 'snake'], ['蝠王', 'bat']];
     const deepN = q.deep ? ['地底魔王', '熊魔', '赤焰魔虎', '鬼王', '九頭蛇王', '血蝠老祖'] : ['綠林魔王', '熊王', '虎王', '天師', '蛇王', '蝠王老祖'];
     const [name0, kind] = kinds[k], name = q.tier >= 4 ? deepN[k] : name0, u = this.foe(name, kind, lv, null, true);
@@ -78,8 +78,13 @@ export class Actions {
     return u;
   }
   avgLv() { const l = this.g.partyList(); return Math.round(l.reduce((t, p) => t + p.rec.lv, 0) / l.length); }
+  // how hard the world has grown, whatever the player has done: the years of war harden every bandit and soldier
+  // (fast at first, then slower), and any one band may be a little better or worse than the rest
+  years() { return Math.max(0, this.G.year - this.H.startYear + ((this.G.month || 1) - 1) / 12); }
+  worldLv() { return 3 + 6.5 * Math.pow(this.years(), 0.8); }
+  foeLv(spread = true) { return Math.max(1, Math.round(this.worldLv() + (spread ? Math.random() * 5 - 2 : 0))); }
   caveFoes(q) {
-    const lv = this.avgLv() + q.tier - 2, pool = [['蝙蝠', 'bat'], ['蝙蝠', 'bat'], ['毒蛇', 'snake'], ['野狼', 'wolf'], ['棕熊', 'bear'], ['山賊', 'bandit']];
+    const lv = this.foeLv(false) + q.tier - 2, pool = [['蝙蝠', 'bat'], ['蝙蝠', 'bat'], ['毒蛇', 'snake'], ['野狼', 'wolf'], ['棕熊', 'bear'], ['山賊', 'bandit']];
     const n = 1 + Math.floor(Math.random() * Math.min(4, this.H.party.length + 2)), [name, kind] = pick(pool);
     return Array.from({ length: n }, () => this.foe(name, kind, Math.max(1, lv + Math.round(Math.random() * 2 - 1))));
   }
@@ -266,7 +271,7 @@ export class Actions {
   // an officer fighting bandits on the road: fight them for him
   async helpBandits(x) {
     const me = this.me, H = this.H, look = this.g.lookOf(x), lv0 = this.g.partyList().reduce((s, p) => s + p.rec.lv, 0) / (H.party.length + 1), base = pick(['山賊', '流寇', '盜匪']);
-    const foes = Array.from({ length: 2 + Math.floor(Math.random() * 3) }, (_, i) => this.foe(i ? base : base + '頭目', 'bandit', Math.max(1, Math.round(lv0 + Math.random() * 2 - 1)), null, !i));
+    const foes = Array.from({ length: 2 + Math.floor(Math.random() * 3) }, (_, i) => this.foe(i ? base : base + '頭目', 'bandit', this.foeLv(), null, !i));
     this.g.audio.sfx('encounter');
     const r = await this.fight(foes, { terrain: this.terrainAt(), title: `助${x.name}討賊！` });
     this.g.crowd.cut(x); if (r !== 'win') return;
@@ -425,12 +430,20 @@ export class Actions {
   // ---------------------------------------------------------------- duels: a friendly bout, or to the death
   duelFoe(x) { const lv = this.lvOf(x); const r = { lv, eq: {} }; return { name: x.name, look: this.g.lookOf(x), lv, st: bstats(x, r), gid: x.id }; }
   // a general's level in battle: their own life's level (see sim/life.js), or for an old save an estimate from the years
+  // monthly: a few generals somewhere in the land make a leap (they keep it), and word of the famous ones gets about
+  growFoes() {
+    const G = this.G, H = this.H, out = [];
+    for (const x of G.gens) { if (x.status === 'dead' || x.hidden || H.party.includes(x.id) || x.id === H.pid || (x.surge || 0) >= 20 || Math.random() >= 0.0025) continue;
+      const n = 3 + Math.floor(Math.random() * 6); x.surge = (x.surge || 0) + n; if (x.war + x.lead >= 150) out.push(x); }
+    const x = out[0]; if (x && Math.random() < 0.6) this.ui.toast(`聽說<b>${x.name}</b>${pick(['得遇名師指點', '在苦戰中脫胎換骨', '閉關苦練了一年', '得到了一部古兵法'])}，比以前強多了！<br><small>Lv ${this.lvOf(x)}</small>`, 4500);
+  }
   lvOf(x) {
     if (this.H.rec[x.id]) return this.H.rec[x.id].lv; const nb = this.g.nemesis?.lvBonus(x.id) || 0;
-    const own = x.life ? x.life.lv + 2 : startLv(x) + Math.floor((this.G.year - this.H.startYear) * 1.2) + 2;
-    // they do not stand still while the player grows: a great general keeps within a level or two, a lesser one further back
-    const keep = this.avgLv() - 4 + Math.round(Math.max(-4, Math.min(4, (x.war + x.lead - 140) / 12)));
-    return Math.max(1, Math.max(own, keep) + nb);
+    // every general grows with the years at a pace of his own (a talent fixed for life, a little more for the great
+    // ones), and now and then leaps ahead (surge: a master found, a hard campaign survived — see growFoes)
+    const talent = 0.8 + ((x.id * 2654435761) % 1000) / 1000 * 0.35 + Math.max(-0.05, Math.min(0.15, (x.war + x.lead - 140) / 250));
+    const own = Math.max(x.life ? x.life.lv + 2 : 0, startLv(x) + 2 + Math.round(6.5 * Math.pow(this.years(), 0.8) * talent));
+    return Math.max(1, own + (x.surge || 0) + nb);
   }
   async duelWith(x, kind, npc) {
     const G = this.G, me = this.me, f = x.status === 'serving' && G.factions[x.fac];
@@ -703,7 +716,7 @@ export class Actions {
     if (await this.ui.yesno(`${C.name}${dir}方約 ${Math.round(Math.hypot(m.x - (C.pos || CITY_POS[C.id]).x, m.z - (C.pos || CITY_POS[C.id]).y))} 里處，「${m.boss}」率領賊眾作亂。\n報酬：${m.gold} 金${f ? `、功績 ${m.merit}` : ''}、名聲 ${m.fame}\n要接下這個任務嗎？`)) { H.missions.push(m); this.ui.toast('接下了任務。（地圖上以黑旗標示）'); }
   }
   newMission(C, official) {
-    const W = this.g.world, c = C.pos || CITY_POS[C.id], lv0 = 0, lv = Math.round(this.g.partyList().reduce((s, p) => s + p.rec.lv, 0) / (this.H.party.length + 1)) + 2;
+    const W = this.g.world, c = C.pos || CITY_POS[C.id], lv0 = 0, lv = this.foeLv() + 2;
     for (let k = 0; k < 80; k++) {
       const a = Math.random() * Math.PI * 2, d = (8 + Math.random() * 12) * Math.sqrt(K), x = Math.round(c.x + Math.cos(a) * d), z = Math.round(c.y + Math.sin(a) * d);
       const t = W.at(x, z); if (![T.PLAIN, T.MEADOW, T.FOREST, T.HILL, T.DESERT].includes(t)) continue;
@@ -745,7 +758,10 @@ export class Actions {
     const awe = fameOf(this.H).awe || 0;
     if (awe && !BEASTS.includes(kind) && Math.random() < awe) { const n = 20 + Math.round(Math.random() * 30 + lv0 * 4); this.H.gold += n; this.H.fame += 1; this.H.st.bandits += 2; this.g.audio.sfx('coin'); this.ui.toast(`<b>${base}</b>聽說來的是「${fameName(this.H)}」的${this.me.name}，嚇得丟下財物逃走了！<br><small>不戰而勝　金 +${n}</small>`, 3500); return; }
     const n = 1 + Math.floor(Math.random() * Math.min(4, this.H.party.length + 2)), foes = [];
-    for (let i = 0; i < n; i++) { const lv = Math.max(1, Math.round(lv0 + (Math.random() * 3 - 1))); foes.push(this.foe(i === 0 && n > 2 && !BEASTS.includes(kind) ? base + '頭目' : base, kind, lv, null, i === 0 && n > 2 && !BEASTS.includes(kind))); }
+    // now and then the band on the road is a notorious one: far stronger than the rest
+    const elite = !BEASTS.includes(kind) && Math.random() < 0.07, band = this.foeLv(false) + (elite ? 6 + Math.floor(Math.random() * 7) : 0);
+    if (elite) this.ui.toast(`遇上了惡名昭彰的<b>${base}</b>！他們比一般的${base}強得多……`, 3000);
+    for (let i = 0; i < n; i++) { const lv = Math.max(1, band + Math.floor(Math.random() * 5) - 2); foes.push(this.foe(i === 0 && n > 2 && !BEASTS.includes(kind) ? base + '頭目' : base, kind, lv, null, i === 0 && n > 2 && !BEASTS.includes(kind))); }
     this.g.audio.sfx('encounter');
     const r = await this.fight(foes, { terrain: this.terrainAt() });
     if (r === 'win' && !BEASTS.includes(kind)) this.H.st.bandits += foes.length;

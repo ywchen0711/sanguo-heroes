@@ -64,7 +64,7 @@ export class Ploys {
     this.H.fame = Math.max(0, this.H.fame - 5); return ui.say('', '風向突然變了，火燒不起來……只好悄悄退走。（名聲 -5）');
   }
   async food(c) {
-    const g = this.g, act = g.act, G = this.G, f = G.factions[c.fac], lv = act.avgLv();
+    const g = this.g, act = g.act, G = this.G, f = G.factions[c.fac], lv = act.foeLv();
     const foes = Array.from({ length: Math.min(4, this.H.party.length + 2) }, (_, i) => act.foe(i ? '運糧兵' : '押糧官', 'soldier', Math.max(1, lv - 1 + (i ? 0 : 2)), f.color, !i));
     g.audio.sfx('encounter'); const r = await act.fight(foes, { terrain: act.terrainAt(), title: `偷襲${f.name}軍的運糧隊！`, ambush: true });
     if (r !== 'win') return;

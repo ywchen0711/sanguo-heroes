@@ -45,7 +45,7 @@ export class Court {
     await ui.say(L.name, `${g.me.name}，前線告急。我要你帶本部人馬，去攔住敵軍的主力。\n……援軍？援軍隨後就到。`, look);
     const c = await ui.ask('這分明是要你去送死。', [{ k: 'go', n: '領命出征', d: '打贏了，猜忌大減，功績大增' }, { k: 'no', n: '稱病推辭', d: '猜忌更深' }], L.name, look);
     if (c !== 'go') { H.susp = Math.min(100, H.susp + 15); await ui.say(L.name, '哼，好一個病得正是時候。', look); return true; }
-    const lv = g.act.avgLv() + 5, col = '#6a6a6a', foes = [g.act.foe('敵軍大將', 'soldier', lv + 2, col, true), ...Array.from({ length: Math.min(4, H.party.length + 3) }, () => g.act.foe('敵軍精兵', 'soldier', lv, col))];
+    const lv = g.act.foeLv() + 5, col = '#6a6a6a', foes = [g.act.foe('敵軍大將', 'soldier', lv + 2, col, true), ...Array.from({ length: Math.min(4, H.party.length + 3) }, () => g.act.foe('敵軍精兵', 'soldier', lv, col))];
     const r = await g.act.fight(foes, { terrain: g.mode === 'world' ? g.act.terrainAt() : 'plain', title: '孤軍迎敵！援軍沒有來……', noFlee: false });
     if (r === 'win') { H.susp = Math.max(0, H.susp - 35); H.suspSt = 1; g.me.merit += 40; g.act.promote(); H.fame += 40; deed(g, '孤軍破敵'); await ui.say(L.name, `……你竟然活著回來了。好，好。這一仗，你立了大功。`, look); }
     return true;

@@ -376,7 +376,7 @@ class Game {
     if (!before.lord && this.isLord()) this.ui.toast(`<b style="color:#ffd86a">你繼承了${G.factions[now].name}軍之主的地位！</b>`, 5000);
     noteDisasters(this, logs); this.unrest.month(logs); this.roam.month();
     govern(this);
-    this.board.month(); rankMonth(this); this.outlaws.month(); this.ties.month(logs); this.nemesis.month(); this.court.month(); this.arena.month(); this.H.storyDue = true;
+    this.board.month(); rankMonth(this); this.outlaws.month(); this.ties.month(logs); this.nemesis.month(); this.act.growFoes(); this.court.month(); this.arena.month(); this.H.storyDue = true;
     { const loyal = partyFx(this, 'loyal'), mine = this.myFaction(); if (loyal) for (const id of this.H.party) { const x = G.gens[id]; if (x.status === 'serving') x.loyalty = Math.min(100, x.loyalty + Math.round(loyal * 10)); } if (mine && this.isLord()) G.factions[mine].diplo = Math.min(0.3, partyFx(this, 'diplo')); }
     if (!before.lord && this.isLord()) deed(this, `繼${G.factions[now].name}之位`, true);
     if (before.fac && !now) deed(this, `${G.factions[before.fac]?.name || ''}亡，${g.name}流落在野`);
