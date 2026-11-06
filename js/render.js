@@ -81,7 +81,8 @@ export class View {
     if (this.zoom !== 1) { this.scene.fog.near *= Math.max(1, this.zoom); this.scene.fog.far *= Math.max(1, this.zoom); }
     this.hemi.intensity = M.dark ? 0.75 : 1.35; this.sun.intensity = M.dark ? 0.45 : 2.1; this.hemi.color.set(M.dark ? '#d8b898' : '#dfefff');
     // the party carries a torch in the dark
-    if (M.dark && !this.torch) { this.torch = new THREE.PointLight('#ffb070', 3.2, 11, 1.4); this.scene.add(this.torch); } if (this.torch) this.torch.visible = !!M.dark;
+    // (always in the scene, only dimmed: a light switched on or off makes every material on the map compile again)
+    if (!this.torch) { this.torch = new THREE.PointLight('#ffb070', 0, 11, 1.4); this.scene.add(this.torch); } this.torch.intensity = M.dark ? 3.2 : 0;
     this.mapGroup = new THREE.Group(); this.scene.add(this.mapGroup);
     if (M.water != null) {
       const g = new THREE.PlaneGeometry(M.W + 80, M.H + 80, 1, 1); g.rotateX(-Math.PI / 2);
@@ -113,6 +114,7 @@ export class View {
       const k = x + ',' + z; want.add(k); if (!this.chunks.has(k)) need.push([dx * dx + dz * dz, k, x, z]);
     }
     need.sort((a, b) => a[0] - b[0]);
+    if (this.propsAt !== kx + ',' + kz) { this.propsAt = kx + ',' + kz; this.cullProps((kx + 0.5) * S, (kz + 0.5) * S, (R + 0.5) * S); }
     for (const [, k, x, z] of need.slice(0, budget)) { this.chunks.set(k, this.buildChunk(x * S, z * S, S)); this.shadowDirty = true; }
     for (const [k, c] of this.chunks) if (!want.has(k)) { this.mapGroup.remove(c.mesh); c.mesh.geometry.dispose(); for (const s of c.deco) { this.mapGroup.remove(s); s.dispose?.(); } this.chunks.delete(k); }
   }
@@ -174,6 +176,44 @@ export class View {
     return out;
   }
   // ---------------------------------------------------------------- props: cities on the land, houses in a town
+  // only the props round the player are in the scene: the hundreds of towns and villages of the whole land otherwise
+  // cost a matrix and a culling test each, every frame, even far out of sight
+  cullProps(cx, cz, r) {
+    for (const p of this.M?.props || []) {
+      const o = p.obj; if (!o || o.userData.gone) continue; const near = Math.abs(p.x - cx) < r && Math.abs(p.z - cz) < r;
+      if (near && o.userData.culled) { o.userData.culled = false; this.mapGroup.add(o); this.shadowDirty = true; }
+      else if (!near && !o.userData.culled && o.parent === this.mapGroup) { o.userData.culled = true; this.mapGroup.remove(o); }
+    }
+  }
+  // a prop taken off the map for good (a banner struck, a city drawn again in new colours)
+  removeProp(p) {
+    const o = p.obj; if (!o) return; o.userData.gone = true; this.mapGroup.remove(o); this.shadowDirty = true;
+    const l = this.labels.find((l) => l.obj === o); if (l) this.removeLabel(l);
+    o.traverse((m) => { if (m.geometry && m.geometry !== this.decoGeo) m.geometry.dispose(); if (m.isSprite) { m.material.map?.dispose(); m.material.dispose(); } });
+  }
+  // the boxes and roofs of a prop melted into one mesh for each material: a city was some twenty meshes, now four or five
+  bake(g) {
+    const by = new Map(), keep = [];
+    for (const m of g.children) { if (m.isMesh && !m.children.length && m.geometry.index && m.geometry.attributes.uv && m.geometry.attributes.normal) { if (!by.has(m.material)) by.set(m.material, []); by.get(m.material).push(m); } else keep.push(m); }
+    for (const [mat, list] of by) {
+      if (list.length < 2) { keep.push(list[0]); continue; }
+      let nv = 0, ni = 0; for (const m of list) { nv += m.geometry.attributes.position.count; ni += m.geometry.index.count; }
+      const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), U = new Float32Array(nv * 2), I = new (nv > 65535 ? Uint32Array : Uint16Array)(ni), v = new THREE.Vector3(), nm = new THREE.Matrix3();
+      let ov = 0, oi = 0, cast = false;
+      for (const m of list) {
+        m.updateMatrix(); nm.getNormalMatrix(m.matrix); cast ||= m.castShadow;
+        const G = m.geometry, p = G.attributes.position, n = G.attributes.normal, u = G.attributes.uv, ix = G.index;
+        for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(m.matrix); P.set([v.x, v.y, v.z], (ov + i) * 3); v.fromBufferAttribute(n, i).applyMatrix3(nm).normalize(); N.set([v.x, v.y, v.z], (ov + i) * 3); U[(ov + i) * 2] = u.getX(i); U[(ov + i) * 2 + 1] = u.getY(i); }
+        for (let i = 0; i < ix.count; i++) I[oi + i] = ix.getX(i) + ov;
+        ov += p.count; oi += ix.count; G.dispose();
+      }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(N, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(U, 2)); geo.setIndex(new THREE.BufferAttribute(I, 1));
+      const one = new THREE.Mesh(geo, mat); one.castShadow = cast; one.receiveShadow = true; keep.push(one);
+    }
+    g.clear(); for (const m of keep) g.add(m);
+    // and it never moves: its matrices are worked out once (a chest's lid still turns: it keeps its own)
+    g.updateMatrixWorld(true); g.traverse((o) => { if (o !== g.userData.lid && o.parent !== g.userData.lid) o.matrixAutoUpdate = false; });
+  }
   addProp(p) {
     this.shadowDirty = true;
     const g = new THREE.Group(); g.position.set(p.x, p.y || 0, p.z);
@@ -237,7 +277,7 @@ export class View {
     if (p.kind === 'lantern' && p.wall) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.3, 0.22), new THREE.MeshBasicMaterial({ color: '#ffb060' })); l.position.set(0.5, 1.3, 0.5); g.add(l); const pl = new THREE.PointLight('#ff9a50', 2.2, 7, 1.6); pl.position.set(0.5, 1.3, 0.5); g.add(pl); }
     else if (p.kind === 'lantern') { box(0.1, 0.9, 0.1, 'wood', 0.5, 0.45, 0.5); const l = box(0.28, 0.32, 0.28, 'lamp', 0.5, 1.05, 0.5, '#ff8a4a'); l.material = new THREE.MeshBasicMaterial({ color: '#ffb060' }); }
     if (p.kind === 'banner') { const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex(flagCanvas(p.color)), alphaTest: 0.5 })); fl.center.set(0.1, 0); fl.scale.set(0.9, 1.5, 1); fl.position.set(0.5, 0, 0.5); g.add(fl); }
-    this.mapGroup.add(g); p.obj = g;
+    this.bake(g); this.mapGroup.add(g); p.obj = g;
     if (p.label) this.addLabel(p.label, g, p.labelY ?? 2.4, p.labelClass);
     return g;
   }
@@ -269,7 +309,9 @@ export class View {
   // ---------------------------------------------------------------- actors: a sprite sheet on a billboard, with a blob shadow
   addActor(sheet, x, z, o = {}) {
     // each frame is read half a pixel in from its edges, so the neighbouring frame (the feet of the row above) never shows
-    const t = tex(sheet.canvas), iu = 0.5 / sheet.canvas.width, iv = 0.5 / sheet.canvas.height; t.repeat.set(1 / 3 - 2 * iu, 1 / 4 - 2 * iv); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    const base = (this.sheetTex ||= new WeakMap()).get(sheet.canvas) || this.sheetTex.set(sheet.canvas, tex(sheet.canvas)).get(sheet.canvas);
+    const t = new THREE.Texture(); t.source = base.source; t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.SRGBColorSpace; t.version = 1;
+    const iu = 0.5 / sheet.canvas.width, iv = 0.5 / sheet.canvas.height; t.repeat.set(1 / 3 - 2 * iu, 1 / 4 - 2 * iv); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
     // an upright board (not a camera-facing sprite: that would lean back into the wall behind a character), stretched
     // up so that seen from the tilted camera it keeps its proportions
     const s = new THREE.Mesh(this.boardGeo ||= new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ map: t, alphaTest: 0.5, fog: true, side: THREE.DoubleSide }));
@@ -340,7 +382,7 @@ export class View {
     // labels
     const v = this._lv ||= new THREE.Vector3(), cam = this.camera.position, far = 34 + Math.hypot(this.camOff.y, this.camOff.z) - 16;
     for (const l of this.labels) {
-      l.obj.getWorldPosition(v); v.y += l.dy; const d = v.distanceTo(cam);
+      v.setFromMatrixPosition(l.obj.matrixWorld); v.y += l.dy; const d = v.distanceTo(cam);
       let vis = d < far, tr = '';
       if (vis) { v.project(this.camera); vis = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1; if (vis) tr = `translate(${Math.round((v.x * 0.5 + 0.5) * this.W)}px, ${Math.round((-v.y * 0.5 + 0.5) * this.H)}px) translate(-50%, -100%)`; }
       if (l.vis !== vis) { l.el.style.display = vis ? '' : 'none'; l.vis = vis; }
@@ -370,7 +412,7 @@ export class View {
     this.hemi.intensity = 1.35 * (0.3 + 0.7 * (1 - k)) * (wx ? 0.85 : 1); this.sun.intensity = 2.1 * (0.06 + 0.94 * (1 - k)) * (wx ? 0.4 : 1);
     this.hemi.color.set(k > 0.5 ? '#a8b8f0' : '#dfefff'); this.sun.color.set(k > 0.2 && k < 0.8 ? '#ffc890' : '#fff0d8');
     // a torch for the party at night
-    if (k > 0.5 && !this.torch) { this.torch = new THREE.PointLight('#ffb070', 3.2, 11, 1.4); this.scene.add(this.torch); } if (this.torch) this.torch.visible = k > 0.5;
+    if (this.torch) this.torch.intensity = k > 0.5 ? 3.2 : 0;
   }
   season(month) {
     const T = { 1: [0.96, 0.99, 1.06], 2: [0.98, 1, 1.04], 3: [1.0, 1.02, 0.96], 4: [1.01, 1.02, 0.95], 5: [1.02, 1.01, 0.94], 6: [1.04, 1.0, 0.92], 7: [1.05, 1.0, 0.9], 8: [1.05, 0.99, 0.9], 9: [1.06, 0.99, 0.88], 10: [1.07, 0.98, 0.86], 11: [1.0, 0.98, 0.98], 12: [0.95, 0.98, 1.08] }[month];

@@ -26,13 +26,19 @@ export class Roam {
   start(R) { if (R.pos) return; const g = this.G.gens[R.id], c = CITY_POS[g.city] || CITY_POS[0]; R.pos = this.free(c.x, c.y + 3) || [c.x, c.y]; R.inside = g.city; R.wait = Math.floor(Math.random() * 20); }
   free(x, z) { const M = this.g.world; for (let r = 0; r < 10; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) { const t = M.at(x + dx, z + dz); if (WALK[t] && !PLACE.has(t)) return [x + dx, z + dz]; } return null; }
   // a path over the land, around towns and caves unless one is the goal
-  path(sx, sz, goal) {
-    const M = this.g.world, W = M.W, H = M.H; if (!this.prev || this.prev.length !== W * H) this.prev = new Int32Array(W * H);
-    const prev = this.prev.fill(-1), q = [sz * W + sx]; prev[q[0]] = q[0];
-    for (let h = 0; h < q.length && h < 120000; h++) {
+  // max: how many tiles to search before giving up (a goal close by is never far round)
+  path(sx, sz, goal, max = 120000) {
+    const M = this.g.world, W = M.W, H = M.H, n = W * H;
+    // each tile: 0 cannot be walked, 1 open land, 2 a town or a cave (walked into only as the goal)
+    if (this.gridOf !== M) { this.gridOf = M; this.grid = new Uint8Array(n); this.prev = new Int32Array(n); this.seen = new Uint32Array(n); this.stamp = 0; this.q = new Int32Array(n); for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) { const t = M.at(x, z); this.grid[z * W + x] = !WALK[t] ? 0 : PLACE.has(t) ? 2 : 1; } }
+    const grid = this.grid, prev = this.prev, seen = this.seen, st = ++this.stamp, q = this.q, s0 = sz * W + sx; let tail = 1; q[0] = s0; prev[s0] = s0; seen[s0] = st;
+    for (let h = 0; h < tail && h < max; h++) {
       const k = q[h], x = k % W, z = (k - x) / W;
-      if (goal(x, z)) { const out = []; let c = k; while (c !== q[0]) { out.push([c % W, Math.floor(c / W)]); c = prev[c]; } return out.reverse(); }
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, nz = z + dz; if (nx < 0 || nz < 0 || nx >= W || nz >= H) continue; const nk = nz * W + nx; if (prev[nk] >= 0) continue; const t = M.at(nx, nz); if (!WALK[t] || (PLACE.has(t) && !goal(nx, nz))) continue; prev[nk] = k; q.push(nk); }
+      if (goal(x, z)) { const out = []; let c = k; while (c !== s0) { out.push([c % W, (c - (c % W)) / W]); c = prev[c]; } return out.reverse(); }
+      for (let d = 0; d < 4; d++) {
+        const nx = d === 0 ? x + 1 : d === 1 ? x - 1 : x, nz = d === 2 ? z + 1 : d === 3 ? z - 1 : z; if (nx < 0 || nz < 0 || nx >= W || nz >= H) continue;
+        const nk = nz * W + nx; if (seen[nk] === st) continue; const w = grid[nk]; if (!w || (w === 2 && !goal(nx, nz))) continue; seen[nk] = st; prev[nk] = k; q[tail++] = nk;
+      }
     }
     return null;
   }

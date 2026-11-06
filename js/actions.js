@@ -700,7 +700,7 @@ export class Actions {
     }
     return null;
   }
-  dropBanner(m) { if (this.g.mode !== 'world') return; const p = this.g.view.M.props?.find((q) => q.kind === 'banner' && q.x === m.x && q.z === m.z); if (p) { this.g.view.mapGroup.remove(p.obj); const l = this.g.view.labels.find((l) => l.obj === p.obj); if (l) this.g.view.removeLabel(l); } }
+  dropBanner(m) { if (this.g.mode !== 'world') return; const p = this.g.view.M.props?.find((q) => q.kind === 'banner' && q.x === m.x && q.z === m.z && !q.obj?.userData.gone); if (p) this.g.view.removeProp(p); }
   async missionFight(m) {
     const n = Math.min(5, 2 + Math.floor(m.lv / 8)), foes = [this.foe(m.boss, m.kind === 'pirate' ? 'pirate' : m.kind, m.lv + 2, null, true)];
     for (let i = 1; i < n; i++) foes.push(this.foe(m.minion || (m.kind === 'turban' ? '黃巾賊' : m.kind === 'pirate' ? '海賊' : '山賊'), m.kind, m.lv));

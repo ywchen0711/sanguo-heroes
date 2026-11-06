@@ -9,30 +9,65 @@ export const shade = (c, f) => { const [r, g, b] = hex(c); return f >= 1 ? toHex
 const hash = (s) => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const rnd = (seed) => { let a = seed >>> 0 || 1; return () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; }; };
 
-// a tiny pixel canvas: set pixels, then outline and read out
+// a colour as [r, g, b, a], read once
+const RGBA = new Map();
+let probe = null;
+const rgba = (col) => {
+  let v = RGBA.get(col); if (v) return v;
+  if (/^#[0-9a-f]{6}$/i.test(col)) { const n = parseInt(col.slice(1), 16); v = [n >> 16 & 255, n >> 8 & 255, n & 255, 255]; }
+  else { probe ||= document.createElement('canvas').getContext('2d', { willReadFrequently: true }); probe.clearRect(0, 0, 1, 1); probe.fillStyle = col; probe.fillRect(0, 0, 1, 1); v = [...probe.getImageData(0, 0, 1, 1).data]; }
+  RGBA.set(col, v); return v;
+};
+// a tiny pixel canvas: set pixels, then outline and read out. The pixels are written straight into a buffer (a
+// fillRect for each pixel was most of the cost of drawing a figure) and put on the canvas when it is read: c and x
+// are the canvas and its context, as before
 function px(w, h) {
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const x = c.getContext('2d');
-  const P = (i, j, col) => { if (!col || i < 0 || j < 0 || i >= w || j >= h) return; x.fillStyle = col; x.fillRect(i | 0, j | 0, 1, 1); };
-  const R = (i, j, a, b, col) => { if (!col) return; x.fillStyle = col; x.fillRect(i | 0, j | 0, a, b); };
-  return { c, x, P, R, w, h };
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  let img = null, dirty = false, fresh = true;
+  const data = () => { if (!img) img = fresh ? new ImageData(w, h) : ctx.getImageData(0, 0, w, h); return img.data; };
+  const flush = () => { if (dirty) { ctx.putImageData(img, 0, 0); dirty = false; } };
+  // one pixel, covered by k (a rect's edge may cover part of it, as a canvas would draw it)
+  const dot = (d, i, j, c, k) => {
+    const o = (j * w + i) * 4, sa = (c[3] / 255) * k; if (sa <= 0) return;
+    if (sa >= 1) { d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255; return; }
+    const da = d[o + 3] / 255, oa = sa + da * (1 - sa);
+    for (let n = 0; n < 3; n++) d[o + n] = (c[n] * sa + d[o + n] * da * (1 - sa)) / oa;
+    d[o + 3] = oa * 255;
+  };
+  const P = (i, j, col) => { if (!col || i < 0 || j < 0 || i >= w || j >= h) return; dot(data(), i | 0, j | 0, rgba(col), 1); dirty = true; };
+  const R = (i, j, a, b, col) => {
+    if (!col) return; let x0 = i | 0, y0 = j | 0, x1 = x0 + a, y1 = y0 + b; if (x1 < x0) [x0, x1] = [x1, x0]; if (y1 < y0) [y0, y1] = [y1, y0];
+    const c = rgba(col), d = data();
+    for (let y = Math.max(0, Math.floor(y0)); y < Math.min(h, Math.ceil(y1)); y++) { const ky = Math.min(y + 1, y1) - Math.max(y, y0);
+      for (let x = Math.max(0, Math.floor(x0)); x < Math.min(w, Math.ceil(x1)); x++) dot(d, x, y, c, ky * (Math.min(x + 1, x1) - Math.max(x, x0))); }
+    dirty = true;
+  };
+  return {
+    P, R, w, h,
+    get c() { flush(); return cv; },
+    // the context, to draw on the canvas itself: what is drawn there is read back before the next pixel is set
+    get x() { flush(); fresh = false; img = null; return ctx; },
+    clear() { img = null; dirty = false; fresh = true; ctx.clearRect(0, 0, w, h); },
+  };
 }
 // a dark outline around everything drawn (the crisp HD-2D sprite look)
 // a sheet drawn one frame at a time: each frame on a canvas of its own (so a foot or a spear that reaches past the frame is
 // cut off rather than drawn into the next one, and the outline stays inside it too), outlined, then put in its place
 function sheetOf(cols, rows, fw, fh, draw, col) {
-  const cv = px(fw * cols, fh * rows);
-  for (let r = 0; r < rows; r++) for (let f = 0; f < cols; f++) { const one = px(fw, fh); draw(one, f, r); outline(one, col); cv.x.drawImage(one.c, f * fw, r * fh); }
+  const cv = px(fw * cols, fh * rows), one = px(fw, fh);
+  for (let r = 0; r < rows; r++) for (let f = 0; f < cols; f++) { one.clear(); draw(one, f, r); cv.x.drawImage(one.c, f * fw, r * fh); }
+  outline(cv, col, fw, fh);
   return cv;
 }
-function outline(cv, col = '#1a1410') {
+// fw, fh: the size of one frame of a sheet (the ring never reaches across into the next frame)
+function outline(cv, col = '#1a1410', fw = cv.w, fh = cv.h) {
   const { c, x, w, h } = cv, d = x.getImageData(0, 0, w, h), a = d.data, o = new Uint8ClampedArray(a);
   const [r, g, b] = hex(col);
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-    const k = (j * w + i) * 4; if (a[k + 3]) continue;
-    const near = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([u, v]) => { const ii = i + u, jj = j + v; return ii >= 0 && jj >= 0 && ii < w && jj < h && a[(jj * w + ii) * 4 + 3] > 0; });
-    if (near) { o[k] = r; o[k + 1] = g; o[k + 2] = b; o[k + 3] = 255; }
-  }
+  for (let j = 0; j < h; j++) { const fj = j % fh; for (let i = 0; i < w; i++) {
+    const k = (j * w + i) * 4; if (a[k + 3]) continue; const fi = i % fw;
+    if ((fi < fw - 1 && a[k + 7] > 0) || (fi > 0 && a[k - 1] > 0) || (fj < fh - 1 && a[k + w * 4 + 3] > 0) || (fj > 0 && a[k - w * 4 + 3] > 0)) { o[k] = r; o[k + 1] = g; o[k + 2] = b; o[k + 3] = 255; }
+  } }
   x.putImageData(new ImageData(o, w, h), 0, 0);
   return c;
 }
@@ -60,7 +95,7 @@ function refine(src) {
   const src2 = b.slice(), N = [-W2, 1, W2, -1];
   // the outline is the dark ring next to the transparent outside (not the eyes, brows or a dark beard inside)
   const ring = new Uint8Array(W2 * H2);
-  for (let y = 1; y < H2 - 1; y++) for (let x = 1; x < W2 - 1; x++) { const i = y * W2 + x, c = src2[i]; if (A_(c) && lum(c) < 42 && N.some((d) => !A_(src2[i + d]))) ring[i] = 1; }
+  for (let y = 1; y < H2 - 1; y++) for (let x = 1; x < W2 - 1; x++) { const i = y * W2 + x, c = src2[i]; if (A_(c) && lum(c) < 42 && (!A_(src2[i - W2]) || !A_(src2[i + 1]) || !A_(src2[i + W2]) || !A_(src2[i - 1]))) ring[i] = 1; }
   const skin = (c) => { if (!A_(c) || lum(c) < 100) return false; const r = R_(c), g = G_(c), bl = B_(c); return r - g >= 8 && r - g <= 64 && g - bl >= 12 && g - bl <= 72; };
   for (let y = 1; y < H2 - 1; y++) for (let x = 1; x < W2 - 1; x++) {
     const i = y * W2 + x, c = src2[i]; if (!A_(c) || ring[i] || lum(c) < 42) continue;
@@ -164,6 +199,7 @@ export const LOOKS = {
 // ---------------------------------------------------------------- the person sheet: 4 directions (down, left, right, up) x 3 frames, 24x32 each
 const FW = 24, FH = 32;
 const cache = new Map();
+export const hasSheet = (L) => cache.has(L.key);
 export function personSheet(L) {
   if (cache.has(L.key)) return cache.get(L.key);
   const cv = sheetOf(3, 4, FW, FH, (one, f, d) => drawPerson(one, 0, 0, d, f, L));

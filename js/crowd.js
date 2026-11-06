@@ -15,7 +15,7 @@
 // loser rides home (help one of them: you fight the other). Those near by say things: what they are about, the
 // player's name if it is known, and true rumours (a weak garrison near by, a cave and what is in it).
 // A stop is a few steps of a walk spent in one place: { i (where on the path), n (how long), what }.
-import { CITY_POS, T, K } from './world.js';
+import { CITY_POS, T, K, WALK } from './world.js';
 import { busy, allied, record, die } from './sim/engine.js';
 import { LOOKS } from './sprites.js';
 import { FX } from './fx.js';
@@ -33,10 +33,18 @@ const dirWord = (dx, dz) => DIRW[((Math.round(Math.atan2(dz, dx) / (Math.PI / 4)
 const face = (x0, z0, x, z) => { const dx = x - x0, dz = z - z0; return Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? 2 : 1) : dz > 0 ? 0 : 3; };
 
 export class Crowd {
-  constructor(game, sheet) { this.g = game; this.sheet = sheet; this.now = 0; this.N = new Map(); this.bodies = new Map(); this.paths = new Map(); this.mapRef = null; this.Gref = null; this.met = new Map(); this.fights = []; this.tried = new Set(); this.bubT = 1; this.clock = 0; this.fxT = 0; }
+  constructor(game, sheet) { this.g = game; this.sheet = sheet; this.now = 0; this.N = new Map(); this.bodies = new Map(); this.paths = new Map(); this.mapRef = null; this.Gref = null; this.met = new Map(); this.fights = []; this.tried = new Set(); this.bubT = 1; this.clock = 0; this.fxT = 0; this.budget = 2; }
   get G() { return this.g.G; }
   // a new game or a loaded one: nobody has been anywhere yet
-  sync() { if (this.Gref !== this.G) { this.Gref = this.G; this.N.clear(); this.paths.clear(); this.gates = null; this.fights = []; this.tried.clear(); } }
+  sync() { if (this.Gref !== this.G) { this.Gref = this.G; this.N.clear(); this.paths.clear(); this.gates = null; this.fights = []; this.tried.clear(); this.warmed = new Set(); this.scanAt = -1; } }
+  // everyone out on the land, and where: [g, plan, tile]. Worked out again only when the steps go on or a plan changes
+  // (and once a second besides: someone may have been sent somewhere), not for every general in every frame
+  scan() {
+    const t = performance.now(); if (this.scanAt === this.now && this.Gref === this.G && t - this.scanT < 1000) return this.list;
+    this.sync(); this.scanAt = this.now; this.scanT = t; const out = this.list = [];
+    for (const g of this.G.gens) { if (!this.who(g)) continue; const s = this.cur(g), p = this.posOf(s); if (p) out.push([g, s, p]); }
+    return out;
+  }
   // the steps of the land go by (the player walks one, or rests a day: thirty)
   step(n = 1) { this.now += n; if (this.fights.length) this.settle(); }
   // who is in the crowd
@@ -47,20 +55,22 @@ export class Crowd {
   // the land just outside a city's walls, where a walk out of it starts
   gate(cid) { this.gates ||= {}; if (!(cid in this.gates)) { const c = CITY_POS[cid]; this.gates[cid] = this.g.roam.free(c.x, c.y + 2) || this.g.roam.free(c.x, c.y); } return this.gates[cid]; }
   // the road between two cities (found once)
-  road(a, b) {
+  // lazy: undefined if this frame has found enough roads already (ask again next frame)
+  road(a, b, lazy) {
     const k = a + '>' + b; if (this.paths.has(k)) return this.paths.get(k);
+    if (lazy) { if (this.budget <= 0) return undefined; this.budget--; }
     const s = this.gate(a), p = s && this.g.roam.path(s[0], s[1], this.g.roam.near(b)); const out = p && p.length ? [s, ...p] : null;
     this.paths.set(k, out); return out;
   }
   // a ride out of a city and back (a few for each city, found once)
   loop(cid) {
     const k = 'o' + cid; let L = this.paths.get(k); if (!L) this.paths.set(k, L = []);
-    if (L.length < LOOPS) {
+    if (L.length < LOOPS && (!L.length || this.budget-- > 0)) {
       const s = this.gate(cid), M = this.g.world;
       if (s) for (let t = 0; t < 12; t++) {
         const ang = Math.random() * Math.PI * 2, d = R(6, Math.round(14 * K)), x = Math.round(s[0] + Math.cos(ang) * d), z = Math.round(s[1] + Math.sin(ang) * d), w = M.at(x, z);
-        if (w === T.CITY || w === T.COUNTY || w === T.VILLAGE || w === T.CAVE) continue;
-        const p = this.g.roam.path(s[0], s[1], (px, pz) => px === x && pz === z);
+        if (!WALK[w] || w === T.CITY || w === T.COUNTY || w === T.VILLAGE || w === T.CAVE) continue;
+        const p = this.g.roam.path(s[0], s[1], (px, pz) => px === x && pz === z, 8000);
         if (p && p.length >= 3) { const out = [s, ...p]; L.push([...out, ...out.slice(0, -1).reverse()]); break; }
       }
     }
@@ -118,13 +128,13 @@ export class Crowd {
   // what he stops doing now (the bandits are beaten, the fight is over): the walk goes on from here
   cut(g) {
     const s = this.N.get(g.id); if (!s?.path) return; const { q, e } = this.at(s); if (!q) return;
-    s.end -= q.n - e; q.n = e; this.fights = this.fights.filter((F) => F.a !== g.id && F.b !== g.id);
+    s.end -= q.n - e; q.n = e; this.fights = this.fights.filter((F) => F.a !== g.id && F.b !== g.id); this.scanAt = -1;
   }
   // back to his city at once (beaten on the road); whoever he was fighting goes on his way
   home(g) {
     this.sync();
     for (const F of this.fights) if (F.a === g.id || F.b === g.id) { const o = this.G.gens[F.a === g.id ? F.b : F.a]; this.fights = this.fights.filter((x) => x !== F); if (o) this.cut(o); break; }
-    this.N.set(g.id, this.stay(g, g.city, this.now));
+    this.N.set(g.id, this.stay(g, g.city, this.now)); this.scanAt = -1;
   }
   posOf(s) { return s.path ? s.path[this.at(s).i] : null; }
   // out on the land: where, or null in a city
@@ -137,7 +147,7 @@ export class Crowd {
   clash(A, B, what = 'clash') {
     const ga = this.G.gens[A.id], gb = this.G.gens[B.id], n = R(8, 14);
     for (const [S, o] of [[A.s, gb], [B.s, ga]]) { const { i } = this.at(S), q = { i, n, what, foe: o.id }; S.stops = [...(S.stops || []), q].sort((x, y) => x.i - y.i); S.end += n; }
-    this.fights.push({ a: ga.id, b: gb.id, end: this.now + n, at: [...A.at], duel: what === 'duel' });
+    this.fights.push({ a: ga.id, b: gb.id, end: this.now + n, at: [...A.at], duel: what === 'duel' }); this.scanAt = -1;
   }
   // a fight on the road is over: the stronger side (with luck) drives the other home, and his city loses men
   settle() {
@@ -158,7 +168,7 @@ export class Crowd {
     const G = this.G, P = this.g.pos, roll = a.war - b.war + (Math.random() - 0.5) * 40, [w, l] = roll >= 0 ? [a, b] : [b, a];
     const killed = Math.abs(roll) > 22 && Math.random() < 0.3 && l.war < 95 && G.factions[l.fac]?.lord !== l.id;
     record(G, 'tie', 'feudDuel', { w: w.name, l: l.name, c: G.cities[w.city]?.name || '', killed }, w.status === 'serving' ? w.fac : null, 2, { g: w.id });
-    if (killed) die(G, l, 'duel', w); else this.N.set(l.id, this.stay(l, l.city, this.now));
+    if (killed) die(G, l, 'duel', w); else this.N.set(l.id, this.stay(l, l.city, this.now)); this.scanAt = -1;
     if (P && this.g.mode === 'world' && Math.hypot(F.at[0] - P.x, F.at[1] - P.z) < SEE) this.g.ui.toast(`⚔ 宿敵單挑：<b>${w.name}</b>擊敗了${l.name}${killed ? `，<b style="color:#ff8a6a">${l.name}戰死</b>` : ''}！`, 4000);
   }
   // ---------------------------------------------------------------- what they say
@@ -207,15 +217,15 @@ export class Crowd {
     const game = this.g, V = game.view; if (!V || !this.G) return;
     if (V.M !== this.mapRef) { this.mapRef = V.M; this.bodies.clear(); this.fx?.clear(); this.fx = new FX(V.scene); }
     if (game.mode !== 'world') return;
-    this.clock += dt; this.fx.update(dt);
-    const P = game.pos, near = [];
-    for (const g of this.G.gens) {
-      if (!this.who(g)) continue;
-      const s = this.cur(g), p = this.posOf(s); if (!p) continue;
+    this.clock += dt; this.fx.update(dt); this.budget = 2;
+    const P = game.pos, near = [], list = this.scan();
+    for (const [g, s, p] of list) {
       const d = Math.hypot(p[0] - P.x, p[1] - P.z); if (d > (this.bodies.has(g.id) ? KEEP : SEE)) continue;
       near.push([d, g, s, p]);
     }
     near.sort((a, b) => a[0] - b[0]);
+    // the looks of those a little further off are drawn ahead, one at a time, so nobody stalls a frame as he comes into view
+    if ((this.warmT = (this.warmT || 0) - dt) <= 0) { this.warmT = 0.12; for (const [g, , p] of list) { if (this.warmed.has(g.id) || this.bodies.has(g.id) || Math.abs(p[0] - P.x) > SEE + 14 || Math.abs(p[1] - P.z) > SEE + 14) continue; this.warmed.add(g.id); this.sheet(game.lookOf(g)); break; } }
     const live = new Set(), shown = near.slice(0, MAX), spark = (this.fxT -= dt) <= 0; if (spark) this.fxT = 0.35;
     shown.forEach(([d, g, s, [tx, tz]], rank) => {
       const [px, pz] = [tx, tz];
@@ -293,6 +303,6 @@ export class Crowd {
   // the minimap: a small dot for each one out on the land, in the colour of his side
   marks(x, s) {
     if (!this.G) return;
-    for (const g of this.G.gens) { if (!this.who(g)) continue; const p = this.posOf(this.cur(g)); if (!p) continue; x.fillStyle = (g.status === 'serving' && this.G.factions[g.fac]?.color) || '#d8d8c0'; x.fillRect(p[0] * s - 1, p[1] * s - 1, 2, 2); }
+    for (const [g, , p] of this.scan()) { x.fillStyle = (g.status === 'serving' && this.G.factions[g.fac]?.color) || '#d8d8c0'; x.fillRect(p[0] * s - 1, p[1] * s - 1, 2, 2); }
   }
 }

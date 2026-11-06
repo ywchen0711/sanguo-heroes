@@ -32,7 +32,7 @@ export class Outlaws {
   cur(c) {
     if (this.now < c.t0) return null;   // (robbed: back in town a while)
     for (let k = 0; k < 8; k++) {
-      const p = this.g.crowd.road(c.a, c.b); if (!p) { c.b = pick(this.G.cities[c.a].adj); c.t0 = this.now; return null; }
+      const p = this.g.crowd.road(c.a, c.b, true); if (p === undefined) return null; if (!p) { c.b = pick(this.G.cities[c.a].adj); c.t0 = this.now; return null; }
       const end = c.t0 + p.length + (c.rob ? c.rob.n : 0), rest = 20;
       if (this.now < end) { let i = this.now - c.t0; if (c.rob) { if (i >= c.rob.i + c.rob.n) i -= c.rob.n; else if (i >= c.rob.i) return { p, i: c.rob.i, rob: true }; } return { p, i: Math.min(p.length - 1, i), rob: false }; }
       if (this.now < end + rest) return null;

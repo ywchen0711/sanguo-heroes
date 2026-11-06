@@ -160,13 +160,13 @@ class Game {
       // counties, villages and caves follow the city they belong to; their labels are their own
       if (p.placeId != null) {
         const q = places[p.placeId], l = this.view.labels.find((l) => l.obj === p.obj);
-        if (p.color !== q.color) { this.view.mapGroup.remove(p.obj); if (l) this.view.removeLabel(l); p.color = q.color; p.label = q.label; this.view.addProp(p); }
+        if (p.color !== q.color) { this.view.removeProp(p); p.color = q.color; p.label = q.label; this.view.addProp(p); }
         else if (l) l.el.innerHTML = q.label;
         continue;
       }
       if (p.cityId == null) continue;
       const C = this.G.cities[p.cityId], f = C.owner && this.G.factions[C.owner], col = f ? f.color : '#9a9a9a';
-      if (p.color !== col) { this.view.mapGroup.remove(p.obj); const l = this.view.labels.find((l) => l.obj === p.obj); if (l) this.view.removeLabel(l); p.color = col; p.label = this.cityLabel(p.cityId); this.view.addProp(p); }
+      if (p.color !== col) { this.view.removeProp(p); p.color = col; p.label = this.cityLabel(p.cityId); this.view.addProp(p); }
       else { const l = this.view.labels.find((l) => l.obj === p.obj); if (l) l.el.innerHTML = this.cityLabel(p.cityId); }
     }
   }
@@ -239,7 +239,7 @@ class Game {
     // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
     try {
-      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); this.roam.tick(dt); this.crowd.tick(dt); this.camps.tick(dt); this.outlaws.tick(dt); this.horses.tick(dt); this.moodTick(); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
+      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); this.roam.tick(dt); this.crowd.tick(dt); this.camps.tick(dt); this.outlaws.tick(dt); this.horses.tick(dt); this.moodTick(); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } if (this.screens.mmDue) this.screens.minimap(); }
       if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
