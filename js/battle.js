@@ -10,7 +10,7 @@ import { LOOKS, shade, soldierSheet } from './sprites.js';
 import { TACTICS, tacticsOf, bstats, ITEMS, usable, armsOf, hasHorse, TROOPS, troopMul, FORMS } from './hero.js';
 import { hasT, bump } from './deeds.js';
 import { battleMods } from './bonds.js';
-import { relicFx } from './relics.js';
+import { relicFx, CAP } from './relics.js';
 import { groupTraits, comboLines, syncParty } from './traits.js';
 import { FX } from './fx.js';
 import { diff } from './hardship.js';
@@ -96,7 +96,7 @@ export class Battle {
     this.foes = foes.map((f) => { const arms = armsOf(G, f.gid != null ? G.gens[f.gid] : { id: -9 });
       return { side: 'foe', ...f, arms, troop: foeTroop(f), st: { atk: f.war + (f.wpn || 0), def: f.lead * 0.6 + (f.arm || 0) * 1.6 + f.lv + (o.siege ? f.wall ?? 18 : 0), int: f.int, spd: (f.war + f.lead) / 2 + f.lv * 0.3 + arms.spd + (arms.first ? 999 : 0), lead: f.lead, war: f.war }, tactics: f.beast ? [] : tacticsOf({ int: f.int, spells: f.spells || [] }), status: {}, spMax: f.sp, solLook: f.solLook || LOOKS.soldier(f.color || '#8a4a3a') }; });
     const named = this.foes.filter((f) => f.gid != null), FT = named.length ? groupTraits(named.map((f) => G.gens[f.gid])) : null;
-    for (const f of named) { const fx = FT.get(f.gid).fx; for (const [k, v] of Object.entries(fx)) { if (['war', 'lead', 'int'].includes(k)) { if (k === 'war') f.st.atk += v; if (k === 'int') f.st.int += v; continue; } if (k === 'spd') { f.st.spd += v; continue; } if (k === 'first') { f.st.spd += 999; continue; } if (k === 'cavPow') { f.arms.cav = (f.arms.cav || 1) * (1 + v); continue; } f.arms[k] = (typeof v === 'number' && typeof f.arms[k] === 'number') ? f.arms[k] + v : v; } }
+    for (const f of named) { const fx = FT.get(f.gid).fx; for (const [k, v] of Object.entries(fx)) { if (['war', 'lead', 'int'].includes(k)) { if (k === 'war') f.st.atk += v; if (k === 'int') f.st.int += v; continue; } if (k === 'spd') { f.st.spd += v; continue; } if (k === 'first') { f.st.spd += 999; continue; } if (k === 'cavPow') { f.arms.cav = (f.arms.cav || 1) * (1 + v); continue; } f.arms[k] = (typeof v === 'number' && typeof f.arms[k] === 'number') ? f.arms[k] + v : v; } for (const k in CAP) if (f.arms[k] > CAP[k]) f.arms[k] = CAP[k]; }
     this.comboSay = [...(PT ? comboLines(PT, party.map((p) => p.g), '') : []), ...(FT ? comboLines(FT, named.map((f) => G.gens[f.gid]), '敵軍') : [])];
     // the hour and the weather: a night attack strikes first and hard; rain wets the bowstrings and the tinder, snow slows the horses
     if (o.night && o.terrain !== 'cave') this.comboSay.unshift(o.ambush ? '夜襲！趁著夜色發動奇襲（第一回合傷害提升）' : '夜裡遭到伏擊！（敵軍第一回合傷害提升）');

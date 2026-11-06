@@ -9,7 +9,7 @@ import { TF } from './traits.js';
 export { RELICS, POWERS, GRADE_N, GRADE_C, SLOT_N, PRICE, SETS, ULT_IDS };
 const LV_EXP = [0, 0, 20, 60, 130, 240];
 export const lvMul = (lv) => 1 + 0.12 * ((lv || 1) - 1);
-const CAP = { thunder: 1.2, tacDmg: 0.6, healPow: 0.8, fire: 0.8, siege: 0.8, wall: 0.6, firstAtk: 1, bossDmg: 0.8, lowAtk: 1, beastDmg: 1, infPow: 0.8, crit: 0.4, combo: 0.6, pierce: 0.7, dodge: 0.45, block: 0.6, physRes: 0.5, tacRes: 0.7, again: 0.4, counter: 0.7, stun: 0.4, tacCost: 0.6, encounter: 0.7, steal: 0.5 };
+export const CAP = { thunder: 1.2, tacDmg: 0.6, healPow: 0.8, fire: 0.8, siege: 0.8, wall: 0.6, firstAtk: 1, bossDmg: 0.8, lowAtk: 1, beastDmg: 1, infPow: 0.8, crit: 0.4, combo: 0.6, pierce: 0.7, dodge: 0.45, block: 0.6, physRes: 0.5, tacRes: 0.7, again: 0.4, counter: 0.7, stun: 0.4, tacCost: 0.6, encounter: 0.7, steal: 0.5 };
 const FLAG = new Set(['first', 'noConfuse', 'flee']), STATK = new Set(['lead', 'war', 'int', 'pol', 'cha']);
 const INT = new Set(['spRegen', 'spd', 'startRouse']);
 // the strength of one power of a treasure (its second power is a little weaker)
