@@ -61,8 +61,8 @@ export function gainLife(G, g, n, favour, refresh) {
     if (g.base[k] < L.pot[STAT.indexOf(k)]) { g.base[k]++; refresh(G, g); if (g.base[k] >= 90 && g.base[k] - 1 < 90) note(G, g, 'peak', k); }
   }
 }
-// how fast the land's generals grow: about a level a month at first, Lv35-45 after ten years
-const GROW = 12;
+// how fast the land's generals grow: twice what it was (GROW 12: about a level a month at first, Lv35-45 after ten years)
+const GROW = 24;
 const FAV = { W: 'war', S: 'int', P: 'pol', A: 'cha', H: 'war' };
 // ---------------------------------------------------------------- the month
 export function lifeMonth(G, H) {
@@ -116,7 +116,7 @@ export function lifeMonth(G, H) {
 const bestOf = (m) => ['lead', 'war', 'int', 'pol'].reduce((a, k) => (m.base[k] > m.base[a] ? k : a), 'lead');
 function trimFriends(L) { const ks = Object.keys(L.friends); if (ks.length > 8) { ks.sort((a, b) => L.friends[a] - L.friends[b]); for (const k of ks.slice(0, ks.length - 8)) delete L.friends[k]; } }
 // a battle: everyone who was in it learns from it
-export function lifeBattle(G, gs, won, refresh) { for (const g of gs) if (g && g.status === 'serving' && !g.isPlayer) gainLife(G, g, (won ? 40 : 22) * (g.rivalHero ? 1 : 3), won ? 'lead' : 'war', refresh); }
+export function lifeBattle(G, gs, won, refresh) { for (const g of gs) if (g && g.status === 'serving' && !g.isPlayer) gainLife(G, g, (won ? 40 : 22) * (g.rivalHero ? 1 : 6), won ? 'lead' : 'war', refresh); }
 // how one line of a general's chronicle reads
 export function lifeLine([y, code, a]) {
   const S = { lead: '統率', war: '武力', int: '智力', pol: '政治', cha: '魅力' };
