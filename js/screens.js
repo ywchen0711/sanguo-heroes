@@ -1,5 +1,6 @@
 // The screens around the game: the title, choosing a scenario, how many years and which general to be, the status of
 // the party, the chronicle, the map of the realm, missions, the minimap, and the reckoning at the end.
+import { DIFF } from './hardship.js';
 import { SCENARIOS } from './data/scenarios.js';
 import { newGame, citiesOf, gensOf, power } from './sim/engine.js';
 import { fmt, dateStr, itemName } from './sim/text.js';
@@ -72,7 +73,9 @@ export class Screens {
       if (!ok) continue;
       const rivals = await this.ui.choose([0, 3, 5, 8].map((n) => ({ k: n, n: n ? `${n} 位電腦對手` : '不要對手', d: n ? `另外 ${n} 位武將也由電腦扮演：和你一樣闖蕩、投靠明主、升官、攻城，甚至自立為王。最後比誰統一天下，或誰的功績最高。` : '只有你一位主角，天下照常運轉。' })), { title: '對手', noBack: true });
       const rivalHow = rivals ? await this.ui.choose([{ k: 'famous', n: '知名英雄', d: '從名將裡挑：曹操、劉備、孫權、呂布這些人物最常出現' }, { k: 'random', n: '隨機', d: '所有在世的武將都可能被選上，連無名小卒也會來爭天下' }], { title: '對手人選', noBack: true }) : null;
-      return { scenario: sc, years, pid, seed, rivals, rivalHow };
+      const dif = await this.ui.choose(Object.entries(DIFF).map(([k, D]) => ({ k, n: D.n, d: D.d })), { title: '難度', noBack: true });
+      const iron = await this.ui.choose([{ k: false, n: '一般', d: '隨時可以存檔、讀檔' }, { k: true, n: '鐵人模式', d: '只有一個存檔，離開城鎮、每場戰鬥、每個月都會自動存檔。戰鬥中途離開視為戰敗，不能讀檔重來' }], { title: '存檔方式', noBack: true });
+      return { scenario: sc, years, pid, seed, rivals, rivalHow, diff: dif, iron };
     }
   }
   pickGen(G, list, title) {

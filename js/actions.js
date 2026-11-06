@@ -20,6 +20,7 @@ import { priceMul, garrisonMul, disasterAt, DIS_N } from './disaster.js';
 import { tire, tired, eraBonus } from './board.js';
 import { fameOf, fameName } from './fame.js';
 import { beat, rankOf as listRank, rankHTML } from './martial.js';
+import { diff } from './hardship.js';
 import { jobMenu, governor, canGovern, cityLine } from './govern.js';
 import { bLv } from './sim/build.js';
 import { awaken, traitsOf, traitHTML, combosWith, TRAIT, reroll } from './traits.js';
@@ -165,7 +166,7 @@ export class Actions {
   // ---------------------------------------------------------------- the menu
   async menu() {
     if (this.ui.busy) return;
-    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'board', n: '情勢', d: '時局、機會（有期限）、民心', sub: (this.H.opps || []).filter((o) => !o.done && !o.missed).length || '' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }, { k: 'martial', n: '武力榜', d: '天下最強的二十人' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'tdex', n: '特性圖鑑', d: '特性、名組合、誰有哪個特性、神器錄' }, { k: 'save', n: '存檔' }, { k: 'auto', n: this.g.auto.on ? `電腦代玩：開（${this.g.auto.style.n}）` : '電腦代玩：關', d: '讓電腦替你玩，可以選方針：均衡、練功、打寶、積極攻城（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
+    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'board', n: '情勢', d: '時局、機會（有期限）、民心', sub: (this.H.opps || []).filter((o) => !o.done && !o.missed).length || '' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }, { k: 'martial', n: '武力榜', d: '天下最強的二十人' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'tdex', n: '特性圖鑑', d: '特性、名組合、誰有哪個特性、神器錄' }, ...(this.g.mode === 'world' ? [{ k: 'camp', n: '紮營', d: `在路邊紮營休息半天（乾糧 ${this.g.hard.days()} 天份、疲勞 ${Math.round(this.H.fatigue || 0)}）` }] : []), { k: 'save', n: this.H.iron ? '存檔（鐵人：自動）' : '存檔' }, { k: 'auto', n: this.g.auto.on ? `電腦代玩：開（${this.g.auto.style.n}）` : '電腦代玩：關', d: '讓電腦替你玩，可以選方針：均衡、練功、打寶、積極攻城（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
     if (k === 'status') await this.g.screens.status();
     if (k === 'party') await this.partyMenu();
     if (k === 'equip') await equipScreen(this.g);
@@ -179,7 +180,8 @@ export class Actions {
     if (k === 'people') await this.people();
     if (k === 'dex') await dexScreen(this.g);
     if (k === 'tdex') await traitDex(this.g);
-    if (k === 'save') { if (this.g.mode !== 'town') { this.ui.toast('只能在城裡存檔（客棧或選單）'); } this.g.saveGame() ? this.ui.toast('已存檔') : this.ui.toast('存檔失敗'); }
+    if (k === 'save') { if (this.H.iron) this.ui.toast('鐵人模式會自動存檔（離開城鎮、每場戰鬥、每個月）'); else this.g.saveGame() ? this.ui.toast('已存檔') : this.ui.toast('存檔失敗'); }
+    if (k === 'camp') await this.g.hard.camp();
     if (k === 'end' && await this.ui.yesno('要現在結束，結算功績嗎？')) this.g.screens.ending();
     if (k === 'sound') { this.g.audio.on = !this.g.audio.on; }
     if (k === 'auto') {
@@ -191,7 +193,7 @@ export class Actions {
   async people() {
     const H = this.H, ts = (H.titles || []).map((id) => TITLES.find((t) => t.id === id)).filter(Boolean);
     const next = TITLES.filter((t) => !(H.titles || []).includes(t.id) && !t.bad).slice(0, 6);
-    await this.ui.panel(`<h4>稱號</h4>${ts.length ? ts.map((t) => `<p><b style="color:${t.bad ? '#ff8a6a' : '#ffd86a'}">「${t.n}」</b>　<small>${t.d}</small></p>`).join('') : '<p class="dim">還沒有稱號。</p>'}<p class="dim">還沒得到：${next.map((t) => t.n).join('、')}……</p>${bondsHTML(this.g)}${this.g.stories.html()}`, { title: '人物', cls: 'wide' });
+    await this.ui.panel(`<h4>稱號</h4>${ts.length ? ts.map((t) => `<p><b style="color:${t.bad ? '#ff8a6a' : '#ffd86a'}">「${t.n}」</b>　<small>${t.d}</small></p>`).join('') : '<p class="dim">還沒有稱號。</p>'}<p class="dim">還沒得到：${next.map((t) => t.n).join('、')}……</p>${this.g.court.line() ? `<p><b style="color:#ffb06a">${this.g.court.line()}</b>　<small>名聲、官職、當太守、帶的人越多，主公越不放心。可以在太守府表忠心。</small></p>` : ''}${bondsHTML(this.g)}${this.g.nemesis.html()}${this.g.stories.html()}`, { title: '人物', cls: 'wide' });
   }
   async partyMenu() {
     for (;;) {
@@ -422,7 +424,7 @@ export class Actions {
   // ---------------------------------------------------------------- duels: a friendly bout, or to the death
   duelFoe(x) { const lv = this.lvOf(x); const r = { lv, eq: {} }; return { name: x.name, look: this.g.lookOf(x), lv, st: bstats(x, r), gid: x.id }; }
   // a general's level in battle: their own life's level (see sim/life.js), or for an old save an estimate from the years
-  lvOf(x) { if (this.H.rec[x.id]) return this.H.rec[x.id].lv; if (x.life) return Math.max(1, x.life.lv + 2); return Math.max(1, startLv(x) + Math.floor((this.G.year - this.H.startYear) * 0.8) + 2); }
+  lvOf(x) { if (this.H.rec[x.id]) return this.H.rec[x.id].lv; const nb = this.g.nemesis?.lvBonus(x.id) || 0; if (x.life) return Math.max(1, x.life.lv + 2 + nb); return Math.max(1, startLv(x) + Math.floor((this.G.year - this.H.startYear) * 0.8) + 2 + nb); }
   async duelWith(x, kind, npc) {
     const G = this.G, me = this.me, f = x.status === 'serving' && G.factions[x.fac];
     if (kind === 'kill' && !await this.ui.yesno(`真的要向${x.name}挑戰生死決鬥嗎？\n${f ? `會與${f.name}軍結仇。` : ''}`)) return;
@@ -513,6 +515,7 @@ export class Actions {
         { k: 'mission', n: '任務', d: '討伐附近的賊寇' },
         ...(this.g.board.restless(C) ? [{ k: 'calm', n: '安撫百姓', d: `民心 ${C.morale}：新佔領，可能民變。200 金、五天，民心 +${10 + Math.round(me.cha / 10)}` }] : []),
         ...(!isLord && fameOf(this.H).petition ? [{ k: 'petition', n: '上書自薦', d: (this.H.petition || -99) + 12 > this.G.t ? `一年只能一次（${(this.H.petition || 0) + 12 - this.G.t} 個月後）` : `憑名聲請求升遷（功績 +${Math.min(150, Math.round(this.H.fame / 12))}）`, off: (this.H.petition || -99) + 12 > this.G.t }] : []),
+        ...(!isLord && this.g.court.on() && (this.H.susp || 0) >= 10 ? [{ k: 'loyal', n: '表忠心', d: this.g.court.line() }] : []),
         { k: 'pick', n: '點將', d: `邀請城裡的武將同行（同伴 ${this.H.party.length}／${this.g.partyMax()}）` },
         ...(isLord ? [{ k: 'treasury', n: '府庫', d: `勢力金 ${f.gold}，可以支取` }] : [{ k: 'quit', n: '下野', d: '離開這個勢力' }]),
         { k: null, n: '離開' }];
@@ -520,6 +523,7 @@ export class Actions {
       if (c == null) return;
       if (c === 'report') await this.report(C, f, isLord, host || lord);
       if (c === 'job') await this.job(C, f);
+      if (c === 'loyal') await this.g.court.loyal();
       if (c === 'governor') await governor(this, C, f);
       if (c === 'draft') await this.draft(C, true);
       if (c === 'calm') await this.g.board.calm(C);
@@ -604,8 +608,8 @@ export class Actions {
     if (C.size >= 2 && C.id >= 0) { const w = await this.ui.choose([{ k: 'items', n: '道具' }, { k: 'relic', n: '寶物商人', d: '這座城的寶物商人，每三個月進一次新貨' }, { k: null, n: '離開' }], { title: `${C.name}・道具店` }); if (!w) return; if (w === 'relic') return this.merchant(C); }
     const pm = priceMul(this.g, C.id >= 0 ? C.id : null), P = (n) => Math.round(n * pm);
     for (;;) {
-      const k = await this.ui.choose(shopItems().map(([id, I]) => ({ k: id, n: I.n, sub: `${P(I.price)} 金　持有 ${this.H.items[id] || 0}`, d: I.d, off: this.H.gold < P(I.price) })).concat([{ k: null, n: '離開' }]), { title: `道具店　金 ${this.H.gold}${pm > 1.2 ? '　（饑荒，物價上漲）' : ''}` });
-      if (!k) return; this.H.gold -= P(ITEMS[k].price); this.H.items[k] = (this.H.items[k] || 0) + 1; this.g.audio.sfx('coin');
+      const k = await this.ui.choose(shopItems().map(([id, I]) => ({ k: id, n: I.n, sub: `${P(I.price)} 金　持有 ${this.H.items[id] || 0}`, d: I.d, off: this.H.gold < P(I.price) })).concat([{ k: 'food', n: '乾糧', sub: `還剩 ${this.g.hard.days()} 天份`, d: '在野外每天都要吃。沒有糧食，士兵每天都會逃走' }, { k: null, n: '離開' }]), { title: `道具店　金 ${this.H.gold}${pm > 1.2 ? '　（饑荒，物價上漲）' : ''}` });
+      if (!k) return; if (k === 'food') { await this.g.hard.buy(C); continue; } this.H.gold -= P(ITEMS[k].price); this.H.items[k] = (this.H.items[k] || 0) + 1; this.g.audio.sfx('coin');
     }
   }
   // the smith: a weapon or an armour a level better, for gold and ore; the higher levels can fail
@@ -622,8 +626,9 @@ export class Actions {
   }
   async inn(C) {
     const n = this.H.party.length + 1, cost = fameOf(this.H).inn ? 0 : Math.round(8 * n * priceMul(this.g, C.id >= 0 ? C.id : null));
-    const c = await this.ui.choose([{ k: 'rest', n: cost ? `住宿　${cost} 金` : `住宿　免費（掌櫃：「${this.me.name}大人光臨，小店蓬蓽生輝！」）`, d: '回復策略點，兵力回復兩成五，並存檔', off: this.H.gold < cost }, { k: 'save', n: '存檔' }, { k: null, n: '離開' }], { title: '客棧' });
-    if (c === 'rest') { this.H.gold -= cost; for (const p of this.g.partyList()) { p.rec.sp = p.spMax; p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * 0.25)); } await this.passDays(1, '好好休息了一晚。'); this.g.saveGame(); this.ui.toast('已存檔'); }
+    const c = await this.ui.choose([{ k: 'rest', n: cost ? `住宿　${cost} 金` : `住宿　免費（掌櫃：「${this.me.name}大人光臨，小店蓬蓽生輝！」）`, d: '回復策略點，兵力回復兩成五，疲勞全消，並存檔', off: this.H.gold < cost }, { k: 'food', n: '補給乾糧', sub: `${this.g.hard.days()} 天份` }, { k: 'save', n: '存檔' }, { k: null, n: '離開' }], { title: '客棧' });
+    if (c === 'food') await this.g.hard.buy(C);
+    if (c === 'rest') { this.H.gold -= cost; this.g.hard.rest(); for (const p of this.g.partyList()) { p.rec.sp = p.spMax; p.rec.sol = Math.min(p.solMax, p.rec.sol + Math.round(p.solMax * 0.25)); } await this.passDays(1, '好好休息了一晚。'); this.g.saveGame(); this.ui.toast('已存檔'); }
     if (c === 'save') { this.g.saveGame() ? this.ui.toast('已存檔') : this.ui.toast('存檔失敗'); }
   }
   async tavern(C) {
@@ -677,7 +682,7 @@ export class Actions {
   // ---------------------------------------------------------------- time passing (in town: rest, work, search)
   async passDays(n, msg) {
     if (msg) this.ui.toast(msg);
-    for (let i = 0; i < n; i++) { this.g.roam.step(30); this.g.crowd.step(30); this.H.days++; if (this.H.days % 30 === 0) { this.g.monthTick(); if (this.g.mode === 'title') return; } }
+    for (let i = 0; i < n; i++) { this.g.roam.step(30); this.g.crowd.step(30); this.H.days++; this.g.hard.dayIn(1); if (this.H.days % 30 === 0) { this.g.monthTick(); if (this.g.mode === 'title') return; } }
     this.g.hud();
   }
   // ---------------------------------------------------------------- missions: a bandit chief somewhere near a city
@@ -718,6 +723,7 @@ export class Actions {
   // ---------------------------------------------------------------- fights on the road
   terrainAt() { const P = this.g.pos, W = this.g.world, k = W.at(P.x, P.z); if (k === T.BRIDGE || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => W.at(P.x + dx, P.z + dz) === T.RIVER)) return 'river'; return { 4: 'forest', 5: 'hill', 8: 'desert', 13: 'marsh', 12: 'coast', 7: 'snow', 6: 'hill' }[k] || (P.z < 30 && this.g.world.at(P.x, P.z - 2) === T.SNOW ? 'snow' : 'plain'); }
   foe(name, kind, lv, color, boss) {
+    lv = Math.max(1, lv + diff(this.g).lv);
     const beast = BEASTS.includes(kind), K = boss ? 1.25 : 1, r = Math.random;
     const war = Math.min(99, Math.round((32 + lv * 1.3 + r() * 14) * K)), lead = Math.min(99, Math.round((26 + lv * 1.1 + r() * 14) * K)), int = beast ? 5 : Math.min(95, Math.round(15 + r() * 30 + (boss ? 15 : 0) + lv * 0.4));
     const solMax = Math.round((beast ? 70 + lv * 26 : 90 + lead * 4 + lv * 28) * (boss ? 1.6 : 1));
@@ -743,7 +749,7 @@ export class Actions {
   }
   async fight0(foes, o = {}) {
     const g = this.g, G = this.G; o = { night: g.night(), wx: g.wx(), ...o }; g.mode = 'battle'; g.locked = true;
-    await this.ui.fade(1, 250);
+    await this.ui.fade(1, 250); if (!o.drill) g.hard.battleStart(foes);
     const party = g.partyList(), f = g.myFaction() && G.factions[g.myFaction()];
     const res = g.battle.run(party, foes, { ...o, color: f ? f.color : '#5a6a8a' });
     await this.ui.fade(0, 250);
@@ -752,7 +758,7 @@ export class Actions {
     let msg = '', ups = [];
     if (out.result === 'win') {
       this.H.st.wins++;
-      const exp = Math.round(foes.reduce((s, x) => s + 10 + x.lv * 7 + x.solMax / 22, 0) * (o.drill ? 0.6 : 1) * (hasT(this.H, 'baizhan') ? 1.1 : 1) * (1 + partyFx(g, 'exp'))), gold = o.drill ? 0 : Math.round(foes.reduce((s, x) => s + x.lv * 6 + Math.random() * x.lv * 5, 0) * (1 + partyFx(g, 'gold')));
+      const exp = Math.round(foes.reduce((s, x) => s + 10 + x.lv * 7 + x.solMax / 22, 0) * (o.drill ? 0.6 : 1) * (hasT(this.H, 'baizhan') ? 1.1 : 1) * (1 + partyFx(g, 'exp'))), gold = o.drill ? 0 : Math.round(foes.reduce((s, x) => s + x.lv * 6 + Math.random() * x.lv * 5, 0) * (1 + partyFx(g, 'gold')) * diff(g).gold);
       this.H.gold += gold; this.H.fame += o.drill ? 0 : Math.round(foes.length * (1 + partyFx(g, 'fame')));
       for (const p of party) for (const u of gainExp(G, p.g, p.rec, exp)) { ups.push(`${p.g.name} 升到 Lv${u.lv}！${u.grow.map((k) => STAT_N[k] + '+1').join(' ')}`); const aw = awaken(p.g, p.rec, u.lv); if (aw) { ups.push(`★ ${p.g.name}覺醒了！特性「${aw.old}」→「${aw.nu}」`); setTimeout(() => this.ui.banner(`<b style="color:#ffc84a;font-size:20px">★ 覺醒 ★</b><br>${p.g.name}的「${aw.old}」覺醒為「${aw.nu}」`, 6000), 400); } }
       msg = `勝利！\n經驗 +${exp}${gold ? `　金 +${gold}` : ''}${ups.length ? '\n' + ups.join('\n') : ''}`;
@@ -774,12 +780,14 @@ export class Actions {
     }
     if (!o.drill) {
       for (const p of party) { if (p.g.id !== this.H.pid) { mark(g, p.g.id, 3); if (out.result === 'win') addBond(g, p.g.id, 2); } }
-      for (const u of out.foes || []) if (u.gid != null) { mark(g, u.gid, 2); if (out.result === 'win' && u.sol <= 0) versus(g, u.gid, true); if (out.result === 'lose') versus(g, u.gid, false); }
+      for (const u of out.foes || []) if (u.gid != null) { mark(g, u.gid, 2); if (out.result === 'win' && u.sol <= 0) versus(g, u.gid, true); if (out.result === 'lose') versus(g, u.gid, false); g.nemesis.note(u.gid, out.result === 'win', u.sol <= 0); }
     }
     await g.battle.say(out.result === 'win' ? '勝利！' : out.result === 'lose' ? '全軍潰敗……' : '撤退了。', 700);
     g.battle.close(); g.mode = g.town ? 'town' : 'world'; g.audio.music(g.town ? 'town' : 'field');
     if (msg) await this.ui.say('', msg);
+    await g.hard.after(out, o);
     if (out.result === 'lose' && !o.drill && !o.siegeOf) await this.defeat();
+    if (!o.drill) g.hard.battleEnd();
     g.locked = false; g.hud();
     checkTitles(g); if (!o.drill) await offerOaths(g);
     out.result && (this.last = out);

@@ -39,7 +39,7 @@ export class Ties {
     T.feud = T.feud.filter(([a, b]) => able(G.gens[a]) && able(G.gens[b]));
     if (Math.random() < 0.25) {
       const live = G.gens.filter((g) => able(g) && g.status === 'serving' && !this.brothers(g.id).length), a = pick(live), b = a && pick(live.filter((x) => x !== a && x.city === a.city && x.fac === a.fac));
-      if (a && b) { T.sworn.push([a.id, b.id]); record(G, 'tie', 'oath', { a: a.name, b: b.name, c: G.cities[a.city].name }, a.fac, 1, { g: a.id }); }
+      if (a && b) { T.sworn.push([a.id, b.id]); record(G, 'tie', 'tieOath', { a: a.name, b: b.name, c: G.cities[a.city].name }, a.fac, 1, { g: a.id }); }
     }
     for (const [a, b] of T.feud) {
       const x = G.gens[a], y = G.gens[b], cx = G.cities[x.city], cy = G.cities[y.city]; if (!able(x) || !able(y) || !cx || !cy || (x.city !== y.city && !cx.adj.includes(y.city)) || Math.random() > 0.08) continue;

@@ -13,6 +13,8 @@ import { battleMods } from './bonds.js';
 import { relicFx } from './relics.js';
 import { groupTraits, comboLines, syncParty } from './traits.js';
 import { FX } from './fx.js';
+import { diff } from './hardship.js';
+import { bondOf } from './bonds.js';
 
 const PACE = 2, HIT = 1.8, MEND = 1.5;   // the pace of a battle: animations quicker, blows harder, so a fight takes fewer rounds
 const wait = (ms) => new Promise((r) => setTimeout(r, ms / PACE));
@@ -83,7 +85,7 @@ export class Battle {
     const EXTRA = ['thunder', 'fire', 'siege', 'wall', 'firstAtk', 'bossDmg', 'lowAtk', 'beastDmg', 'infPow', 'horse', 'stun', 'breakdef', 'counter', 'bowPow', 'navyPow', 'again', 'tacDmg', 'tacCost', 'tacHit', 'healPow', 'spRegen', 'steal', 'regen', 'physRes', 'tacRes', 'block', 'noConfuse', 'revive', 'lowHeal', 'startRouse', 'auraAtk', 'auraDef', 'duelHp', 'duelDmg'];
     const withRelics = (arms, r) => { const R = relicFx(r); for (const k of ['crit', 'combo', 'pierce', 'dodge']) arms[k] = (arms[k] || 0) + (R[k] || 0); arms.sweep = Math.max(arms.sweep || 0, R.sweep || 0); arms.first ||= !!R.first; arms.flee ||= !!R.flee; arms.cav = (arms.cav || 1) * (1 + (R.cavPow || 0)); for (const k of EXTRA) arms[k] = R[k] || 0; return arms; };
     const mk = (p) => { const g = p.g, r = p.rec, st = bstats(g, r), arms = withRelics(armsOf(G, g), r);
-      if (g.isPlayer && wounded) { st.atk *= 0.85; st.def *= 0.85; }
+      if ((g.isPlayer && wounded) || (!g.isPlayer && this.game.hard?.hurt(g.id))) { st.atk *= 0.85; st.def *= 0.85; }
       st.spd += arms.spd + (arms.first ? 999 : 0);
       const troop = r.troop === 'cav' && !hasHorse(G, g, r) ? 'inf' : r.troop || (hasHorse(G, g, r) ? 'cav' : p.look?.wpn === 'bow' ? 'bow' : 'inf');
       return { side: 'party', g, rec: r, name: g.name, look: p.look, lv: r.lv, sol: r.sol, solMax: p.solMax, sp: r.sp, spMax: p.spMax, st, arms, troop, tactics: arms.thunder > 0 && !tacticsOf(g).includes('lei') ? [...tacticsOf(g), 'lei'] : tacticsOf(g), status: {}, isPlayer: g.isPlayer }; }; // 雷法 brings 落雷 with it
@@ -107,7 +109,11 @@ export class Battle {
     if (H && hasT(H, 'wanren')) this.mods.atk *= 1.05; if (H && o.siege && hasT(H, 'gongcheng')) this.mods.atk *= 1.1;
     this.mods.atk *= 1 + Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraAtk || 0), 0));
     this.partyDef = (1 - Math.min(0.3, this.party.reduce((t, u) => t + (u.arms.auraDef || 0), 0))) * (1 - (H && this.game.perk ? this.game.perk().def || 0 : 0));
-    this.mods.foeAtk *= 1 + Math.min(0.3, this.foes.reduce((t, u) => t + (u.arms.auraAtk || 0), 0)); this.foeDef = 1 - Math.min(0.3, this.foes.reduce((t, u) => t + (u.arms.auraDef || 0), 0));
+    this.mods.foeAtk *= 1 + Math.min(0.3, this.foes.reduce((t, u) => t + (u.arms.auraAtk || 0), 0));
+    // the difficulty, a tired party, and a nemesis come for the player
+    if (H && !o.drill) { const nm = this.game.nemesis?.mods(this.foes); if (nm) { this.mods.foeAtk *= nm.foeAtk; this.mods.lines.push(...nm.lines); } }
+    if (H && !o.drill) { this.mods.foeAtk *= diff(this.game).foeK; const tf = this.game.hard?.battle(); if (tf) { this.mods.atk *= tf.atk; this.partyDef *= tf.dmg; this.mods.lines.push(tf.line); } }
+    this.guarded = false; this.foeDef = 1 - Math.min(0.3, this.foes.reduce((t, u) => t + (u.arms.auraDef || 0), 0));
     // a column for each side, spread from front to back, every other general a step out
     const zs = (n) => Array.from({ length: n }, (_, i) => OZ + (n === 1 ? 6.2 : 3.7 + i * Math.min(1.9, 5.2 / (n - 1))));
     const pz = zs(this.party.length), fz = zs(this.foes.length);
@@ -339,6 +345,8 @@ export class Battle {
     return Math.max(1, Math.round(d * HIT));
   }
   hit(t, d, by, magic) {
+    // a companion who loves the player throws himself in front of the blow that would rout them (once a battle)
+    if (t.isPlayer && by && t.sol - d <= 0 && !this.guarded && this.game.H) { const sh = this.party.find((x) => !x.isPlayer && x.sol > d * 0.5 && bondOf(this.game.H, x.g.id) >= 80); if (sh) { this.guarded = true; this.float(t, `${sh.name}挺身擋刀！`, '#ffd86a', true); t = sh; } }
     t.sol = Math.max(0, t.sol - d); this.float(t, d, magic ? '#ffb04a' : '#ffffff', d > t.solMax * 0.25);
     if (by && !magic && by.arms?.steal && by.sol > 0) { const n = Math.round(d * by.arms.steal); by.sol = Math.min(by.solMax, by.sol + n); this.drawBar(by); }
     if (t.sol <= 0 && t.arms?.revive && !t.revived) { t.revived = true; t.sol = Math.round(t.solMax * t.arms.revive); setTimeout(() => this.float(t, '重整旗鼓！', '#ffd86a', true), 300); }
@@ -416,6 +424,13 @@ export class Battle {
     const me = Math.max(...this.party.filter((u) => u.sol > 0).map((u) => u.st.spd)), them = Math.max(...this.foes.filter((u) => u.sol > 0).map((u) => u.st.spd));
     const dilu = this.party.find((u) => u.sol > 0 && u.arms?.flee);
     if (dilu) { await this.say(`${dilu.name}的的盧一躍而起，全軍跟著突圍而出！`); return true; }
+    // one may stay behind and hold them off: the rest get away for certain
+    const mates = this.party.filter((u) => !u.isPlayer && u.sol > 0);
+    if (mates.length && !this.auto && !this.o.drill && this.game.H) {
+      const how = await this.menu('怎麼撤退？', [{ k: 'all', n: '全軍撤退', d: '看雙方的速度，可能失敗' }, { k: 'rear', n: '派人斷後', d: '必定撤退成功；斷後的人可能受傷、失散，甚至戰死' }, { k: null, n: '← 返回' }]);
+      if (how == null) return false;
+      if (how === 'rear') { const u = mates.length === 1 ? mates[0] : await this.pick(mates, '誰來斷後？', true); if (u) { this.game.hard.rear = u.g.id; await this.say(`${u.name}：「你們先走，這裡交給我！」`); return true; } }
+    }
     if (Math.random() < clamp(0.55 + (me - them) / 100 + (FORMS[this.form.party].flee || 0), 0.2, 0.95)) { await this.say('全軍撤退了。'); return true; }
     await this.say('撤退失敗！'); await this.playRound([]); return false;
   }
