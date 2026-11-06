@@ -236,6 +236,10 @@ export class Actions {
     if (!f || sameSide) opts.push({ k: 'spar', n: '切磋' });
     if (!sameSide) opts.push({ k: 'duel', n: '挑戰（生死決鬥）' });
     if (n.road && this.canAmbush(x)) opts.push({ k: 'ambush', n: '攻擊', d: `和${x.name}的部隊交戰` });
+    // busy on the road (crowd.js): fighting bandits, or another officer
+    const foe = n.stop === 'clash' && G.gens[n.foe];
+    if (n.stop === 'bandit') opts.unshift({ k: 'helpB', n: '助陣討賊', d: `和${x.name}一起打山賊` });
+    if (foe && this.canAmbush(foe)) opts.unshift({ k: 'helpC', n: `助陣（攻擊${foe.name}）`, d: `幫${x.name}打${G.factions[foe.fac].name}軍` });
     opts.push({ k: null, n: '離開' });
     let c; for (;;) { c = await this.ui.ask(info, opts, x.name, look); if (c !== 'traits') break; await this.ui.panel(traitCard(this.g, x), { title: `${x.name}的特性`, cls: 'wide' }); }
     if (c === 'talk') await this.ui.say(x.name, this.lineOf(x, f, sameSide), look);
@@ -245,6 +249,28 @@ export class Actions {
     if (c === 'spar') await this.duelWith(x, 'spar', n);
     if (c === 'duel') await this.duelWith(x, 'kill', n);
     if (c === 'ambush') await this.roadFight(x, n);
+    if (c === 'helpB') await this.helpBandits(x);
+    if (c === 'helpC') await this.helpClash(x, foe);
+  }
+  // an officer fighting bandits on the road: fight them for him
+  async helpBandits(x) {
+    const me = this.me, H = this.H, look = this.g.lookOf(x), lv0 = this.g.partyList().reduce((s, p) => s + p.rec.lv, 0) / (H.party.length + 1), base = pick(['山賊', '流寇', '盜匪']);
+    const foes = Array.from({ length: 2 + Math.floor(Math.random() * 3) }, (_, i) => this.foe(i ? base : base + '頭目', 'bandit', Math.max(1, Math.round(lv0 + Math.random() * 2 - 1)), null, !i));
+    this.g.audio.sfx('encounter');
+    const r = await this.fight(foes, { terrain: this.terrainAt(), title: `助${x.name}討賊！` });
+    this.g.crowd.cut(x); if (r !== 'win') return;
+    const gold = 20 + Math.round(lv0 * 4); H.gold += gold; H.fame += 3; H.st.bandits += foes.length; addBond(this.g, x.id, 15);
+    if (this.g.myFaction() && x.fac === this.g.myFaction() && !this.g.isLord()) { me.merit += 3; this.promote(); }
+    this.g.audio.sfx('coin'); this.g.hud();
+    await this.ui.say(x.name, `${pick([`多謝${me.name}出手相助！`, '好身手！有你在，這些賊寇不堪一擊。', `${me.name}，這份人情我記下了。`])}
+（金 +${gold}、名聲 +3、好感 +15）`, look);
+  }
+  // two officers fighting on the road: take one side (fight the other one)
+  async helpClash(x, foe) {
+    const r = await this.roadFight(foe, { kind: 'patrol' }); if (r !== 'win') return;
+    addBond(this.g, x.id, 20);
+    await this.ui.say(x.name, `${pick([`${this.me.name}，多謝援手！此恩必報。`, '來得正好！', `${foe.name}被打跑了，多虧有你！`])}
+（好感 +20）`, this.g.lookOf(x));
   }
   // ---------------------------------------------------------------- an enemy officer met on the road (crowd.js): fight him and his men
   canAmbush(x) { const G = this.G, f = x.status === 'serving' && G.factions[x.fac], mine = this.g.myFaction(); if (!f || x.fac === mine || f.lord === x.id) return false; return !mine || !allied(G, mine, f.id); }
@@ -260,11 +286,12 @@ export class Actions {
     // what he lost comes out of his city's garrison (the battle fights copies: out.foes); and he rides home
     const fought = this.last?.foes || foes, lost = fought.reduce((s, u) => s + (u.solMax - Math.max(0, u.sol)), 0); if (C && C.owner === x.fac) C.troops = Math.max(0, C.troops - lost);
     this.g.crowd.home(x);
-    if (r !== 'win' || x.status !== 'serving') return;
+    if (r !== 'win' || x.status !== 'serving') return r;
     this.H.fame += 8; if (this.g.myFaction() && !this.g.isLord()) { me.merit += Math.round(6 * (1 + partyFx(this.g, 'merit'))); this.promote(); }
     record(G, 'war', 'roadWin', { g: me.name, x: x.name, f: f.name }, this.g.myFaction(), 1, { g: x.id });
     // beaten to the last man, he may be taken
     if ((fought.find((u) => u.gid === x.id)?.sol ?? 1) <= 0 && Math.random() < 0.5) await this.captive(x, f);
+    return r;
   }
   // a general taken on the road: win him over, let him go, or put him to death
   async captive(x, pf) {
