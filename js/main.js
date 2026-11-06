@@ -237,7 +237,7 @@ class Game {
     // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
     try {
-      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); this.roam.tick(dt); this.crowd.tick(dt); this.camps.tick(dt); this.outlaws.tick(dt); this.horses.tick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
+      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); this.roam.tick(dt); this.crowd.tick(dt); this.camps.tick(dt); this.outlaws.tick(dt); this.horses.tick(dt); this.moodTick(); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
       if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
@@ -292,9 +292,9 @@ class Game {
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
     if (this.steps > 5 && this.board.walk()) { this.steps = 0; return; }
     if (this.steps > 3 && this.H.challenger && !this.auto.on) { this.steps = 0; this.act.rankChallenge(); return; }
-    if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (hasT(this.H, 'canbao') ? 0.6 : 1) * (1 - partyFx(this, 'encounter'))) { this.steps = 0; if (!this.outlaws.hunters()) this.act.encounter(regionAt(P.x, P.z), k); return; }
+    if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (this.night() ? 1.4 : 1) * (hasT(this.H, 'canbao') ? 0.6 : 1) * (1 - partyFx(this, 'encounter'))) { this.steps = 0; if (!this.outlaws.hunters()) this.act.encounter(regionAt(P.x, P.z), k); return; }
     if (this.H.walk % 10 === 0) this.happen('field');
-    if (this.H.walk % 10 === 0) this.hud();
+    if (this.H.walk % 10 === 0 || this.shichen() !== this.lastSc) { this.lastSc = this.shichen(); this.hud(); }
   }
   thingAt(x, z) { const M = this.town; if (!M?.cave) return null; return M.chests.find((c) => c.x === x && c.z === z) || M.odd.find((o) => o.x === x && o.z === z && o.kind !== 'hermit') || null; }
   bump(x, z) {
@@ -382,6 +382,31 @@ class Game {
     const act = this.view.addActor(soldierSheet('soldier', color, 'flag'), a.x, a.y + 1, { scale: 1.2 });
     act.march = { a, b, t: 0, dur: 4 + d / 8 / K, win }; (this.armies ||= []).push(act);
   }
+  // ---------------------------------------------------------------- the hour and the weather
+  // a day is thirty steps, from the hour of 卯 (5 in the morning); night from 戌 (19) to 寅
+  hour() { return (5 + ((this.H?.walk || 0) % 30) * 0.8) % 24; }
+  daylight() { const h = this.hour(); return h >= 7 && h <= 17 ? 1 : h > 5 && h < 7 ? 0.4 + 0.3 * (h - 5) : h > 17 && h < 19 ? 1 - 0.3 * (h - 17) : 0.4; }
+  shichen() { return '子丑寅卯辰巳午未申酉戌亥'[Math.floor(((this.hour() + 1) % 24) / 2)] + '時'; }
+  underground() { return this.mode === 'town' && !!this.town?.cave; }
+  night() { return !this.underground() && this.daylight() < 0.6; }
+  // the weather of the day where the player is: rain more in summer and the south, snow in the northern winter
+  wx() {
+    const H = this.H, G = this.G; if (!H || !G || this.underground()) return null;
+    if (H.wxDay !== H.days) {
+      H.wxDay = H.days; const m = G.month, north = (this.pos?.z ?? 0) < this.world.H * 0.45, r = Math.random();
+      const snow = north ? ([12, 1, 2].includes(m) ? 0.3 : [11, 3].includes(m) ? 0.1 : 0) : [12, 1].includes(m) ? 0.05 : 0;
+      const rain = [5, 6, 7, 8].includes(m) ? (north ? 0.18 : 0.3) : snow ? 0.06 : north ? 0.08 : 0.15;
+      H.wxK = r < snow ? 'snow' : r < snow + rain ? 'rain' : null;
+    }
+    return H.wxK;
+  }
+  moodTick() {
+    const open = this.mode === 'world' || (this.mode === 'town' && !this.town?.cave), l = open ? this.daylight() : 1, w = open ? this.wx() : null, key = `${l}|${w}`;
+    // rain or snow over everything (a battle too), not underground
+    const el = document.getElementById('wx'), shown = this.H && !this.underground() && ['world', 'town', 'battle'].includes(this.mode) ? this.H.wxK || '' : ''; if (el && el.className !== shown) el.className = shown;
+    if (!open || (key === this.moodKey && this.view.M === this.moodM)) return; this.moodKey = key; this.moodM = this.view.M;
+    if (open) this.view.mood(l, w); if (this.view.torch?.visible && this.pos) this.view.torch.position.set((this.pos.fx ?? this.pos.x) + 0.5, 1.6, (this.pos.fz ?? this.pos.z) + 0.5);
+  }
   armyTick(dt) {
     if (!this.armies?.length) return;
     for (const a of [...this.armies]) { const m = a.march; m.t += dt; const p = Math.min(1, m.t / m.dur); a.x = m.a.x + (m.b.x - m.a.x) * p; a.z = m.a.y + 1 + (m.b.y - m.a.y) * p; a.dir = Math.abs(m.b.x - m.a.x) > Math.abs(m.b.y - m.a.y) ? (m.b.x > m.a.x ? 2 : 1) : m.b.y > m.a.y ? 0 : 3; a.frame = Math.floor(m.t * 6) % 2 ? 0 : 2; a.y = this.mode === 'world' ? Math.max(0, this.world.hAt(Math.round(a.x), Math.round(a.z))) : 0; this.view.placeActor(a); if (p >= 1) { this.view.removeActor(a); this.armies = this.armies.filter((x) => x !== a); } }
@@ -394,7 +419,7 @@ class Game {
     const sol = this.partyList().reduce((s, p) => s + p.rec.sol, 0), max = this.partyList().reduce((s, p) => s + p.solMax, 0);
     const tt = knownAs(this.H), hurt = this.H.wound > G.t, bot = this.auto?.on;
     el.innerHTML = `<div class="h-name"><b>${g.name}</b>${tt ? `<em class="h-title">「${tt}」</em>` : ''}<span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍・' + this.rank() : '在野'}</span>${hurt ? '<em class="h-hurt">負傷</em>' : ''}${bot ? `<em class="h-bot">🤖 代玩・${this.auto.style.n}</em>` : ''}</div>
-      <div class="h-row"><span>${dateStr(G.year, G.month)}${this.H.days % 30 + 1}日</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span>${this.H.wanted ? `<span style="color:#ff8a6a">通緝 ${this.H.wanted * 10}金</span>` : ''}</div>
+      <div class="h-row"><span>${dateStr(G.year, G.month)}${this.H.days % 30 + 1}日 ${this.shichen()}${{ rain: '🌧', snow: '❄' }[this.H.wxK] || (this.night() ? '🌙' : '☀')}</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span>${this.H.wanted ? `<span style="color:#ff8a6a">通緝 ${this.H.wanted * 10}金</span>` : ''}</div>
       <div class="h-row"><span>兵力 ${sol}/${max}</span><span>Lv ${this.H.rec[this.H.pid].lv}</span><span>隊伍 ${this.H.party.length + 1}</span></div>`;
     this.screens.minimap();
   }

@@ -285,7 +285,7 @@ export class Actions {
     const foes = [{ name: x.name, look: this.g.lookOf(x), lv, war: x.war, lead: x.lead, int: x.int, sol, solMax: sol, sp: Math.round(spMax(x, rec)), spells: x.spells, gid: x.id, color: f.color, wpn: Math.round(lv / 4), arm: Math.round(lv / 4) }];
     for (let i = 0, k = kind === 'post' ? 1 : 1 + Math.floor(Math.random() * 3); i < k; i++) foes.push(this.foe(`${f.name}軍士兵`, 'soldier', Math.max(1, lv - 3), f.color, false));
     this.g.audio.sfx('encounter');
-    const r = await this.fight(foes, { terrain: this.terrainAt(), title: `與${f.name}軍・${x.name}交戰！` });
+    const r = await this.fight(foes, { terrain: this.terrainAt(), title: `與${f.name}軍・${x.name}交戰！`, ambush: true });
     // what he lost comes out of his city's garrison (the battle fights copies: out.foes); and he rides home
     const fought = this.last?.foes || foes, lost = fought.reduce((s, u) => s + (u.solMax - Math.max(0, u.sol)), 0); if (C && C.owner === x.fac) C.troops = Math.max(0, C.troops - lost);
     this.g.crowd.home(x);
@@ -341,7 +341,7 @@ export class Actions {
       return { name: x.name, look: this.g.lookOf(x), lv, war: x.war, lead: x.lead, int: x.int, sol, solMax: sol, sp: Math.round(spMax(x, rec)), spells: x.spells, gid: x.id, color: f.color, wpn: Math.round(lv / 4), arm: Math.round(lv / 4) }; });
     for (let i = 0; i < 2; i++) foes.push(this.foe(`${f.name}軍士兵`, 'soldier', Math.max(1, this.lvOf(gs[0]) - 3), f.color, false));
     this.g.audio.sfx('encounter');
-    const r = await this.fight(foes, { terrain: this.terrainAt(), title: `截擊${f.name}軍大軍！` });
+    const r = await this.fight(foes, { terrain: this.terrainAt(), title: `截擊${f.name}軍大軍！`, ambush: true });
     const fought = this.last?.foes || foes, lost = fought.reduce((s, u) => s + (u.solMax - Math.max(0, u.sol)), 0);
     // the men lost in the fight, and (a win) as many again who scatter
     c.troops = Math.max(0, c.troops - lost * (r === 'win' ? 2 : 1)); if (r !== 'win') return;
@@ -736,7 +736,7 @@ export class Actions {
     catch (e) { console.error(e); const g = this.g; try { g.battle.close(); } catch (e2) {} g.mode = g.town ? 'town' : 'world'; g.locked = false; await this.ui.fade(0, 100); g.hud(); return 'flee'; }
   }
   async fight0(foes, o = {}) {
-    const g = this.g, G = this.G; g.mode = 'battle'; g.locked = true;
+    const g = this.g, G = this.G; o = { night: g.night(), wx: g.wx(), ...o }; g.mode = 'battle'; g.locked = true;
     await this.ui.fade(1, 250);
     const party = g.partyList(), f = g.myFaction() && G.factions[g.myFaction()];
     const res = g.battle.run(party, foes, { ...o, color: f ? f.color : '#5a6a8a' });

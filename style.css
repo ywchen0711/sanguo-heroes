@@ -180,3 +180,10 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 .combo-tip { color: #ffd86a; font-size: 14px; }
 
 .fame { margin: 4px 0; } .fame .dim { font-size: 13px; }
+
+/* rain and snow over the screen (main.js moodTick) */
+#wx { position: fixed; inset: 0; pointer-events: none; z-index: 13; display: none; }
+#wx.rain { display: block; background-image: repeating-linear-gradient(105deg, rgba(200, 220, 255, 0) 0 9px, rgba(200, 220, 255, .28) 9px 10px, rgba(200, 220, 255, 0) 10px 23px), repeating-linear-gradient(100deg, rgba(220, 235, 255, 0) 0 17px, rgba(220, 235, 255, .2) 17px 18px, rgba(220, 235, 255, 0) 18px 41px); background-size: 120px 140px, 180px 220px; animation: rainfall .45s linear infinite; }
+#wx.snow { display: block; background-image: radial-gradient(circle, rgba(255,255,255,.9) 0 1.6px, transparent 2px), radial-gradient(circle, rgba(255,255,255,.7) 0 1.1px, transparent 1.5px); background-size: 90px 90px, 55px 55px; background-position: 0 0, 30px 20px; animation: snowfall 6s linear infinite; }
+@keyframes rainfall { from { background-position: 0 0, 0 0; } to { background-position: -38px 140px, -40px 220px; } }
+@keyframes snowfall { from { background-position: 0 0, 30px 20px; } to { background-position: 40px 90px, 0 75px; } }

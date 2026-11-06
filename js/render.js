@@ -362,6 +362,16 @@ export class View {
   // compile every material on the map now, so nothing stalls the first time it comes into view
   warm() { try { this.renderer.compile(this.scene, this.camera); } catch (e) {} }
   // the season tints the grade a little: spring green, summer warm, autumn gold, winter cold
+  // the hour and the weather over an open map: l = daylight (1 noon … 0.4 night), wx = 'rain' | 'snow' | null
+  mood(l, wx) {
+    const M = this.M; if (!M || M.dark) return;
+    const sky = new THREE.Color(M.sky || '#9ac8f0'), fog = new THREE.Color(M.fog || M.sky || '#c8d8e8'), night = new THREE.Color('#0c1630'), grey = new THREE.Color(wx === 'snow' ? '#c8ccd4' : '#7a848e'), wet = wx ? 0.65 : 0, k = Math.min(0.8, (1 - l) / 0.6);
+    this.scene.background.copy(sky.lerp(grey, wet).lerp(night, k * 0.92)); this.scene.fog.color.copy(fog.lerp(grey, wet).lerp(night, k * 0.92));
+    this.hemi.intensity = 1.35 * (0.3 + 0.7 * (1 - k)) * (wx ? 0.85 : 1); this.sun.intensity = 2.1 * (0.06 + 0.94 * (1 - k)) * (wx ? 0.4 : 1);
+    this.hemi.color.set(k > 0.5 ? '#a8b8f0' : '#dfefff'); this.sun.color.set(k > 0.2 && k < 0.8 ? '#ffc890' : '#fff0d8');
+    // a torch for the party at night
+    if (k > 0.5 && !this.torch) { this.torch = new THREE.PointLight('#ffb070', 3.2, 11, 1.4); this.scene.add(this.torch); } if (this.torch) this.torch.visible = k > 0.5;
+  }
   season(month) {
     const T = { 1: [0.96, 0.99, 1.06], 2: [0.98, 1, 1.04], 3: [1.0, 1.02, 0.96], 4: [1.01, 1.02, 0.95], 5: [1.02, 1.01, 0.94], 6: [1.04, 1.0, 0.92], 7: [1.05, 1.0, 0.9], 8: [1.05, 0.99, 0.9], 9: [1.06, 0.99, 0.88], 10: [1.07, 0.98, 0.86], 11: [1.0, 0.98, 0.98], 12: [0.95, 0.98, 1.08] }[month];
     this.grade.uniforms.tint.value.set(...T);

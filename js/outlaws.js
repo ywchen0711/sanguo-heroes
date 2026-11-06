@@ -126,7 +126,7 @@ export class Outlaws {
   async rob(c, look) {
     const act = this.g.act, H = this.H, lv = act.avgLv();
     const foes = Array.from({ length: R(2, 3) }, (_, i) => act.foe(i ? '鏢師' : '總鏢頭', 'soldier', Math.max(1, lv + 1), '#8a7a5a', !i));
-    this.g.audio.sfx('encounter'); const r = await act.fight(foes, { terrain: act.terrainAt(), title: '打劫商隊！' });
+    this.g.audio.sfx('encounter'); const r = await act.fight(foes, { terrain: act.terrainAt(), title: '打劫商隊！', ambush: true });
     if (r !== 'win') return;
     const gold = 120 + lv * 10 + R(0, 80); H.gold += gold; H.wanted = (H.wanted || 0) + 25; bump(H, 'cruel'); H.fame = Math.max(0, H.fame - 5);
     c.t0 = this.now + 200; c.rob = null; // it limps home

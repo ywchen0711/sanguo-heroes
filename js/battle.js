@@ -78,6 +78,7 @@ export class Battle {
   async run(party, foes, o = {}) {
     this.ensureView(); this.root.classList.add('on'); this.partyColor = o.color || '#3a6ad8';
     this.stage(o.terrain, o.siege); this.o = o; this.round = 0; this.log = [];
+    if (o.night || o.wx) this.view.mood(o.night ? 0.45 : 1, o.wx);
     const G = this.game.G, H = this.game.H, wounded = H?.wound > G?.t;
     const EXTRA = ['thunder', 'fire', 'siege', 'wall', 'firstAtk', 'bossDmg', 'lowAtk', 'beastDmg', 'infPow', 'horse', 'stun', 'breakdef', 'counter', 'bowPow', 'navyPow', 'again', 'tacDmg', 'tacCost', 'tacHit', 'healPow', 'spRegen', 'steal', 'regen', 'physRes', 'tacRes', 'block', 'noConfuse', 'revive', 'lowHeal', 'startRouse', 'auraAtk', 'auraDef', 'duelHp', 'duelDmg'];
     const withRelics = (arms, r) => { const R = relicFx(r); for (const k of ['crit', 'combo', 'pierce', 'dodge']) arms[k] = (arms[k] || 0) + (R[k] || 0); arms.sweep = Math.max(arms.sweep || 0, R.sweep || 0); arms.first ||= !!R.first; arms.flee ||= !!R.flee; arms.cav = (arms.cav || 1) * (1 + (R.cavPow || 0)); for (const k of EXTRA) arms[k] = R[k] || 0; return arms; };
@@ -94,6 +95,10 @@ export class Battle {
     const named = this.foes.filter((f) => f.gid != null), FT = named.length ? groupTraits(named.map((f) => G.gens[f.gid])) : null;
     for (const f of named) { const fx = FT.get(f.gid).fx; for (const [k, v] of Object.entries(fx)) { if (['war', 'lead', 'int'].includes(k)) { if (k === 'war') f.st.atk += v; if (k === 'int') f.st.int += v; continue; } if (k === 'spd') { f.st.spd += v; continue; } if (k === 'first') { f.st.spd += 999; continue; } if (k === 'cavPow') { f.arms.cav = (f.arms.cav || 1) * (1 + v); continue; } f.arms[k] = (typeof v === 'number' && typeof f.arms[k] === 'number') ? f.arms[k] + v : v; } }
     this.comboSay = [...(PT ? comboLines(PT, party.map((p) => p.g), '') : []), ...(FT ? comboLines(FT, named.map((f) => G.gens[f.gid]), '敵軍') : [])];
+    // the hour and the weather: a night attack strikes first and hard; rain wets the bowstrings and the tinder, snow slows the horses
+    if (o.night && o.terrain !== 'cave') this.comboSay.unshift(o.ambush ? '夜襲！趁著夜色發動奇襲（第一回合傷害提升）' : '夜裡遭到伏擊！（敵軍第一回合傷害提升）');
+    if (o.wx === 'rain') this.comboSay.unshift('大雨滂沱：弓兵威力下降、火攻難以施展、水攻更強');
+    if (o.wx === 'snow') this.comboSay.unshift('大雪紛飛：騎兵行動遲緩');
     // formations: ours as last chosen; an army led by generals (or a siege) draws one up too
     this.form = { party: H?.form || 'yulin', foe: foes.some((f) => f.gid != null) || o.siege ? Object.keys(FORMS)[Math.floor(Math.random() * 5)] : null };
     // what the people in the player's life bring: sworn brothers, a fury for a fallen one, rivals, a killer to avenge
@@ -287,11 +292,11 @@ export class Battle {
         for (const t of ts) {
           const hitP = clamp(0.6 + (u.st.int - t.st.int) / 110 + (u.arms?.tacHit || 0), 0.18, 0.97);
           if (Math.random() > hitP) { this.float(t, '識破！', '#c8e8ff'); continue; }
-          const terr = this.o.terrain, bonus = (o.k === 'rock' && terr === 'hill') || (o.k === 'flood' && (terr === 'marsh' || terr === 'coast')) || ((o.k === 'fire' || o.k === 'blaze') && terr === 'forest') ? 1.35 : o.k === 'fire' && terr === 'snow' ? 0.7 : 1;
+          const terr = this.o.terrain, bonus = (o.k === 'rock' && terr === 'hill') || (o.k === 'flood' && (terr === 'marsh' || terr === 'coast')) || ((o.k === 'fire' || o.k === 'blaze') && terr === 'forest') ? 1.35 : o.k === 'fire' && terr === 'snow' ? 0.7 : 1, wet = this.o.wx === 'rain' ? ((o.k === 'fire' || o.k === 'blaze') ? 0.4 : o.k === 'flood' ? 1.3 : 1) : this.o.wx === 'snow' && o.k === 'fire' ? 0.7 : 1;
           const fm = FORMS[this.form[u.side === 'party' ? 'party' : 'foe']]?.tac || 1, tm = u.side === 'party' && hasT(this.game.H, 'zhiduo') ? 1.1 : 1;
           const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * (1 + ((o.k === 'fire' || o.k === 'blaze' || o.k === 'feng') ? u.arms?.fire || 0 : 0)) * (o.k === 'lei' ? 1 + (u.arms?.thunder || 0) : 1) * (this.round === 1 ? 1 + (u.arms?.firstAtk || 0) : 1) * (this.o.siege && t.side === 'foe' ? 1 - (t.arms?.wall || 0) : 1);
           const sfU = 0.4 + 0.6 * Math.sqrt(Math.max(0, u.sol) / u.solMax), wits = clamp(1 + (u.st.int - t.st.int) / 120, 0.55, 1.5);   // wits against wits, carried out by the troops left
-          const d = Math.round(HIT * (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2));
+          const d = Math.round(HIT * (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * wet * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2));
           if (u.side === 'party' && this.game.H) bump(this.game.H, 'tacs');
           this.hit(t, d, u, true);
         }
@@ -317,6 +322,8 @@ export class Battle {
     const def = t.st.def * (ft?.def || 1) * (1 - (u.arms?.pierce || 0)) * (t.status.broken ? 1 - (t.brokenV || 0) : 1);
     let d = base * sf * (0.88 + Math.random() * 0.24) * (100 / (100 + def * 0.8));
     if (u.status.rouse) d *= 1.3; if (t.status.guard) d *= 0.5; if (this.o.siege && t.side === 'foe') d *= 0.85;
+    if (this.round === 1 && this.o.night && this.o.terrain !== 'cave' && (u.side === 'party') === !!this.o.ambush) d *= 1.35;
+    if (this.o.wx === 'rain' && u.troop === 'bow') d *= 0.75; if (this.o.wx === 'snow' && u.troop === 'cav') d *= 0.85;
     // troops against troops on this ground; the formations; the cavalry of a famous horse
     d *= troopMul(u.troop, t.troop, this.o.terrain) * (fu?.atk || 1) * (fu && kt && fu.beats === kt ? 1.15 : 1);
     if (u.troop === 'bow' && fu?.bow) d *= fu.bow; if (u.troop === 'cav') d *= u.arms?.cav || 1;
