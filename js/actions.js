@@ -93,7 +93,7 @@ export class Actions {
       const t = q.tier, opts = [`item:ore*${1 + rint(0, t)}`, `gold+${30 + t * 30} item:ore${t >= 3 ? ' item:ore2' : ''}`, `gold+${60 + t * 70 + rint(0, 60)}`, `gold+${40 + t * 40} item:med2`, `item:med*2 item:book`, `eq:w${Math.min(7, 2 + t + rint(0, 1))}`, `eq:a${Math.min(7, 2 + t + rint(0, 1))}`, `gold+${30 + t * 30} item:rice item:wine`];
       const notes = await this.g.events.effects(pick(opts).split(' '), c, {});
       const ult = tryUlt(this.g, 'chest'); if (ult) notes.push(`★★ 神器「${RELICS[ult].n}」`);
-      else if (Math.random() < 0.02 + q.tier * 0.01) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
+      else if (Math.random() < (0.02 + q.tier * 0.01) / 5) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       else if (Math.random() < 0.4 + (q.tier >= 4 ? 0.15 : 0)) { const id = rollRelic(this.avgLv(), Math.min(4, q.tier)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', '打開了寶箱！\n' + notes.join('　')); this.g.hud(); return;
     }
@@ -136,7 +136,7 @@ export class Actions {
       this.H.st.missions++;
       if (Math.random() < 0.12 + q.tier * 0.04) { this.H.items.xisui = (this.H.items.xisui || 0) + 1; notes.push('洗髓丹'); }
       const ult = tryUlt(this.g, 'boss'); if (ult) notes.push(`★★ 神器「${RELICS[ult].n}」`);
-      if (Math.random() < 0.08 + q.tier * 0.04) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
+      if (Math.random() < (0.08 + q.tier * 0.04) / 5) { const id = jackpot(this.g); notes.push(`★「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       else { const id = rollRelic(this.avgLv() + 4, Math.min(5, q.tier >= 4 ? q.tier : q.tier + 1)); giveRelic(this.g, id, true); notes.push(`寶物「${RELICS[id].n}」（${GRADE_N[RELICS[id].grade]}）`); }
       await this.ui.say('', `打倒了${q.name}的${B.name}！\n${notes.join('　')}`); this.g.hud(); return;
     }
@@ -630,7 +630,7 @@ export class Actions {
       const named = foes.some((x) => x.gid != null || x.boss), chance = (named ? 0.14 : 0.05) + partyFx(g, 'drop');
       if (!o.drill && !o.noRelic && Math.random() < chance) { const id = rollRelic(this.avgLv(), named ? 2 : 1); giveRelic(g, id, true); msg += `\n得到寶物「<b style="color:${GRADE_C[RELICS[id].grade]}">${RELICS[id].n}</b>」！（${GRADE_N[RELICS[id].grade]}・${SLOT_N[RELICS[id].slot]}）`; }
       // a jackpot: very rarely, a treasure of the top grades from any fight (likelier from a general or a chief)
-      if (!o.drill && !o.noRelic && Math.random() < (named ? 0.04 : 0.012) + partyFx(g, 'drop') / 4) { const id = jackpot(g); msg += `\n★ 天降至寶！得到「<b style="color:${GRADE_C[RELICS[id].grade]}">${RELICS[id].n}</b>」（${GRADE_N[RELICS[id].grade]}）！`; }
+      if (!o.drill && !o.noRelic && Math.random() < ((named ? 0.04 : 0.012) + partyFx(g, 'drop') / 4) / 5) { const id = jackpot(g); msg += `\n★ 天降至寶！得到「<b style="color:${GRADE_C[RELICS[id].grade]}">${RELICS[id].n}</b>」（${GRADE_N[RELICS[id].grade]}）！`; }
       // a 神器: hardly ever, unless the party is set on finding treasure
       if (!o.drill && !o.noRelic) { const id = tryUlt(g, named ? 'named' : 'fight'); if (id) msg += `
 ★★ 神器現世！得到「<b style="color:${GRADE_C[6]}">${RELICS[id].n}</b>」！`; }

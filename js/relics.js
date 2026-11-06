@@ -59,12 +59,14 @@ export function relicLabel(e) {
 }
 // ---------------------------------------------------------------- finding them
 // even early on there is a thin chance of something wonderful (the last two numbers): that is the fun of it
-const WEIGHTS = (lv) => lv < 8 ? [58, 30, 9, 2.4, 0.6] : lv < 16 ? [35, 37, 20, 6.5, 1.5] : lv < 25 ? [20, 32, 30, 14, 4] : [10, 25, 33, 22, 10];
+// (珍品 and 神品 are a fifth as likely as they once were)
+const WEIGHTS = (lv) => lv < 8 ? [58, 30, 9, 0.48, 0.12] : lv < 16 ? [35, 37, 20, 1.3, 0.3] : lv < 25 ? [20, 32, 30, 2.8, 0.8] : [10, 25, 33, 4.4, 2];
 export function rollGrade(lv, min = 1) {
   const w = WEIGHTS(lv).map((x, i) => (i + 1 < min ? 0 : x)), tot = w.reduce((a, b) => a + b, 0) || 1; let r = Math.random() * tot;
   for (let i = 0; i < 5; i++) { r -= w[i]; if (r < 0) return i + 1; } return Math.max(min, 1);
 }
 export function rollRelic(lv, min = 1, slot = null) {
+  if (min >= 4 && Math.random() >= 0.2) min = 3;           // a promised 珍品 or better comes one time in five
   const g = rollGrade(lv, min), pool = RELIC_IDS.filter((id) => RELICS[id].grade === g && (!slot || RELICS[id].slot === slot));
   return pool[Math.floor(Math.random() * pool.length)];
 }
