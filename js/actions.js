@@ -654,6 +654,7 @@ export class Actions {
     if (strong) lines.push(`現在天下最強的是${strong.name}，擁有 ${citiesOf(G, strong.id).length} 座城。`);
     if (this.H.news[0]) lines.push('最近：' + this.H.news[0].split('　').slice(1).join('　'));
     if (Math.random() < 0.35) lines.push(sageRumor(this.g));
+    { const h = this.g.arena.hint(); if (h) lines.push(h, h); }
     const sick = G.cities.filter((c) => disasterAt(this.g, c.id)); if (sick.length) { const c = pick(sick); lines.push(`${c.name}正在鬧${DIS_N[disasterAt(this.g, c.id).k]}，聽說守軍也人心惶惶。`); }
     const said = hasT(this.H, 'bowen') ? [...new Set([pick(lines), pick(lines)])] : [pick(lines)];
     await this.ui.say('酒館老闆', said.filter(Boolean).join('\n') || '最近沒什麼新鮮事。');
@@ -707,6 +708,7 @@ export class Actions {
   }
   dropBanner(m) { if (this.g.mode !== 'world') return; const p = this.g.view.M.props?.find((q) => q.kind === 'banner' && q.x === m.x && q.z === m.z && !q.obj?.userData.gone); if (p) this.g.view.removeProp(p); }
   async missionFight(m) {
+    if (m.rise != null && await this.g.unrest.camp(m)) return;
     const n = Math.min(5, 2 + Math.floor(m.lv / 8)), foes = [this.foe(m.boss, m.kind === 'pirate' ? 'pirate' : m.kind, m.lv + 2, null, true)];
     for (let i = 1; i < n; i++) foes.push(this.foe(m.minion || (m.kind === 'turban' ? '黃巾賊' : m.kind === 'pirate' ? '海賊' : '山賊'), m.kind, m.lv));
     const r = await this.fight(foes, { terrain: this.terrainAt(), title: `「${m.boss}」率領賊眾殺了過來！`, noFlee: false });

@@ -83,6 +83,9 @@ export function fmt(e, lang = 'zh') {
     case 'tieOath': return en ? `${N('a')} and ${N('b')} swear brotherhood at ${C('c')}.` : `${p.a}與${p.b}在${p.c}結為異姓兄弟。`;
     case 'vow': return en ? `${N('a')} swears to avenge his sworn brother ${N('b')} on ${N('c')}.` : `${p.a}發誓要為結義兄弟${p.b}報仇，與${p.c}不共戴天。`;
     case 'revolt': return en ? `${N('g')}, distrusted by ${p.f}, rises in revolt at ${C('c')}.` : `${p.g}不堪${p.f}猜忌，在${p.c}舉兵反叛。`;
+    case 'arena': return en ? `${N('g')} wins the great tournament at ${C('c')}.` : `${p.g}在${p.c}的天下比武大會奪得冠軍。`;
+    case 'riseUp': return en ? `${N('g')} leads the starving of ${C('c')} in revolt and storms the city.` : `${p.g}率領${p.c}的饑民起事，攻進了城中。`;
+    case 'riseDown': return en ? `The rising of ${N('g')} at ${C('c')} is put down.` : `${p.c}${p.g}的民變平定了。`;
     case 'feudDuel': return en ? `The sworn enemies ${N('w')} and ${N('l')} fight man to man near ${C('c')}: ${N('w')} wins${p.killed ? ` and ${N('l')} falls` : ''}.` : `宿敵${p.w}與${p.l}在${p.c}郊外單挑，${p.w}獲勝${p.killed ? `，${p.l}戰死` : ''}。`;
     case 'marchOut': return en ? `The ${N('f')} army (${N('g')}, ${p.n} men) marches on ${C('c')}.` : `${p.f}軍（${p.g}）率兵${p.n}人，向${p.c}進軍。`;
     case 'marchBack': return en ? `The ${N('f')} army, cut down on the road, turns back from ${C('c')}.` : `${p.f}軍在進軍${p.c}的路上受挫，撤兵回城。`;
