@@ -8,6 +8,10 @@ import { pickAct, rivalAct, ONCE } from './sim/rivals.js';
 import { rivalE } from './sim/engine.js';
 import { CITY_POS, WALK, T, ENC } from './world.js';
 
+// a rival meets bandits on the road less often than the player does: it never stops to fight them
+const ROAD = 0.12;
+// and rests between deeds: a day is thirty steps, so a rival does about as much in a month as when it was ten
+const REST = 3;
 const WAIT = { bandit: 2, bounty: 5, cave: 20, travel: 5, work: 20, recruit: 10, treasure: 10, duel: 5, serve: 10, siege: 20, rise: 20 };
 const IN_CITY = new Set(['work', 'recruit', 'treasure', 'duel', 'serve', 'siege', 'rise']);
 const ACT_N = { bandit: '討賊', bounty: '追捕賊首', cave: '探洞', travel: '前往', work: '辦事', recruit: '招募', treasure: '尋寶', duel: '找人比武', serve: '求見', siege: '出征', rise: '起兵' };
@@ -56,7 +60,7 @@ export class Roam {
     rivalAct(G, R, o.act, rivalE(), { to: o.to, tier: o.tier });
     if (IN_CITY.has(o.act) || o.act === 'travel') R.inside = g.city;
     if (o.act === 'cave' && R.st.caves > c0) { const st = ((this.g.H.places ||= {})[o.place] ||= { chests: [], odd: [], boss: false }); st.boss = true; st.by = g.name; st.byT = G.t; }
-    R.wait = WAIT[o.act] || 10;
+    R.wait = (WAIT[o.act] || 10) * REST;
     const B = this.bodies.get(R.id);
     if (B && R.st.wins > w0) this.pop(B, o.act === 'cave' ? `平定${o.label}！` : o.act === 'bounty' ? '擒獲賊首！' : '擊退山賊！');
   }
@@ -69,7 +73,7 @@ export class Roam {
       if (!R.goal) { this.choose(R); if (!R.goal) continue; }
       if (R.path.length) { R.pos = R.path.shift(); const B = this.bodies.get(R.id); if (B && n === 1) { B.from = [B.a.x, B.a.z]; B.mt = 0; }
         // bandits on the road, as the player meets them
-        if (Math.random() < (ENC[this.g.world.at(R.pos[0], R.pos[1])] || 0)) { const w0 = R.st.wins; rivalAct(this.G, R, 'bandit', rivalE()); if (B && R.st.wins > w0) this.pop(B, '擊退山賊！'); } }
+        if (Math.random() < (ENC[this.g.world.at(R.pos[0], R.pos[1])] || 0) * ROAD) { const w0 = R.st.wins; rivalAct(this.G, R, 'bandit', rivalE()); if (B && R.st.wins > w0) this.pop(B, '擊退山賊！'); } }
       if (!R.path.length) this.arrive(R);
     }
   }

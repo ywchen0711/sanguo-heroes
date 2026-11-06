@@ -22,6 +22,8 @@ export function pickRivals(G, n, pid, r, how = 'famous') {
 }
 // experience on the player's own curve (hero.js expNeed), so a rival's level means what the player's does
 const need = (lv) => 30 + lv * lv * 18;
+// renown from small deeds (bandits, bounties, caves, a lord's month, a recruit) wears thin as it grows; great deeds count in full
+const small = (R, n) => { R.fame += Math.max(1, Math.round(n * 200 / (200 + R.fame))); };
 function gainR(G, R, g, n, favour, E) { R.lv ||= 1; R.exp = (R.exp || 0) + n; while (R.exp >= need(R.lv)) { R.exp -= need(R.lv); R.lv++; } gainLife(G, g, Math.round(n / 6), favour, E.refresh); if (g.life && g.life.lv < R.lv) g.life.lv = R.lv; }
 // the generals in the city a rival is in: met (for their own encyclopedia)
 function meet(G, R, g) { R.met ||= []; const seen = new Set(R.met); for (const y of G.gens) if (y.city === g.city && y !== g && (y.status === 'serving' || y.status === 'free') && !seen.has(y.id)) { R.met.push(y.id); seen.add(y.id); if (R.met.length % 40 === 0) break; } }
@@ -42,15 +44,15 @@ export function rivalAct(G, R, act, E, o = {}) {
   const r = G.r, g = G.gens[R.id], f = g.status === 'serving' && G.factions[g.fac], lord = f && f.lord === g.id, city = G.cities[g.city], lv = R.lv;
     const merit = (n) => { if (g.status !== 'serving' || lord) return; const before = rankIdx(g.merit); g.merit += n; const after = rankIdx(g.merit); if (after > before) { R.st.bestRank = Math.max(R.st.bestRank, after); E.record(G, 'rival', 'rivalRank', { g: g.name, r: RANK_N[after], f: f.name }, g.fac, after >= 3 ? 2 : 1, { g: g.id }); } };
     const fight = (n, plus) => n * (10 + (lv + plus) * 7 + (90 + (lv + plus) * 28) / 22);
-    if (act === 'bandit') { const n = 1 + Math.floor(r() * 4); R.st.battles += 1; if (r() < 0.88) { R.st.wins++; R.st.bandits += n; R.fame += n * 2; gainR(G, R, g, fight(n, 0), 'war', E); merit(1); } }
-    if (act === 'bounty') { R.st.battles++; if (r() < 0.8) { R.st.wins++; R.st.missions++; R.fame += 20 + lv; gainR(G, R, g, fight(4, 2), null, E); merit(6); } }
-    if (act === 'cave') { const tier = o.tier ?? 1 + Math.floor(r() * 3); R.st.battles += 3; if (r() < Math.min(0.9, 0.35 + (lv - tier * 4) / 20)) { R.st.wins += 3; R.st.caves++; R.fame += 20 + tier * 15; gainR(G, R, g, fight(3, tier * 2) * 3, 'war', E); merit(6 * tier); const hid = G.items.filter((it) => it.city === g.city); if (hid.length && r() < 0.35) { const it = hid[Math.floor(r() * hid.length)]; E.give(G, it, g); E.record(G, 'rival', 'rivalFind', { g: g.name, it: it.key }, g.fac, 2, { g: g.id }); } } }
+    if (act === 'bandit') { const n = 1 + Math.floor(r() * 4); R.st.battles += 1; if (r() < 0.88) { R.st.wins++; R.st.bandits += n; small(R, n * 0.6); gainR(G, R, g, fight(n, 0), 'war', E); merit(1); } }
+    if (act === 'bounty') { R.st.battles++; if (r() < 0.8) { R.st.wins++; R.st.missions++; small(R, 5 + lv / 5); gainR(G, R, g, fight(4, 2), null, E); merit(6); } }
+    if (act === 'cave') { const tier = o.tier ?? 1 + Math.floor(r() * 3); R.st.battles += 3; if (r() < Math.min(0.9, 0.35 + (lv - tier * 4) / 20)) { R.st.wins += 3; R.st.caves++; small(R, 15 + tier * 10); gainR(G, R, g, fight(3, tier * 2) * 3, 'war', E); merit(6 * tier); const hid = G.items.filter((it) => it.city === g.city); if (hid.length && r() < 0.35) { const it = hid[Math.floor(r() * hid.length)]; E.give(G, it, g); E.record(G, 'rival', 'rivalFind', { g: g.name, it: it.key }, g.fac, 2, { g: g.id }); } } }
     if (act === 'work') { merit(3); gainR(G, R, g, 20, 'pol', E); }
     if (act === 'travel' && city.adj.length) { g.city = o.to ?? city.adj[Math.floor(r() * city.adj.length)]; meet(G, R, g); gainR(G, R, g, 10, null, E); }
     if (act === 'recruit') {
       const cand = G.gens.filter((y) => y.status === (g.status === 'free' ? 'free' : 'serving') && y.city === g.city && !E.busy(y) && !y.rivalHero && (g.status === 'free' || (y.fac === g.fac && f.lord !== y.id)) && total(y) < total(g) + 40);
       const y = cand[Math.floor(r() * cand.length)];
-      if (y && r() < 0.3 + g.cha / 300 + R.fame / 2000) { y.follow = g.id; R.party.push(y.id); R.fame += 4; E.record(G, 'rival', 'rivalJoin', { g: g.name, x: y.name }, g.fac, total(y) > 330 ? 2 : 1, { g: g.id }); }
+      if (y && r() < 0.3 + g.cha / 300 + R.fame / 2000) { y.follow = g.id; R.party.push(y.id); small(R, 4); E.record(G, 'rival', 'rivalJoin', { g: g.name, x: y.name }, g.fac, total(y) > 330 ? 2 : 1, { g: g.id }); }
     }
     if (act === 'treasure') { const hid = G.items.filter((it) => it.city === g.city); if (hid.length && r() < 0.25 + g.int / 400) { const it = hid[Math.floor(r() * hid.length)]; E.give(G, it, g); R.fame += 25; E.record(G, 'rival', 'rivalFind', { g: g.name, it: it.key }, g.fac, 2, { g: g.id }); } }
     if (act === 'duel') {
@@ -90,7 +92,7 @@ export function rivalAct(G, R, act, E, o = {}) {
         }
       }
     }
-    if (act === 'rule') { R.fame += 3 + E.citiesOf(G, g.fac).length; gainR(G, R, g, 30, 'lead', E); }
+    if (act === 'rule') { small(R, 2 + E.citiesOf(G, g.fac).length / 2); gainR(G, R, g, 30, 'lead', E); }
 }
 export function rivalsMonth(G, E) {
   const r = G.r;
@@ -116,7 +118,7 @@ export function rivalsMonth(G, E) {
     }
     R.once = [];
     // a lord's realm fights on its own: its victories since last month count for the lord
-    if (g.status === 'serving' && G.factions[g.fac]?.lord === g.id) { for (let i = R.seen || 0; i < G.log.length; i++) { const e = G.log[i]; if (e.kind === 'war' && e.fac === g.fac) { R.st.battles++; if (e.win) { R.st.wins++; if (e.p?.c) R.st.cities.push(e.p.c); R.fame += 15; } } } R.peak = Math.max(R.peak || 0, E.citiesOf(G, g.fac).length); }
+    if (g.status === 'serving' && G.factions[g.fac]?.lord === g.id) { for (let i = R.seen || 0; i < G.log.length; i++) { const e = G.log[i]; if (e.kind === 'war' && e.fac === g.fac) { R.st.battles++; if (e.win) { R.st.wins++; if (e.p?.c) R.st.cities.push(e.p.c); small(R, 10); } } } R.peak = Math.max(R.peak || 0, E.citiesOf(G, g.fac).length); }
     R.seen = G.log.length;
   }
 }
