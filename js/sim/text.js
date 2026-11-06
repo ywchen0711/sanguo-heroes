@@ -1,8 +1,9 @@
 // The chronicle in Chinese or English, and names in pinyin for the English interface.
 import { PY, COMPOUND, SPECIAL } from '../data/pinyin.js';
 import { ITEMS, SPELLS } from '../data/treasures.js';
+import { WILD } from '../data/horses.js';
 import { SCEN } from '../data/scenarios.js';
-const ITEM = Object.fromEntries(ITEMS.map(([key, zh, en]) => [key, [zh, en]]));
+const ITEM = Object.fromEntries([...ITEMS, ...WILD].map(([key, zh, en]) => [key, [zh, en]]));
 export const itemName = (key, lang) => (ITEM[key] ? ITEM[key][lang === 'en' ? 1 : 0] : key);
 export const spellName = (key, lang) => (SPELLS[key] ? SPELLS[key][lang === 'en' ? 1 : 0] : key);
 

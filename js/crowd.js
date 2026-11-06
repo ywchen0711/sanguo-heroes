@@ -160,6 +160,7 @@ export class Crowd {
     if (near && H.fame > 120 && Math.random() < 0.4) return pick([`那不是${me.name}嗎？`, `聽說${me.name}很厲害……`, `${me.name}的名號，我聽說過。`]);
     // a true rumour
     const rr = this.g.outlaws?.rumor(); if (rr?.length && Math.random() < 0.2) return pick(rr);
+    const hr = B && this.g.horses?.rumor(B.at[0], B.at[1]); if (hr && Math.random() < 0.15) return hr;
     if (Math.random() < 0.5) {
       const here = CITY_POS[g.city], cs = G.cities.filter((c) => c.id !== g.city && CITY_POS[c.id] && (!f || c.owner !== g.fac)).map((c) => [Math.hypot(CITY_POS[c.id].x - here.x, CITY_POS[c.id].y - here.y), c]).sort((a, b) => a[0] - b[0]).slice(0, 4).map((x) => x[1]);
       const weak = cs.find((c) => c.owner != null && c.troops < 4000);

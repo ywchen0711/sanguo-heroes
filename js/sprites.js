@@ -479,6 +479,22 @@ function drawBeast(K, kind, f) {
     L(4 + sw, 8.5, 1 + sw, 8.5, 0.5, 0.5, '#e83a2a'); P(0 + sw, 7.5, '#e83a2a'); P(0 + sw, 9.5, '#e83a2a');
   }
 }
+// a horse with no rider (a wild one): the same cells as a horseman, the rows facing left and right
+export function horseSheet(coat, mane = '#2a1a12') {
+  const key = 'horse_' + coat + mane; if (cache.has(key)) return cache.get(key);
+  const cv = sheetOf(3, 4, CW, FH, (one, f, row) => drawHorse(one, f, coat, mane, row === 2 || row === 0), '#140e0a');
+  const out = fine({ canvas: cv.c, fw: CW, fh: FH, rider: true }); cache.set(key, out); return out;
+}
+function drawHorse(cv, frame, horse, mane, flip) {
+  const P = (i, j, c) => { if (c) cv.P(flip ? CW - 1 - i : i, j, c); }, R = (i, j, w, h, c) => { for (let u = 0; u < w; u++) for (let v = 0; v < h; v++) P(i + u, j + v, c); };
+  const hD = shade(horse, 0.7), hL = shade(horse, 1.2), g = frame === 0 ? 1 : frame === 2 ? -1 : 0, y = 4 + (frame === 1 ? 0 : 1);
+  R(21 - g, y + 21, 2, 7, hD); R(9 + g, y + 21, 2, 7, hD);
+  R(8, y + 15, 17, 7, horse); R(8, y + 15, 17, 1, hL); R(8, y + 21, 17, 1, hD); R(7, y + 16, 1, 5, horse); R(25, y + 16, 1, 4, horse);
+  R(24 + g, y + 21, 2, 7, horse); R(12 - g, y + 21, 2, 7, horse);
+  for (const x of [9 + g, 12 - g, 21 - g, 24 + g]) R(x, y + 28, 2, 1, '#1a1410');
+  R(4, y + 10, 5, 7, horse); R(1, y + 9, 5, 4, horse); R(0, y + 11, 2, 2, hL); P(0, y + 12, '#1a1410'); P(3, y + 10, '#1a1410'); R(4, y + 7, 2, 3, horse);
+  R(6, y + 8, 2, 8, mane); R(9, y + 14, 3, 1, mane); R(25, y + 15, 2, 2, mane); R(26, y + 16, 2, 6 + (frame % 2), mane);
+}
 export function beastSheet(kind) {
   const key = 'beast2_' + kind; if (cache.has(key)) return cache.get(key);
   const cv = sheetOf(2, 1, BW, BH, (one, f) => { const K = beastKit(one, 0); drawBeast(K, kind, f); K.flush(); });

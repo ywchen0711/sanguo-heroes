@@ -2,6 +2,7 @@
 // battle, as in the old Famicom games), stratagem points, equipment bought in shops, the party, ranks and fame.
 // A general's 統率 / 武力 / 智力 come from the simulation (with their famous treasures); levels add to them for good.
 import { refresh } from './sim/engine.js';
+import { WILD } from './data/horses.js';
 import { slotV, itemOf, relicFx } from './relics.js';
 
 // ---------------------------------------------------------------- shops: [id, name, value, price, tier]
@@ -45,6 +46,8 @@ export const ARMS = {
   shuangji: { n: '雙鐵戟', d: '雙戟：兩成五的機會連擊', combo: 0.25 },
   qixing: { n: '七星寶刀', d: '會心一擊的機會上升', crit: 0.06 },
 };
+// and the wild horses, once tamed (data/horses.js)
+for (const w of WILD) ARMS[w[0]] = w[4];
 // what the famous things a general carries add up to
 export function armsOf(G, g) {
   const o = { crit: 0, combo: 0, sweep: 0, pierce: 0, dodge: 0, spd: 0, cav: 1, first: false, flee: false, list: [] };
