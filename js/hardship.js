@@ -12,9 +12,9 @@ import { priceMul } from './disaster.js';
 import { deed } from './deeds.js';
 
 export const DIFF = {
-  easy: { n: '輕鬆', d: '敵人弱一點、錢多一點、糧食吃得少，同伴只會受傷不會戰死', lv: -2, enc: 0.8, gold: 1.3, food: 0.5, tire: 0.6, fall: 0, susp: 0.6, nem: 0.8, foeK: 0.95 },
-  normal: { n: '標準', d: '原本的難度', lv: 0, enc: 1, gold: 1, food: 1, tire: 1, fall: 1, susp: 1, nem: 1, foeK: 1 },
-  hard: { n: '亂世', d: '敵人更強更多、錢更少、糧食吃得兇，同伴戰死的機會更高，君主更多疑，宿敵更難纏', lv: 3, enc: 1.2, gold: 0.8, food: 1.3, tire: 1.3, fall: 2, susp: 1.4, nem: 1.3, foeK: 1.1 },
+  easy: { n: '輕鬆', d: '敵人弱一點、錢多一點、糧食吃得少，同伴只會受傷不會戰死', lv: -2, enc: 0.8, gold: 1.3, food: 0.5, tire: 0.6, fall: 0, susp: 0.6, nem: 0.8, foeK: 0.95, gear: 0.6 },
+  normal: { n: '標準', d: '原本的難度', lv: 0, enc: 1, gold: 1, food: 1, tire: 1, fall: 1, susp: 1, nem: 1, foeK: 1, gear: 0.8 },
+  hard: { n: '亂世', d: '敵人更強更多、錢更少、糧食吃得兇，同伴戰死的機會更高，君主更多疑，宿敵更難纏', lv: 3, enc: 1.2, gold: 0.8, food: 1.3, tire: 1.3, fall: 2, susp: 1.4, nem: 1.3, foeK: 1.1, gear: 1 },
 };
 export const diff = (game) => DIFF[game.H?.diff] || DIFF.normal;
 const PRICE = 2, MAXD = 40;

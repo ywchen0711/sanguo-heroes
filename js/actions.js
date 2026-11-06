@@ -425,7 +425,13 @@ export class Actions {
   // ---------------------------------------------------------------- duels: a friendly bout, or to the death
   duelFoe(x) { const lv = this.lvOf(x); const r = { lv, eq: {} }; return { name: x.name, look: this.g.lookOf(x), lv, st: bstats(x, r), gid: x.id }; }
   // a general's level in battle: their own life's level (see sim/life.js), or for an old save an estimate from the years
-  lvOf(x) { if (this.H.rec[x.id]) return this.H.rec[x.id].lv; const nb = this.g.nemesis?.lvBonus(x.id) || 0; if (x.life) return Math.max(1, x.life.lv + 2 + nb); return Math.max(1, startLv(x) + Math.floor((this.G.year - this.H.startYear) * 0.8) + 2 + nb); }
+  lvOf(x) {
+    if (this.H.rec[x.id]) return this.H.rec[x.id].lv; const nb = this.g.nemesis?.lvBonus(x.id) || 0;
+    const own = x.life ? x.life.lv + 2 : startLv(x) + Math.floor((this.G.year - this.H.startYear) * 1.2) + 2;
+    // they do not stand still while the player grows: a great general keeps within a level or two, a lesser one further back
+    const keep = this.avgLv() - 4 + Math.round(Math.max(-4, Math.min(4, (x.war + x.lead - 140) / 12)));
+    return Math.max(1, Math.max(own, keep) + nb);
+  }
   async duelWith(x, kind, npc) {
     const G = this.G, me = this.me, f = x.status === 'serving' && G.factions[x.fac];
     if (kind === 'kill' && !await this.ui.yesno(`真的要向${x.name}挑戰生死決鬥嗎？\n${f ? `會與${f.name}軍結仇。` : ''}`)) return;
@@ -728,8 +734,8 @@ export class Actions {
   foe(name, kind, lv, color, boss) {
     lv = Math.max(1, lv + diff(this.g).lv);
     const beast = BEASTS.includes(kind), K = boss ? 1.25 : 1, r = Math.random;
-    const war = Math.min(99, Math.round((32 + lv * 1.3 + r() * 14) * K)), lead = Math.min(99, Math.round((26 + lv * 1.1 + r() * 14) * K)), int = beast ? 5 : Math.min(95, Math.round(15 + r() * 30 + (boss ? 15 : 0) + lv * 0.4));
-    const solMax = Math.round((beast ? 70 + lv * 26 : 90 + lead * 4 + lv * 28) * (boss ? 1.6 : 1));
+    const war = Math.min(99, Math.round((34 + lv * 1.5 + r() * 14) * K)), lead = Math.min(99, Math.round((28 + lv * 1.25 + r() * 14) * K)), int = beast ? 5 : Math.min(95, Math.round(15 + r() * 30 + (boss ? 15 : 0) + lv * 0.4));
+    const solMax = Math.round((beast ? 80 + lv * 32 : 100 + lead * 4 + lv * 34) * (boss ? 1.6 : 1));
     const look = beast ? null : kind === 'soldier' ? LOOKS.soldier(color || '#8a6a4a') : (LOOKS[kind] || LOOKS.bandit)();
     if (boss && look) look.key += 'boss';
     return { name, look, beast: beast ? kind : null, solKind: beast ? null : kind, color: color || null, lv, war, lead, int, sol: solMax, solMax, sp: Math.round(int * 0.9 + lv), boss, solLook: look ? { ...look, small: true, key: look.key + 's' } : null, wpn: Math.round(lv / 3), arm: Math.round(lv / 4) };
@@ -739,7 +745,7 @@ export class Actions {
     const awe = fameOf(this.H).awe || 0;
     if (awe && !BEASTS.includes(kind) && Math.random() < awe) { const n = 20 + Math.round(Math.random() * 30 + lv0 * 4); this.H.gold += n; this.H.fame += 1; this.H.st.bandits += 2; this.g.audio.sfx('coin'); this.ui.toast(`<b>${base}</b>聽說來的是「${fameName(this.H)}」的${this.me.name}，嚇得丟下財物逃走了！<br><small>不戰而勝　金 +${n}</small>`, 3500); return; }
     const n = 1 + Math.floor(Math.random() * Math.min(4, this.H.party.length + 2)), foes = [];
-    for (let i = 0; i < n; i++) { const lv = Math.max(1, Math.round(lv0 + (Math.random() * 3 - 2))); foes.push(this.foe(i === 0 && n > 2 && !BEASTS.includes(kind) ? base + '頭目' : base, kind, lv, null, i === 0 && n > 2 && !BEASTS.includes(kind))); }
+    for (let i = 0; i < n; i++) { const lv = Math.max(1, Math.round(lv0 + (Math.random() * 3 - 1))); foes.push(this.foe(i === 0 && n > 2 && !BEASTS.includes(kind) ? base + '頭目' : base, kind, lv, null, i === 0 && n > 2 && !BEASTS.includes(kind))); }
     this.g.audio.sfx('encounter');
     const r = await this.fight(foes, { terrain: this.terrainAt() });
     if (r === 'win' && !BEASTS.includes(kind)) this.H.st.bandits += foes.length;
