@@ -79,11 +79,12 @@ export class Armies {
     const info = `<b style="color:${f.color}">${f.name}軍</b>的大軍　將領：${names}\n兵 ${c.troops} 人，往${t.name}（${t.owner ? G.factions[t.owner].name + '軍' : '無主'}，守軍 ${t.troops}）進軍，再${this.daysLeft()}日兵臨城下。`;
     const opts = [];
     if (!c.vang && (mine === c.fac || !mine) && t.owner !== mine) opts.push({ k: 'van', n: '擔任先鋒', d: mine ? `先打${t.name}出城迎戰的守軍，讓城裡兵力變少` : '當傭兵先鋒，打贏有賞金' });
-    if (!mine || (mine !== c.fac && !allied(G, mine, c.fac))) opts.push({ k: 'cut', n: '截擊大軍', d: `和${g.name}的部隊交戰，削減他們的兵力（剩一半就會撤退）` });
+    if (!mine || (mine !== c.fac && !allied(G, mine, c.fac))) { opts.push({ k: 'cut', n: '截擊大軍', d: `和${g.name}的部隊交戰，削減他們的兵力（剩一半就會撤退）` }); opts.push({ k: 'ploy', n: '施計', d: '火攻、斷糧道、離間、散布謠言：不必正面交鋒' }); }
     opts.push({ k: null, n: '離開' });
     const k = await game.ui.ask(info, opts, g.name, game.lookOf(g));
     if (k === 'van') await act.vanguard(c);
     if (k === 'cut') await act.cutArmy(c);
+    if (k === 'ploy') await game.ploys.menu(c);
   }
   // an army cut down to half turns back
   turnBack(c) { const w = this.where(c); c.back = true; c.backI = w ? w.i : 0; c.backP = this.prog(); }

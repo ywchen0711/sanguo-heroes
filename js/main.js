@@ -31,6 +31,7 @@ import { Nemesis } from './nemesis.js';
 import { Court } from './court.js';
 import { Arena } from './arena.js';
 import { Unrest } from './unrest.js';
+import { Ploys } from './ploys.js';
 import { fromOld } from './data/ranks.js';
 import { fameOf, fameCheck } from './fame.js';
 import { govern } from './govern.js';
@@ -48,7 +49,7 @@ const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 
 
 class Game {
   constructor() {
-    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet); this.camps = new Armies(this, personSheet); this.outlaws = new Outlaws(this, personSheet); this.horses = new Horses(this); this.stories = new Stories(this); this.ties = new Ties(this); this.hard = new Hardship(this); this.nemesis = new Nemesis(this); this.court = new Court(this); this.arena = new Arena(this); this.unrest = new Unrest(this, personSheet);
+    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet); this.camps = new Armies(this, personSheet); this.outlaws = new Outlaws(this, personSheet); this.horses = new Horses(this); this.stories = new Stories(this); this.ties = new Ties(this); this.hard = new Hardship(this); this.nemesis = new Nemesis(this); this.court = new Court(this); this.arena = new Arena(this); this.unrest = new Unrest(this, personSheet); this.ploys = new Ploys(this);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
