@@ -10,8 +10,11 @@ import { CITY_POS } from './world.js';
 import { changed, deed } from './deeds.js';
 import { relicFx } from './relics.js';
 import { swear, addBond } from './bonds.js';
+import { rollRelic, giveRelic, RELICS } from './relics.js';
+import { HIST } from './scenes/hist.js';
+import { TALES } from './scenes/tales.js';
 
-const STORIES = [
+const STORIES0 = [
   // ---------------------------------------------------------------- 桃園結義
   { id: 'taoyuan', when: 'town', ok: (s) => s.year <= 196 && s.isOne('劉備', '關羽', '張飛') && s.alive('劉備', '關羽', '張飛') && s.others('劉備', '關羽', '張飛').every((x) => !s.inParty(x) && (x.status === 'free' || x.fac === s.me.fac)),
     async run(s) {
@@ -279,6 +282,7 @@ const STORIES = [
       s.changed('諸葛亮在五丈原祈禳成功，沒有「出師未捷身先死」');
     } },
 ];
+const STORIES = [...STORIES0, ...HIST, ...TALES];
 
 // a small toolkit for the stories
 class Kit {
@@ -330,6 +334,38 @@ class Kit {
   foeGen(x, sol) { const lv = this.g.act.lvOf(x), f = x.status === 'serving' && this.G.factions[x.fac]; return { name: x.name, look: this.g.lookOf(x), lv, war: x.war, lead: x.lead, int: x.int, sol, solMax: sol, sp: Math.round(x.int), spells: x.spells, gid: x.id, color: f ? f.color : '#8a6a4a', wpn: Math.round(lv / 4), arm: Math.round(lv / 4) }; }
   foe(name, kind, color, plus = 0) { const lv = Math.round(this.g.partyList().reduce((t, p) => t + p.rec.lv, 0) / (this.H.party.length + 1)) + plus; return this.g.act.foe(name, kind, lv, color); }
   battle(foes, o) { return this.g.act.fight(foes, o); }
+  // ---------------------------------------------------------------- more for the later scenes (scenes/*.js)
+  // battles one after another, the troops not refilled between them: true if every one was won
+  async waves(list, o = {}) { for (let i = 0; i < list.length; i++) { const r = await this.battle(list[i](), { ...o, title: (o.titles || [])[i] || o.title, noFlee: o.noFlee }); if (r !== 'win') return false; } return true; }
+  chance(p) { return Math.random() < p; }
+  gold(n) { this.H.gold = Math.max(0, this.H.gold + n); }
+  serving() { return this.me.status === 'serving' && !!this.G.factions[this.me.fac]; }
+  myFac(...ids) { return this.serving() && ids.includes(this.me.fac); }
+  facOf(n) { const x = this.gen(n); return x && x.status === 'serving' ? x.fac : null; }
+  sameSide(n) { const f = this.facOf(n); return !!f && this.serving() && f === this.me.fac; }
+  partyHas(...ns) { return this.H.party.some((id) => ns.includes(this.G.gens[id].name)); }
+  smart(v, ...ns) { return this.check('int', v) || this.partyHas(...ns); }
+  relic(min = 2, plus = 4) { const id = rollRelic(this.g.act.avgLv() + plus, min); giveRelic(this.g, id, true); return RELICS[id].n; }
+  treasure(key) { const it = this.G.items.find((x) => x.key === key); if (!it || it.holder === this.me.id) return null; give(this.G, it, this.me); return itemName(key); }
+  item(k, n = 1) { this.H.items[k] = (this.H.items[k] || 0) + n; }
+  season(...ms) { return ms.includes(this.G.month); }
+  north() { const P = this.g.pos, z = P.town != null ? CITY_POS[P.town].y : P.z; return z < this.g.world.H * 0.4; }
+  coast() { return ['建業', '吳', '會稽', '北海', '交趾', '南皮', '下邳', '廬江'].some((n) => this.inCity(n)); }
+  bigCity() { return !!this.g.town && this.g.town.city != null && CITY_POS[this.g.town.city].size >= 3; }
+  onLand() { return this.g.mode === 'world'; }
+  // a duel with someone who is not one of the generals (a masked swordsman, a pirate king)
+  async duelWith(name, look, lv, war, lead = 70, int = 50) {
+    const r0 = this.H.rec[this.me.id], a = { name: this.me.name, look: this.g.lookOf(this.me), lv: r0.lv, st: bstats(this.me, r0), isPlayer: true, arms: relicFx(r0) };
+    const fake = { id: -99, name, war, lead, int, pol: 50, cha: 50 }, b = { name, look, lv, st: bstats(fake, { lv, eq: {} }) };
+    const was = this.g.mode; this.g.mode = 'battle';
+    const r = await this.g.battle.soloDuel(a, b, { noFlee: true }); this.g.battle.close(); this.g.mode = was; this.g.audio.music(was === 'town' ? 'town' : 'field');
+    if (r === 'win') { this.H.st.duels++; this.me.duelsWon++; }
+    return r;
+  }
+  // a named general as an enemy commander if he is alive, else a stand-in
+  enemy(n, sol, color = '#6a6a6a', plus = 3) { const x = this.gen(n); return x && (x.status === 'serving' || x.status === 'free') && !this.inParty(x) && !x.isPlayer ? this.foeGen(x, sol) : this.foe(n, 'soldier', color, plus); }
+  serve(x, fid, city, loyalty = 80) { serve(this.G, x, fid, city, loyalty); }
+  flag(k, v = true) { (this.H.flags ||= {})[k] = v; } flagged(k) { return (this.H.flags || {})[k]; }
 }
 
 export class Story {
