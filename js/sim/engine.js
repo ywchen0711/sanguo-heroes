@@ -284,13 +284,16 @@ function economy(G) {
   for (const f of Object.values(G.factions)) if (f.alive) {
     const cs = citiesOf(G, f.id);
     f.gold += Math.round(sum(cs, taxOf) * taxMul(G));
-    f.gold -= gensOf(G, f.id).length * 2 + Math.round(sum(cs, (c) => c.troops) / 400);
+    // pay: a gold a month for each officer, one for each 600 soldiers (it was 2 and 400: the treasuries stood empty and the officers idle)
+    f.gold -= gensOf(G, f.id).length + Math.round(sum(cs, (c) => c.troops) / 600);
     if (G.month === 7) { const harvest = Math.round(sum(cs, harvestOf) * harvestMul(G)); f.food += harvest; }
     f.food -= Math.round(sum(cs, upkeepOf));
     for (const c of cs) if (bLv(c, 'train')) c.train = Math.min(100, c.train + bLv(c, 'train') * 2);
     if (f.food < 0) { f.food = 0; for (const c of cs) { c.troops = Math.round(c.troops * 0.93); c.morale = clamp(c.morale - 3, 0, 100); } if (G.r() < 0.1) record(G, 'famine', 'famine', { f: f.name }, f.id, 1); }
     f.gold = Math.max(0, f.gold);
   }
+  // a refusal is forgotten in a year or two: each new year takes one off
+  if (G.month === 1) for (const g of G.gens) if (g.refused) g.refused--;
   for (const c of G.cities) { c.pop = Math.min(c.popMax, Math.round(c.pop * (1 + (c.morale - 40) / 60000 + c.farm / 400000))); if (!c.owner) { c.troops = Math.min(c.troops + 30, 2000 + c.size * 2500); } }
 }
 
@@ -310,25 +313,28 @@ function domestic(G, f) {
   for (const c of cs) {
     const gs = gensIn(G, c).sort((a, b) => b.pol + b.lead - (a.pol + a.lead)), isFront = dist.get(c.id) === 0;
     const want = Math.min(capacity(c), isFront ? 9000 + c.size * 5000 : 3000 + c.size * 1500);
+    // one officer a month goes to ask the free generals here to serve, and not those who have said no too often
+    let asked = false;
     for (const g of gs) {
       g.task = null;
       if (g.loyalty < 100 && r() < 0.03) g.loyalty = clamp(g.loyalty + (lord.cha > 75 ? 1 : lord.cha < 45 ? -2 : 0) - (cs.length > 12 ? 1 : 0), 0, 99);
       // pick the job this city needs most and this general is good at
-      const free = freeIn(G, c);
+      const free = freeIn(G, c).filter((y) => (y.refused || 0) < 4);
       const jobs = [
-        ['recruitGen', free.length ? 150 + g.cha : 0],
+        ['recruitGen', free.length && !asked ? 150 + g.cha : 0],
         ['search', G.t % 4 === c.id % 4 && f.gold > 50 ? 30 + g.cha * 0.4 + g.int * 0.3 : 0],
         ['draft', c.troops < want && f.gold > 120 && c.pop > 30000 ? (want - c.troops) / want * 140 + g.cha * 0.5 : 0],
         ['train', c.train < (isFront ? 90 : 60) ? (isFront ? 70 : 30) + g.lead * 0.6 - c.train * 0.5 : 0],
-        ['farm', c.farm < c.farmMax && f.gold > 40 ? (1 - c.farm / c.farmMax) * 90 + g.pol * 0.6 - (isFront ? 20 : 0) : 0],
-        ['comm', c.comm < c.commMax && f.gold > 40 ? (1 - c.comm / c.commMax) * 90 + g.pol * 0.6 - (isFront ? 20 : 0) : 0],
-        ['def', c.def < c.defMax && f.gold > 40 ? (isFront ? 50 : 10) + g.lead * 0.3 - c.def / c.defMax * 40 : 0],
+        ['farm', c.farm < c.farmMax && f.gold > 8 ? (1 - c.farm / c.farmMax) * 90 + g.pol * 0.6 - (isFront ? 20 : 0) : 0],
+        ['comm', c.comm < c.commMax && f.gold > 8 ? (1 - c.comm / c.commMax) * 90 + g.pol * 0.6 - (isFront ? 20 : 0) : 0],
+        ['def', c.def < c.defMax && f.gold > 8 ? (isFront ? 50 : 10) + g.lead * 0.3 - c.def / c.defMax * 40 : 0],
         ['morale', c.morale < 70 ? 80 - c.morale + g.cha * 0.3 : 0],
         ['reward', f.gold > 300 && gs.some((m) => m.loyalty < 60) ? 50 + g.cha * 0.2 : 0],
       ];
       // each job gets a little random jitter once (a random sort comparator would make replays differ between browsers)
       if (!jobs.some((j) => j[1] > 0)) continue;
       const [job] = maxBy(jobs.map(([k, v]) => [k, v + (r() - 0.5) * 20]), (j) => j[1]);
+      if (job === 'recruitGen') asked = true;
       if (asks.has(g.id)) { propose(G, jobProposal(G, f, c, g, job, free)); continue; }
       g.task = job; doJob(G, f, c, g, job, free);
     }
@@ -356,7 +362,7 @@ function domestic(G, f) {
 function jobProposal(G, f, c, g, job, free) {
   const x = job === 'recruitGen' ? maxBy(free, (y) => y.lead + y.war + y.int + y.pol + y.cha + (y.known ? 50 : 0)) : null;
   // what the job costs the treasury (approving it without the gold does nothing)
-  const cost = { farm: 20, comm: 20, def: 20, morale: 10, reward: 40, search: 10, draft: 120 }[job] || 0;
+  const cost = { farm: 8, comm: 8, def: 8, morale: 10, reward: 40, search: 10, draft: 120 }[job] || 0;
   return { type: 'job', job, g: g.id, city: c.id, smart: true, cost, p: { g: g.name, c: c.name, x: x && x.name },
     valid: () => g.status === 'serving' && g.fac === f.id && g.city === c.id && c.owner === f.id && alive(G, f.id),
     run: () => {
@@ -368,9 +374,9 @@ function jobProposal(G, f, c, g, job, free) {
 function doJob(G, f, c, g, job, free) {
   const r = G.r;
   switch (job) {
-    case 'farm': c.farm = Math.min(c.farmMax, c.farm + Math.round(2 + g.pol / 9 + r() * 4)); f.gold -= 20; g.merit += 1; break;
-    case 'comm': c.comm = Math.min(c.commMax, c.comm + Math.round(2 + g.pol / 9 + r() * 4)); f.gold -= 20; g.merit += 1; break;
-    case 'def': c.def = Math.min(c.defMax, c.def + Math.round(3 + g.lead / 10 + r() * 4)); f.gold -= 20; g.merit += 1; break;
+    case 'farm': c.farm = Math.min(c.farmMax, c.farm + Math.round(2 + g.pol / 9 + r() * 4)); f.gold -= 8; g.merit += 1; break;
+    case 'comm': c.comm = Math.min(c.commMax, c.comm + Math.round(2 + g.pol / 9 + r() * 4)); f.gold -= 8; g.merit += 1; break;
+    case 'def': c.def = Math.min(c.defMax, c.def + Math.round(3 + g.lead / 10 + r() * 4)); f.gold -= 8; g.merit += 1; break;
     case 'morale': c.morale = Math.min(100, c.morale + Math.round(1 + g.cha / 25 + r() * 2)); f.gold -= 10; g.merit += 1; break;
     case 'train': c.train = Math.min(100, c.train + Math.round(2 + g.lead / 14 + r() * 3)); g.merit += 1; break;
     case 'draft': { const n = Math.min(Math.round(600 + g.cha * 18 + r() * 600), Math.floor(c.pop / 15), f.gold * 8);
