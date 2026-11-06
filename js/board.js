@@ -4,7 +4,7 @@
 // its price. Doing the same kind of thing again and again pays less (疲乏). A city taken by storm is restless for half
 // a year (民心不穩) and may rise and throw the new master out unless it is calmed; a long march from home costs men.
 // The age (sim/era.js) and coalitions against a realm grown too big change what pays.
-import { CITY_POS } from './world.js';
+import { CITY_POS, K } from './world.js';
 import { hostile, allied, citiesOf, serve, record } from './sim/engine.js';
 import { eraOf, eraIs, eraText, ERAS, eraArea } from './sim/era.js';
 import { disasterAt, DIS_N } from './disaster.js';
@@ -34,7 +34,8 @@ export class Board {
   list() { return (this.H.opps ||= []); }
   here() { const g = this.g, P = g.pos; if (P?.town != null) return CITY_POS[P.town]; if (g.town?.C?.pos) return g.town.C.pos; return { x: P.x, y: P.z }; }
   dist(c) { const h = this.here(); return Math.hypot(c.x - h.x, c.y - h.y); }
-  near(min, max, ok = () => true) { return this.G.cities.filter((c) => { const d = this.dist(CITY_POS[c.id]); return d >= min && d <= max && ok(c); }); }
+  // (min and max as on the old small map: K times that now)
+  near(min, max, ok = () => true) { return this.G.cities.filter((c) => { const d = this.dist(CITY_POS[c.id]) / K; return d >= min && d <= max && ok(c); }); }
   mine() { return this.g.myFaction(); }
   canSiege(C) { const G = this.G, mine = this.mine(), me = this.g.me; return !!C.owner && C.owner !== mine && !(mine && allied(G, mine, C.owner)) && (mine ? (this.g.isLord() || rankOf(me.merit) >= 2) : this.H.fame >= 100); }
   // ---------------------------------------------------------------- the month
@@ -82,7 +83,7 @@ export class Board {
       return { ...base, cid: C.id, until: G.t + 2, title: `${f.name}軍的${C.name}主力出征，城中空虛`, rw: `攻城時守軍只剩六成，攻下名聲 +60`, miss: '守軍回城了' };
     }
     if (k === 'escort') {
-      const A = pick(this.near(0, 25)), B = A && pick(G.cities.filter((c) => { const d = Math.hypot(CITY_POS[c.id].x - CITY_POS[A.id].x, CITY_POS[c.id].y - CITY_POS[A.id].y); return d >= 22 && d <= 50; })); if (!A || !B) return null;
+      const A = pick(this.near(0, 25)), B = A && pick(G.cities.filter((c) => { const d = Math.hypot(CITY_POS[c.id].x - CITY_POS[A.id].x, CITY_POS[c.id].y - CITY_POS[A.id].y); return d >= 22 * K && d <= 50 * K; })); if (!A || !B) return null;
       const d = Math.round(Math.hypot(CITY_POS[B.id].x - CITY_POS[A.id].x, CITY_POS[B.id].y - CITY_POS[A.id].y)), gold = Math.round((250 + d * 12) * tire(H, 'escort'));
       return { ...base, cid: A.id, to: B.id, until: G.t + 3, stage: 0, gold, title: `${A.name}的商隊要去${B.name}，請人護送`, rw: `${gold} 金、名聲 20（路上會有劫匪）`, miss: '商隊另請了鏢師' };
     }
@@ -201,7 +202,7 @@ export class Board {
   // ---------------------------------------------------------------- the screen
   async screen() {
     const G = this.G, H = this.H, mine = this.mine(), e = eraOf(G), c = G.coal && !G.coal.over && G.coal.until > G.t ? G.coal : null;
-    const dirTo = (C) => { const h = this.here(), p = CITY_POS[C.id], dx = p.x - h.x, dz = p.y - h.y, d = Math.round(Math.hypot(dx, dz)); if (d < 3) return '就在這裡'; return `${(Math.abs(dz) > Math.abs(dx) / 2 ? (dz < 0 ? '北' : '南') : '') + (Math.abs(dx) > Math.abs(dz) / 2 ? (dx < 0 ? '西' : '東') : '')}方 ${d} 里`; };
+    const dirTo = (C) => { const h = this.here(), p = CITY_POS[C.id], dx = p.x - h.x, dz = p.y - h.y, d = Math.round(Math.hypot(dx, dz)); if (d < 3 * K) return '就在這裡'; return `${(Math.abs(dz) > Math.abs(dx) / 2 ? (dz < 0 ? '北' : '南') : '') + (Math.abs(dx) > Math.abs(dz) / 2 ? (dx < 0 ? '西' : '東') : '')}方 ${d} 里`; };
     let h = `<h4>時局</h4>${e ? `<p><b style="color:#ffd86a">【${ERAS[e.k].n}】</b>　<small>還有 ${e.until - G.t} 個月</small><br>${eraText(G)}</p>` : '<p class="dim">天下大勢平穩，沒有特別的大事。</p>'}`;
     if (c) { const t = G.factions[c.target]; h += `<p><b style="color:${c.target === mine ? '#ff6a5a' : '#ffd86a'}">【合縱】</b>${c.members.map((id) => G.factions[id]?.name).filter(Boolean).join('、')}聯手討伐${t.name}${c.target === mine ? '——<b style="color:#ff6a5a">就是你們！</b>四面受敵，要小心' : ''}。<small>還有 ${c.until - G.t} 個月</small></p>`; }
     h += '<h4>機會</h4>';

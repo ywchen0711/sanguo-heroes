@@ -8,7 +8,7 @@
 // is now is read off it (no work for each step), the paths are shared (between two cities, or out of a city and
 // back: a few for each city, found once), and only the nearest are drawn. A long rest (days at the inn) just puts
 // everyone back home.
-import { CITY_POS, T } from './world.js';
+import { CITY_POS, T, K } from './world.js';
 import { busy } from './sim/engine.js';
 
 const SEE = 30, KEEP = 34, MAX = 36, LOOPS = 5;
@@ -41,7 +41,7 @@ export class Crowd {
     if (L.length < LOOPS) {
       const s = this.gate(cid), M = this.g.world;
       if (s) for (let t = 0; t < 12; t++) {
-        const ang = Math.random() * Math.PI * 2, d = R(5, 14), x = Math.round(s[0] + Math.cos(ang) * d), z = Math.round(s[1] + Math.sin(ang) * d), w = M.at(x, z);
+        const ang = Math.random() * Math.PI * 2, d = R(6, Math.round(14 * K)), x = Math.round(s[0] + Math.cos(ang) * d), z = Math.round(s[1] + Math.sin(ang) * d), w = M.at(x, z);
         if (w === T.CITY || w === T.COUNTY || w === T.VILLAGE || w === T.CAVE) continue;
         const p = this.g.roam.path(s[0], s[1], (px, pz) => px === x && pz === z);
         if (p && p.length >= 3) { const out = [s, ...p]; L.push([...out, ...out.slice(0, -1).reverse()]); break; }

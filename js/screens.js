@@ -3,7 +3,7 @@
 import { SCENARIOS } from './data/scenarios.js';
 import { newGame, citiesOf, gensOf, power } from './sim/engine.js';
 import { fmt, dateStr, itemName } from './sim/text.js';
-import { CITY_POS, W, H, T } from './world.js';
+import { CITY_POS, W, H, T, K } from './world.js';
 import { personSheet, frameCanvas, lookFor, assignLooks } from './sprites.js';
 import { RANKS, rankOf, solMax, spMax, bstats, EQUIP, score, expNeed, tacticsOf, TACTICS, STAT_N, eqName, armsOf, TROOPS } from './hero.js';
 import { biography, rewritten, knownAs, titleName, TITLES } from './deeds.js';
@@ -133,7 +133,7 @@ export class Screens {
     x.imageSmoothingEnabled = false; x.drawImage(this.base, 0, 0, cv.width, cv.height);
     const s = cv.width / W;
     // territory: a soft disc of the owner's colour round each city
-    for (const c of CITY_POS) { const o = G.cities[c.id].owner, f = o && G.factions[o]; if (!f) continue; x.fillStyle = f.color + '55'; x.beginPath(); x.arc(c.x * s, c.y * s, (big ? 9 : 7) * s, 0, Math.PI * 2); x.fill(); }
+    for (const c of CITY_POS) { const o = G.cities[c.id].owner, f = o && G.factions[o]; if (!f) continue; x.fillStyle = f.color + '55'; x.beginPath(); x.arc(c.x * s, c.y * s, (big ? 9 : 7) * K * s, 0, Math.PI * 2); x.fill(); }
     for (const c of CITY_POS) { const o = G.cities[c.id].owner, f = o && G.factions[o]; x.fillStyle = f ? f.color : '#ddd'; x.strokeStyle = '#000'; x.lineWidth = 1; x.fillRect(c.x * s - 3, c.y * s - 3, 6, 6); x.strokeRect(c.x * s - 3, c.y * s - 3, 6, 6); if (big) { x.fillStyle = '#fff'; x.font = '10px sans-serif'; x.strokeStyle = '#000'; x.lineWidth = 2.5; x.strokeText(G.cities[c.id].name, c.x * s + 5, c.y * s + 4); x.fillText(G.cities[c.id].name, c.x * s + 5, c.y * s + 4); } }
     if (big) for (const q of M.places) { x.fillStyle = q.kind === 'county' ? '#f0e8d0' : q.kind === 'village' ? '#c8955a' : this.g.H.places?.[q.id]?.boss ? '#6a6a6a' : '#1a1010'; x.strokeStyle = '#000'; x.lineWidth = 1; if (q.kind === 'cave') { x.beginPath(); x.moveTo(q.x * s, q.y * s - 3); x.lineTo(q.x * s + 3, q.y * s + 2); x.lineTo(q.x * s - 3, q.y * s + 2); x.closePath(); x.fill(); x.stroke(); } else { x.beginPath(); x.arc(q.x * s, q.y * s, q.kind === 'county' ? 2.5 : 1.8, 0, Math.PI * 2); x.fill(); x.stroke(); } }
     for (const m of this.g.H.missions.filter((m) => !m.done)) { x.fillStyle = '#111'; x.fillRect(m.x * s - 2, m.z * s - 2, 4, 4); }

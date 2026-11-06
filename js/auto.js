@@ -49,7 +49,7 @@ export class AutoPlay {
       const k = q[h], x = k % W, z = (k - x) / W;
       if (goal(x, z)) { const out = []; let c = k; while (c !== q[0]) { out.push([c % W, Math.floor(c / W)]); c = prev[c]; } return out.reverse(); }
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, nz = z + dz; if (nx < 0 || nz < 0 || nx >= W || nz >= H) continue; const nk = nz * W + nx; if (prev[nk] >= 0) continue; if (!can(nx, nz) && !goal(nx, nz)) continue; prev[nk] = k; q.push(nk); }
-      if (q.length > 60000) break;
+      if (q.length > 250000) break;
     }
     return null;
   }

@@ -6,7 +6,7 @@
 // can talk to them. Their bodies are drawn when they are near; the minimap shows them all.
 import { pickAct, rivalAct, ONCE } from './sim/rivals.js';
 import { rivalE } from './sim/engine.js';
-import { CITY_POS, WALK, T, ENC } from './world.js';
+import { CITY_POS, WALK, T, ENC, K } from './world.js';
 
 // a rival meets bandits on the road less often than the player does: it never stops to fight them
 const ROAD = 0.12;
@@ -27,8 +27,9 @@ export class Roam {
   free(x, z) { const M = this.g.world; for (let r = 0; r < 10; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) { const t = M.at(x + dx, z + dz); if (WALK[t] && !PLACE.has(t)) return [x + dx, z + dz]; } return null; }
   // a path over the land, around towns and caves unless one is the goal
   path(sx, sz, goal) {
-    const M = this.g.world, W = M.W, H = M.H, prev = new Int32Array(W * H).fill(-1), q = [sz * W + sx]; prev[q[0]] = q[0];
-    for (let h = 0; h < q.length && h < 30000; h++) {
+    const M = this.g.world, W = M.W, H = M.H; if (!this.prev || this.prev.length !== W * H) this.prev = new Int32Array(W * H);
+    const prev = this.prev.fill(-1), q = [sz * W + sx]; prev[q[0]] = q[0];
+    for (let h = 0; h < q.length && h < 120000; h++) {
       const k = q[h], x = k % W, z = (k - x) / W;
       if (goal(x, z)) { const out = []; let c = k; while (c !== q[0]) { out.push([c % W, Math.floor(c / W)]); c = prev[c]; } return out.reverse(); }
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, nz = z + dz; if (nx < 0 || nz < 0 || nx >= W || nz >= H) continue; const nk = nz * W + nx; if (prev[nk] >= 0) continue; const t = M.at(nx, nz); if (!WALK[t] || (PLACE.has(t) && !goal(nx, nz))) continue; prev[nk] = k; q.push(nk); }
@@ -43,14 +44,14 @@ export class Roam {
     if (act === 'cave') { const q = this.cave(R); if (q) { o.tier = q.tier; o.place = q.id; o.label = q.name; goal = (x, z) => x === q.x && z === q.y; } else act = o.act = 'bandit'; }
     if (act === 'travel') { const C = G.cities[g.city], to = C?.adj.length ? C.adj[Math.floor(Math.random() * C.adj.length)] : null; if (to == null) { R.wait = 10; return; } o.to = to; o.label = G.cities[to].name; goal = this.near(to); }
     if (IN_CITY.has(act)) { goal = this.near(g.city); o.label = G.cities[g.city]?.name; }
-    if (act === 'bandit' || act === 'bounty') { const p = act === 'bandit' ? this.wild(R, 4, 11) : this.wild(R, 10, 20); if (!p) { R.wait = 5; return; } goal = (x, z) => x === p[0] && z === p[1]; }
+    if (act === 'bandit' || act === 'bounty') { const p = act === 'bandit' ? this.wild(R, 4, 11) : this.wild(R, 10 * K, 20 * K); if (!p) { R.wait = 5; return; } goal = (x, z) => x === p[0] && z === p[1]; }
     const path = goal(R.pos[0], R.pos[1]) ? [] : this.path(R.pos[0], R.pos[1], goal);
     if (!path) { R.wait = 10; return; }
     R.goal = o; R.path = path; R.inside = null; this.say(R);
   }
   // the nearest cave whose master the rival could take on
   cave(R) {
-    const H = this.g.H; let best = null, bd = 45;
+    const H = this.g.H; let best = null, bd = 45 * K;
     for (const q of this.g.world.places) { if (q.kind !== 'cave' || H.places?.[q.id]?.boss || q.tier * 4 > R.lv + 2) continue; const d = Math.hypot(q.x - R.pos[0], q.y - R.pos[1]); if (d < bd) { bd = d; best = q; } }
     return best;
   }

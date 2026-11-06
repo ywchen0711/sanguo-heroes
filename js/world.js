@@ -1,15 +1,19 @@
-// The land of the Han: a 200x200 tile map drawn from the 45 cities of the simulation (map units x2). The coast, the
+// The land of the Han: a 450x450 tile map drawn from the 45 cities of the simulation (map units x4.5; it was 200x200,
+// x2: five times the land now, so the cities, the people on the roads and the places between are not crowded). The coast, the
 // Bohai gulf, the Yellow River and the Yangtze, the Qinling and Taihang ranges, the Sichuan basin ringed by mountains,
 // the north-western desert and the southern forests; roads between the cities are found with A* and cross rivers on
 // bridges and mountains through passes.
 import { CITIES, ROADS } from './data/world.js';
 
-export const W = 200, H = 200, SCALE = 2;
+export const W = 450, H = 450, SCALE = 4.5;
+// how much further everything is than on the old 200x200 map (for distances given in tiles elsewhere)
+export const K = SCALE / 2;
 export const T = { SEA: 0, RIVER: 1, PLAIN: 2, MEADOW: 3, FOREST: 4, HILL: 5, MOUNT: 6, SNOW: 7, DESERT: 8, ROAD: 9, BRIDGE: 10, CITY: 11, BEACH: 12, MARSH: 13, FIELD: 14, COUNTY: 15, VILLAGE: 16, CAVE: 17 };
 // height of the ground, whether you can walk on it, and the chance a step brings a fight
 export const HEIGHT = { 0: -0.45, 1: -0.4, 2: 0, 3: 0, 4: 0.05, 5: 0.5, 6: 1.3, 7: 2.0, 8: 0, 9: 0.02, 10: 0.08, 11: 0.04, 12: -0.05, 13: -0.08, 14: 0, 15: 0.04, 16: 0.02, 17: 0.5 };
 export const WALK = { 0: 0, 1: 0, 2: 1, 3: 1, 4: 1, 5: 1, 6: 0, 7: 0, 8: 1, 9: 1, 10: 1, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1, 16: 1, 17: 1 };
-export const ENC = { 2: 0.06, 3: 0.06, 4: 0.1, 5: 0.09, 8: 0.08, 9: 0.015, 10: 0.01, 11: 0, 12: 0.04, 13: 0.09, 14: 0.03, 15: 0, 16: 0, 17: 0 };
+// (half what it was on the small map: a journey is twice and more as many steps, so about as many fights on the way)
+export const ENC = { 2: 0.03, 3: 0.03, 4: 0.05, 5: 0.045, 8: 0.04, 9: 0.0075, 10: 0.005, 11: 0, 12: 0.02, 13: 0.045, 14: 0.015, 15: 0, 16: 0, 17: 0 };
 
 // ---------------------------------------------------------------- noise
 function hash2(x, y, s) { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 2147483647); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
@@ -40,6 +44,10 @@ const RIDGES = [ // [points, half width, strength]: mountain chains
   [[[60, 6], [70, 5], [82, 4]], 2.5, 0.6],                                  // the hills north of the plain
 ];
 
+// each ridge with the box round its points (most tiles are far from any: no need to measure)
+const box = (pts) => [Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1])), Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))];
+const RIDGES_BB = RIDGES.map(([pts, w, s]) => [pts, w, s, box(pts)]);
+
 const cityAt = CITIES.map(([name, x, y, size], id) => ({ id, name, x: Math.round(x * SCALE), y: Math.round(y * SCALE), size }));
 export const CITY_POS = cityAt;
 
@@ -57,7 +65,7 @@ export function buildWorld(seed = 7) {
     else {
       // mountains: the ridges, the high west, and noise
       let m = 0;
-      for (const [pts, w, s] of RIDGES) { const d = lineDist(u, v, pts); if (d < w * 1.8) m = Math.max(m, s * (1 - d / (w * 1.8)) + (n - 0.5) * 0.5); }
+      for (const [pts, w, s, bb] of RIDGES_BB) { if (u < bb[0] - w * 1.8 || u > bb[2] + w * 1.8 || v < bb[1] - w * 1.8 || v > bb[3] + w * 1.8) continue; const d = lineDist(u, v, pts); if (d < w * 1.8) m = Math.max(m, s * (1 - d / (w * 1.8)) + (n - 0.5) * 0.5); }
       if (u < 12 && v > 30 && v < 60) m = Math.max(m, (12 - u) / 10 + (n - 0.5) * 0.4);         // the Tibetan edge
       if (u < 10 && v > 84) m = Math.max(m, 0.45 + (n - 0.5) * 0.6);
       const sichuan = ((u - 17) / 9) ** 2 + ((v - 71) / 9) ** 2 < 1;                           // the basin itself is flat
@@ -72,10 +80,11 @@ export function buildWorld(seed = 7) {
     t[id(x, y)] = k;
   }
   // rivers, two tiles wide where they are big
-  for (const [pts, w] of [[YELLOW, 0.75], [YANGTZE, 0.85], [HAN, 0.45]]) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const i = id(x, y); if (t[i] === T.SEA) continue;
-    if (lineDist(x / SCALE, y / SCALE, pts) < w) t[i] = T.RIVER;
-  }
+  // (only the tiles in the box round each stretch of a river are measured)
+  for (const [pts, w0] of [[YELLOW, 0.75], [YANGTZE, 0.85], [HAN, 0.45]]) { const w = w0 * 2.6 / SCALE; for (let s = 1; s < pts.length; s++) {
+    const [ax, ay] = pts[s - 1], [bx, by] = pts[s], x0 = Math.max(0, Math.floor((Math.min(ax, bx) - w) * SCALE)), x1 = Math.min(W - 1, Math.ceil((Math.max(ax, bx) + w) * SCALE)), y0 = Math.max(0, Math.floor((Math.min(ay, by) - w) * SCALE)), y1 = Math.min(H - 1, Math.ceil((Math.max(ay, by) + w) * SCALE));
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = id(x, y); if (t[i] === T.SEA) continue; if (segDist(x / SCALE, y / SCALE, ax, ay, bx, by) < w) t[i] = T.RIVER; }
+  } }
   // around each city: flat land, farm fields, the city itself (3x3, or 5x5 for a big one)
   for (const c of cityAt) {
     const R = c.size >= 3 ? 2 : 1;
@@ -123,22 +132,31 @@ export function buildWorld(seed = 7) {
   return { t, hgt, cityOf, deco, roads, places, placeAt: (x, y) => places.find((q) => q.x === x && q.y === y) || null, W, H, at: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? T.SEA : t[id(x, y)]), hAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? -0.45 : hgt[id(x, y)]), cityAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? -1 : cityOf[id(x, y)]) };
 }
 
-// A* on the tile grid (8 directions)
+// A* on the tile grid (8 directions), with a heap in typed arrays (the land is big: no arrays of pairs) and each
+// tile settled once
 function astar(t, a, b, cost) {
-  const N = W * H, g = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), open = [], start = a.y * W + a.x, goal = b.y * W + b.x;
-  const push = (i, f) => { open.push([f, i]); let k = open.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (open[p][0] <= open[k][0]) break; [open[p], open[k]] = [open[k], open[p]]; k = p; } };
-  const pop = () => { const top = open[0], last = open.pop(); if (open.length) { open[0] = last; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let m = k; if (l < open.length && open[l][0] < open[m][0]) m = l; if (r < open.length && open[r][0] < open[m][0]) m = r; if (m === k) break; [open[m], open[k]] = [open[k], open[m]]; k = m; } } return top; };
+  const N = W * H, g = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), done = new Uint8Array(N), start = a.y * W + a.x, goal = b.y * W + b.x;
+  let hf = new Float32Array(1 << 16), hi = new Int32Array(1 << 16), n = 0;
+  const push = (i, f) => {
+    if (n === hf.length) { const f2 = new Float32Array(n * 2), i2 = new Int32Array(n * 2); f2.set(hf); i2.set(hi); hf = f2; hi = i2; }
+    let k = n++; while (k > 0) { const p = (k - 1) >> 1; if (hf[p] <= f) break; hf[k] = hf[p]; hi[k] = hi[p]; k = p; } hf[k] = f; hi[k] = i;
+  };
+  const pop = () => {
+    const top = hi[0], lf = hf[--n], li = hi[n]; let k = 0;
+    for (;;) { const l = 2 * k + 1, r = l + 1; if (l >= n) break; const m = r < n && hf[r] < hf[l] ? r : l; if (hf[m] >= lf) break; hf[k] = hf[m]; hi[k] = hi[m]; k = m; }
+    hf[k] = lf; hi[k] = li; return top;
+  };
   g[start] = 0; push(start, 0);
   const D = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.45], [1, -1, 1.45], [-1, 1, 1.45], [-1, -1, 1.45]];
-  while (open.length) {
-    const [, i] = pop(); if (i === goal) break;
+  while (n) {
+    const i = pop(); if (done[i]) continue; done[i] = 1; if (i === goal) break;
     const x = i % W, y = (i - x) / W;
     for (const [dx, dy, m] of D) {
       const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-      const j = ny * W + nx, c = cost(t[j]); if (!c) continue;
+      const j = ny * W + nx; if (done[j]) continue; const c = cost(t[j]); if (!c) continue;
       if (dx && dy && (!cost(t[y * W + nx]) || !cost(t[ny * W + x]))) continue;
       const ng = g[i] + c * m; if (ng >= g[j]) continue;
-      g[j] = ng; from[j] = i; push(j, ng + Math.hypot(nx - b.x, ny - b.y) * 0.5);
+      g[j] = ng; from[j] = i; push(j, ng + Math.hypot(nx - b.x, ny - b.y) * 0.8);
     }
   }
   if (from[goal] < 0) return null;
@@ -172,6 +190,10 @@ const CNAME = ['黑風洞', '臥龍洞', '水簾洞', '白骨洞', '盤蛇洞', 
 // that open in the plains, the forests and the deserts
 const CNAME2 = ['龍潭洞', '萬妖洞', '血池洞', '黑龍洞', '修羅洞', '九幽洞', '屍王洞', '天魔洞', '紫電洞', '玄冰洞', '焚天洞', '鎖龍洞', '盤古洞', '蚩尤洞', '餓鬼洞', '萬蛇洞', '絕情洞', '雷公洞', '白虎洞', '朱雀洞'];
 const DNAME = ['無底地洞', '地底迷宮', '秦王地宮', '萬人坑', '黃泉地洞', '鬼王地宮', '地心古城', '殭屍地窟', '始皇陵道', '蟲巢地洞', '伏魔地宮', '幽冥地府'];
+// past the list of village names: a family's farm, hamlet or market
+const SURN = [...'孫周吳鄭馮衛蔣沈韓楊朱秦許何呂施孔曹嚴華金魏陶姜謝鄒喻柏竇章蘇潘葛范彭魯韋馬苗鳳花方俞任袁柳鮑史唐費廉岑薛雷賀倪湯殷羅畢郝安常樂于傅齊康伍余顧孟黃穆蕭尹姚邵汪祁毛狄米貝明臧計伏成戴宋龐熊紀舒屈項祝董梁杜阮藍閔席季麻賈路婁江童顏郭梅盛林鍾徐邱駱高夏蔡田樊胡凌霍虞萬支柯管盧莫房裘繆解應宗丁宣鄧郁單杭洪包左石崔吉龔程邢裴陸榮翁荀羊惠甄'], SUF = ['家莊', '家村', '家屯', '家集', '家堡', '家灣', '家寨', '家坪'];
+const villageName = (n) => n < VNAME.length ? VNAME[n] : SURN[(n * 37) % SURN.length] + SUF[n % SUF.length];
+const CNAME3 = [...'赤青玄白金銀鐵石風雲霧月星狼豹鷹蛟蟒狐鴉'].flatMap((a, i) => ['岩洞', '石窟', '山洞'].map((b, j) => [a + b, (i * 3 + j) * 7 % 60])).sort((p, q) => p[1] - q[1]).map((p) => p[0]);
 function placePlaces(t, hgt, deco, seed) {
   const id = (x, y) => y * W + x, r = (() => { let a = (seed * 2654435761) >>> 0 || 7; return () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; }; })();
   // what can be reached on foot from the first city
@@ -188,12 +210,13 @@ function placePlaces(t, hgt, deco, seed) {
     for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) { const x = cx + dx, y = cy + dy; if (!ok(x, y, land.filter((k) => k !== T.ROAD)) || !far(x, y, 6, 5)) continue; const d = dx * dx + dy * dy - (t[id(x, y + 1)] === T.ROAD || t[id(x - 1, y)] === T.ROAD || t[id(x + 1, y)] === T.ROAD ? 10 : 0); if (d < bd) { bd = d; best = [x, y]; } }
     if (best) add('county', name, ...best);
   }
-  for (let k = 0, n = 0; k < 6000 && n < 62; k++) {
+  const used = new Set(places.map((q) => q.name));
+  for (let k = 0, n = 0; k < 30000 && n < 180; k++) {
     const x = 3 + Math.floor(r() * (W - 6)), y = 3 + Math.floor(r() * (H - 6));
-    if (!ok(x, y, [T.PLAIN, T.MEADOW, T.FIELD, T.FOREST, T.DESERT]) || !far(x, y, 7, 6)) continue;
-    add('village', VNAME[n % VNAME.length], x, y); n++;
+    if (!ok(x, y, [T.PLAIN, T.MEADOW, T.FIELD, T.FOREST, T.DESERT]) || !far(x, y, 9, 9)) continue;
+    let nm = villageName(n); for (let j = 1; used.has(nm); j++) nm = villageName(n + j * 61); used.add(nm); add('village', nm, x, y); n++;
   }
-  for (let k = 0, n = 0; k < 20000 && n < CNAME.length; k++) {
+  for (let k = 0, n = 0; k < 60000 && n < CNAME.length; k++) {
     const x = 3 + Math.floor(r() * (W - 6)), y = 3 + Math.floor(r() * (H - 6));
     if (!ok(x, y, [T.HILL]) || !far(x, y, 8, 7)) continue;
     const rocky = [[0, -1], [1, -1], [-1, -1], [0, -2]].some(([dx, dy]) => [T.MOUNT, T.SNOW].includes(t[id(x + dx, y + dy)]));
@@ -203,16 +226,24 @@ function placePlaces(t, hgt, deco, seed) {
   // (added later, after everything else, so the places of an old game keep their numbers and their spots)
   const r2 = (() => { let a = (seed * 40503 + 977) >>> 0 || 9; return () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; }; })();
   const deepTier = () => { const v = r2(); return v < 0.35 ? 3 : v < 0.72 ? 4 : 5; };
-  for (let k = 0, n = 0; k < 20000 && n < CNAME2.length; k++) {
+  for (let k = 0, n = 0; k < 60000 && n < CNAME2.length; k++) {
     const x = 3 + Math.floor(r2() * (W - 6)), y = 3 + Math.floor(r2() * (H - 6));
     if (!ok(x, y, [T.HILL, T.FOREST, T.SNOW]) || !far(x, y, 6, 4)) continue;
     if (![[0, -1], [1, -1], [-1, -1], [0, -2], [-1, 0], [1, 0]].some(([dx, dy]) => [T.MOUNT, T.SNOW].includes(t[id(x + dx, y + dy)]))) continue;
     add('cave', CNAME2[n], x, y, { tier: deepTier() }); n++;
   }
-  for (let k = 0, n = 0; k < 20000 && n < DNAME.length; k++) {
+  for (let k = 0, n = 0; k < 60000 && n < DNAME.length; k++) {
     const x = 3 + Math.floor(r2() * (W - 6)), y = 3 + Math.floor(r2() * (H - 6));
     if (!ok(x, y, [T.PLAIN, T.FOREST, T.DESERT, T.MEADOW]) || !far(x, y, 10, 8)) continue;
     add('cave', DNAME[n], x, y, { tier: r2() < 0.45 ? 4 : 5, deep: true }); n++;
+  }
+  // and more caves for the bigger land (one to three stars), named from their look
+  const r3 = (() => { let a = (seed * 69069 + 4111) >>> 0 || 11; return () => { a ^= a << 13; a ^= a >>> 17; a ^= a << 5; return (a >>> 0) / 4294967296; }; })();
+  for (let k = 0, n = 0; k < 60000 && n < CNAME3.length; k++) {
+    const x = 3 + Math.floor(r3() * (W - 6)), y = 3 + Math.floor(r3() * (H - 6));
+    if (!ok(x, y, [T.HILL, T.FOREST]) || !far(x, y, 8, 7)) continue;
+    if (![[0, -1], [1, -1], [-1, -1], [0, -2], [-1, 0], [1, 0]].some(([dx, dy]) => [T.MOUNT, T.SNOW, T.HILL].includes(t[id(x + dx, y + dy)]))) continue;
+    add('cave', CNAME3[n], x, y, { tier: 1 + Math.floor(r3() * 3) }); n++;
   }
   return places;
 }

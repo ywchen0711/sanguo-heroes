@@ -3,7 +3,7 @@
 // serve a lord or rise on your own, fight bandits, duel famous generals and take cities — and change history. The game
 // ends when the years you chose are up, or when one warlord unifies the realm, and then your deeds are reckoned.
 import { View, THREE, personSheet } from './render.js';
-import { buildWorld, T, WALK, ENC, CITY_POS, regionAt, W as WW } from './world.js';
+import { buildWorld, T, WALK, ENC, CITY_POS, regionAt, W as WW, K } from './world.js';
 import { buildTown, buildVillage, buildCave } from './town.js';
 import { lookFor, LOOKS, soldierSheet, beastSheet, assignLooks } from './sprites.js';
 import { newGame, step, rng, citiesOf, gensOf, busy, pickGovernor } from './sim/engine.js';
@@ -67,12 +67,17 @@ class Game {
     this.ui.toast(`<b>${dateStr(G.year, G.month)}</b>　${g.name}的故事開始了。`);
     this.act.intro();
   }
-  saveGame() { try { const G = { ...this.G, r: undefined, pending: [], byName: undefined }; localStorage.setItem(SAVE, JSON.stringify({ G, H: this.H, pos: this.pos })); return true; } catch (e) { console.error(e); return false; } }
+  saveGame() { try { const G = { ...this.G, r: undefined, pending: [], byName: undefined }; localStorage.setItem(SAVE, JSON.stringify({ G, H: this.H, pos: this.pos, mapW: WW })); return true; } catch (e) { console.error(e); return false; } }
   hasSave() { try { return !!localStorage.getItem(SAVE); } catch (e) { return false; } }
   loadGame() {
     const d = JSON.parse(localStorage.getItem(SAVE)); const G = this.G = d.G; G.r = rng(G.seed + G.t * 7919 + 1); G.pending = []; G.byName = Object.fromEntries(G.gens.map((g) => [g.name, g]));
     this.H = d.H; if (!this.H.rk2) { this.H.st.bestRank = fromOld(this.H.st.bestRank || 0); for (const R of G.rivals || []) R.st.bestRank = fromOld(R.st.bestRank || 0); this.H.rk2 = 1; }
     this.load2();
+    // a game saved on the old 200x200 map: everything on the land moves out with the cities
+    const old = d.mapW || 200; if (old !== WW) { const f = WW / old, sc = (v) => Math.round(v * f);
+      if (d.pos.town == null && d.pos.place == null) { d.pos.x = sc(d.pos.x); d.pos.z = sc(d.pos.z); }
+      for (const m of this.H.missions || []) { m.x = sc(m.x); m.z = sc(m.z); }
+      for (const R of G.rivals || []) { if (R.pos) R.pos = [sc(R.pos[0]), sc(R.pos[1])]; R.path = null; R.goal = null; R.wait = 0; } }
     if (d.pos.place != null) this.enterPlace(this.world.places[d.pos.place], true, d.pos); else if (d.pos.town != null) this.enterTown(d.pos.town, true, d.pos); else this.enterWorld(d.pos.x, d.pos.z, d.pos.dir);
   }
   load2() { this.world ||= buildWorld(); this.G.roam = true; this.mode = 'world'; document.body.classList.add('playing'); assignLooks(this.G.gens); }
@@ -368,9 +373,9 @@ class Game {
   }
   march(from, to, color, win) {
     if (this.mode !== 'world') return;
-    const a = CITY_POS[from], b = CITY_POS[to], d = Math.hypot(a.x - b.x, a.y - b.y); if (d > 60) return;
+    const a = CITY_POS[from], b = CITY_POS[to], d = Math.hypot(a.x - b.x, a.y - b.y); if (d > 60 * K) return;
     const act = this.view.addActor(soldierSheet('soldier', color, 'flag'), a.x, a.y + 1, { scale: 1.2 });
-    act.march = { a, b, t: 0, dur: 4 + d / 8, win }; (this.armies ||= []).push(act);
+    act.march = { a, b, t: 0, dur: 4 + d / 8 / K, win }; (this.armies ||= []).push(act);
   }
   armyTick(dt) {
     if (!this.armies?.length) return;

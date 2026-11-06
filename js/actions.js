@@ -2,7 +2,7 @@
 // soldiers, recruiting companions, missions, duels with generals, fights on the road, besieging and taking cities,
 // founding a warlord's realm of one's own, and looking for the famous treasures.
 import { lookFor, LOOKS } from './sprites.js';
-import { CITY_POS, T } from './world.js';
+import { CITY_POS, T, K } from './world.js';
 import { BUILDINGS } from './town.js';
 import { serve, die, record, pickGovernor, destroy, give, hostile, allied, citiesOf, gensOf, lordOf, busy, power, refresh } from './sim/engine.js';
 import { itemName, spellName } from './sim/text.js';
@@ -600,7 +600,7 @@ export class Actions {
   newMission(C, official) {
     const W = this.g.world, c = C.pos || CITY_POS[C.id], lv0 = 0, lv = Math.round(this.g.partyList().reduce((s, p) => s + p.rec.lv, 0) / (this.H.party.length + 1)) + 2;
     for (let k = 0; k < 80; k++) {
-      const a = Math.random() * Math.PI * 2, d = 8 + Math.random() * 12, x = Math.round(c.x + Math.cos(a) * d), z = Math.round(c.y + Math.sin(a) * d);
+      const a = Math.random() * Math.PI * 2, d = (8 + Math.random() * 12) * Math.sqrt(K), x = Math.round(c.x + Math.cos(a) * d), z = Math.round(c.y + Math.sin(a) * d);
       const t = W.at(x, z); if (![T.PLAIN, T.MEADOW, T.FOREST, T.HILL, T.DESERT].includes(t)) continue;
       const kind = pick(['bandit', 'turban', 'bandit', 'pirate']), boss = `${pick(['惡虎', '黑風', '赤眉', '獨眼', '鐵臂', '白狼', '飛天'])} ${pick([...SUR])}${pick([...GIV])}`;
       const mul = tire(this.H, 'bandit') * eraBonus(this.G, 'bandit');   // the same work again pays less; hard times pay more
