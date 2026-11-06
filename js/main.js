@@ -20,6 +20,7 @@ import { AutoPlay } from './auto.js';
 import { Board } from './board.js';
 import { Roam } from './roam.js';
 import { Crowd } from './crowd.js';
+import { Armies } from './armies.js';
 import { fromOld } from './data/ranks.js';
 import { fameOf, fameCheck } from './fame.js';
 import { govern } from './govern.js';
@@ -37,7 +38,7 @@ const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 
 
 class Game {
   constructor() {
-    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet);
+    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet); this.camps = new Armies(this, personSheet);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
@@ -233,7 +234,7 @@ class Game {
     // the next frame is asked for first: an error in one step must never stop the game drawing (that looks like a freeze)
     requestAnimationFrame((t2) => this.frame(t2));
     try {
-      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); this.roam.tick(dt); this.crowd.tick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
+      if (this.mode === 'world' || this.mode === 'town') { this.camTick(dt); this.boardT = (this.boardT || 0) + dt; if (this.boardT > 0.5 && !this.ui.busy) { this.boardT = 0; this.board.check(); fameCheck(this); } if (this.auto.on) { this.auto.watch(dt); if (!this.ui.busy && !this.locked && !this.pos?.moving) this.auto.tick(dt); } this.move(dt); this.npcTick(dt); this.armyTick(dt); this.roam.tick(dt); this.crowd.tick(dt); this.camps.tick(dt); if (this.pos) this.view.updateChunks(this.pos.x, this.pos.z, 1); if (this.mode === 'world' && this.pos?.moving) { this.mapT = (this.mapT || 0) + dt; if (this.mapT > 0.1) { this.mapT = 0; this.screens.minimap(); } } }
       if (this.mode === 'world' || this.mode === 'town') this.view.render(dt);
     } catch (e) { console.error(e); if (this.pos) this.pos.moving = false; }
   }
@@ -281,7 +282,7 @@ class Game {
     this.screens.minimap(); // the map in the corner keeps up with every step
     // thirty steps on the land make a day, thirty days a month
     this.steps = (this.steps || 0) + 1; this.H.walk = (this.H.walk || 0) + 1; this.roam.step(1); this.crowd.step(1);
-    if (this.roam.meet() || this.crowd.meet()) return;
+    if (this.roam.meet() || this.camps.meet() || this.crowd.meet()) return;
     if (this.H.walk % 30 === 0) { this.H.days++; if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; } }
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
@@ -364,7 +365,7 @@ class Game {
     if (this.H.wound && this.H.wound <= G.t) { this.H.wound = 0; this.ui.toast('傷勢痊癒了。', 3000); }
     checkTitles(this);
     // armies on the march: this month's campaigns, walking from city to city
-    for (const e of logs) if (e.kind === 'war' && e.from != null && e.city != null) this.march(e.from, e.city, G.factions[e.fac]?.color || '#888', e.win);
+    for (const e of logs) if (e.kind === 'war' && e.from != null && e.city != null && e.fac === G.player && !e.camp) this.march(e.from, e.city, G.factions[e.fac]?.color || '#888', e.win);
     this.view.season(G.month); this.refreshCities(); this.hud();
     // the end: the years are up, the realm is one, or the player's general has died
     if (G.over || G.year >= this.H.endYear || g.status === 'dead') { if (G.over && G.over === this.myFaction()) deed(this, this.isLord() ? '一統天下' : `助${G.factions[G.over].name}一統天下`, true); this.screens.ending(); return; }

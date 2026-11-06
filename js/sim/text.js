@@ -79,6 +79,8 @@ export function fmt(e, lang = 'zh') {
     case 'surrender': return en ? `${N('g')} heeds ${N('x')}'s call to surrender and brings the ${N('o')} army over to the ${N('f')} army.` : `${p.g}接受${p.x}的勸降，率${p.o}軍歸順${p.f}軍。`;
     case 'duel': return en ? `Before the walls of ${C('c')}, ${N('a')} and ${N('d')} duel! ${N('w')} ${p.killed ? `slays ${N('l')}` : `wins, and ${N('l')} flees`}.`
       : `${p.c}城下，${p.a}與${p.d}一騎討！${p.w}${p.killed ? `斬殺${p.l}` : `獲勝，${p.l}敗走`}。`;
+    case 'marchOut': return en ? `The ${N('f')} army (${N('g')}, ${p.n} men) marches on ${C('c')}.` : `${p.f}軍（${p.g}）率兵${p.n}人，向${p.c}進軍。`;
+    case 'marchBack': return en ? `The ${N('f')} army, cut down on the road, turns back from ${C('c')}.` : `${p.f}軍在進軍${p.c}的路上受挫，撤兵回城。`;
     case 'warWin': return en ? `The ${N('f')} army (${N('g')}) takes ${C('c')} from ${p.o ? `the ${N('o')} army` : 'its garrison'}${notes()}.` : `${p.f}軍（${p.g}）攻陷${p.c}，擊破${p.o ? p.o + '軍' : '守軍'}${notes()}。`;
     case 'warLose': return en ? `The ${N('f')} army (${N('g')}) attacks ${C('c')} but is driven back by ${p.o ? `the ${N('o')} army` : 'its garrison'}${notes()}.` : `${p.f}軍（${p.g}）進攻${p.c}，被${p.o ? p.o + '軍' : '守軍'}擊退${notes()}。`;
     case 'captive': return en ? `${N('g')} is captured and joins the ${N('f')} army.` : `${p.g}被俘，歸順${p.f}軍。`;

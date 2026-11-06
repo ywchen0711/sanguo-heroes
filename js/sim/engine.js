@@ -199,6 +199,7 @@ export function step(G) {
   eraMonth(G, { record, citiesOf });                            // the age, and coalitions against the overgrown (era.js)
   for (const fid of shuffle(G, Object.keys(G.factions))) { const f = G.factions[fid]; if (!f.alive) continue; domestic(G, f); }
   if (G.month % 3 === 0) for (const fid of shuffle(G, Object.keys(G.factions))) { const f = G.factions[fid]; if (f.alive) diplomacy(G, f); }
+  arrive(G);
   for (const fid of shuffle(G, Object.keys(G.factions))) { const f = G.factions[fid]; if (f.alive) war(G, f); }
   unrest(G);
   checkFactions(G);
@@ -547,9 +548,29 @@ function war(G, f) {
     if (o.t.owner === f.id || r() > 0.35 + lord.war / 500 + (f.aggr - 1) * 0.3) continue;
     if (!o.from.every((c) => c.owner === f.id) || !o.army.every((g) => g.status === 'serving' && g.fac === f.id)) continue;
     f.food -= Math.round(o.troops / 60);
-    o.from.forEach((c, i) => { c.troops -= Math.min(o.send[i], c.troops); });
-    siege(G, f, o.from, o.t, o.army, o.troops, o.send, o.train);
+    const send = o.from.map((c, i) => Math.min(o.send[i], c.troops)); o.from.forEach((c, i) => { c.troops -= send[i]; });
+    // the army sets out: it is on the road all month (to be seen on the map, joined or cut down) and reaches the walls next month
+    const id = G.nextCamp = (G.nextCamp || 0) + 1, t = o.t;
+    (G.camps ||= []).push({ id, fac: f.id, from: o.from.map((c) => c.id), send, troops: sum(send, (x) => x), troops0: sum(send, (x) => x), army: o.army.map((g) => g.id), train: o.train, target: t.id, def: t.owner, t: G.t });
+    record(G, 'war', 'marchOut', { f: f.name, g: o.army[0].name, c: t.name, o: t.owner ? G.factions[t.owner].name : null, n: Math.round(sum(send, (x) => x) / 100) * 100 }, f.id, t.owner && G.player && t.owner === G.player ? 2 : 1, { city: t.id, from: o.from[0].id, def: t.owner, camp: id });
     f.rest = G.t + 1 + Math.floor(r() * 4) + Math.floor(cs.length / 4);
+  }
+}
+// the armies that set out last month reach the walls: the siege (or, cut down on the road or with nothing left to take, they go home)
+function arrive(G) {
+  if (!G.camps?.length) return;
+  for (const c of G.camps.filter((c) => c.t < G.t)) {
+    G.camps = G.camps.filter((x) => x !== c);
+    const f = G.factions[c.fac], t = G.cities[c.target]; if (!f?.alive) continue;
+    const idx = c.from.map((id, i) => [G.cities[id], i]).filter(([s]) => s.owner === c.fac), srcs = idx.map(([s]) => s), k = c.troops / Math.max(1, c.troops0), sent = idx.map(([, i]) => Math.round(c.send[i] * k));
+    const army = c.army.map((id) => G.gens[id]).filter((g) => g && g.status === 'serving' && g.fac === c.fac);
+    const back = () => { const n = Math.max(1, sum(sent, (x) => x)); srcs.forEach((s, i) => { s.troops += Math.round(c.troops * sent[i] / n); }); };
+    if (!srcs.length) continue;
+    if (!army.length || t.owner === c.fac || !hostile(G, c.fac, t.owner) || c.back || c.troops < 3000) {
+      if (c.back || c.troops < 3000) record(G, 'war', 'marchBack', { f: f.name, c: t.name, g: army[0]?.name || '' }, c.fac, 1, { city: t.id, def: t.owner });
+      back(); continue;
+    }
+    siege(G, f, srcs, t, army, c.troops, sent.map((x) => Math.max(1, x)), c.train);
   }
 }
 function siege(G, f, srcs, city, army, troops, sent, train) {

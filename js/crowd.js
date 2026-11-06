@@ -40,7 +40,7 @@ export class Crowd {
   step(n = 1) { this.now += n; if (this.fights.length) this.settle(); }
   // who is in the crowd
   who(g) {
-    if (!g || g.isPlayer || g.rivalHero || g.held || busy(g) || (g.status !== 'serving' && g.status !== 'free') || g.city == null || !CITY_POS[g.city]) return false;
+    if (!g || g.isPlayer || g.rivalHero || g.held || busy(g) || this.g.camps?.busy(g.id) || (g.status !== 'serving' && g.status !== 'free') || g.city == null || !CITY_POS[g.city]) return false;
     return !(g.status === 'serving' && this.G.factions[g.fac]?.lord === g.id);
   }
   // the land just outside a city's walls, where a walk out of it starts

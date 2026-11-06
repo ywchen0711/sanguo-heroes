@@ -293,6 +293,39 @@ export class Actions {
     if ((fought.find((u) => u.gid === x.id)?.sol ?? 1) <= 0 && Math.random() < 0.5) await this.captive(x, f);
     return r;
   }
+  // ---------------------------------------------------------------- an army on the march (armies.js)
+  // the vanguard: the garrison rides out to meet the column, and the player's party meets them first
+  async vanguard(c) {
+    const G = this.G, me = this.me, H = this.H, t = G.cities[c.target], f = G.factions[c.fac], mine = this.g.myFaction(), lead = G.gens[c.army[0]];
+    const foes = this.defenders(t).slice(0, 3); for (const u of foes) { u.sol = u.solMax = Math.max(150, Math.round(u.solMax * 0.5)); }
+    this.g.audio.sfx('encounter');
+    const r = await this.fight(foes, { terrain: this.terrainAt(), title: `${f.name}軍先鋒：迎擊${t.name}守軍` });
+    c.vang = true; if (r !== 'win') return;
+    const cut = Math.round(t.troops * 0.2); t.troops -= cut; H.fame += 6;
+    let msg = `${t.name}的守軍折損 ${cut} 人。`;
+    if (mine === c.fac) { if (!this.g.isLord()) { me.merit += Math.round(8 * (1 + partyFx(this.g, 'merit'))); this.promote(); } msg += '\n功績 +8、名聲 +6'; }
+    else { const gold = 80 + Math.round(t.troops / 100); H.gold += gold; msg += `\n${f.name}軍付了賞金 ${gold} 金。名聲 +6`; }
+    this.g.hud(); await this.ui.say(lead?.name || '', `先鋒立了頭功！${msg}`, lead ? this.g.lookOf(lead) : null);
+  }
+  // cut into the column: its generals and their men (out of the army's numbers); cut down to half, it turns back
+  async cutArmy(c) {
+    const G = this.G, me = this.me, H = this.H, f = G.factions[c.fac], t = G.cities[c.target], mine = this.g.myFaction();
+    const gs = c.army.map((id) => G.gens[id]).filter((g) => g && g.status === 'serving').slice(0, 3); if (!gs.length) return;
+    const foes = gs.map((x) => { const lv = this.lvOf(x), rec = { lv, eq: {} }, sol = Math.max(200, Math.min(Math.round(solMax(x, rec) * 1.5), Math.round(c.troops / (gs.length + 2))));
+      return { name: x.name, look: this.g.lookOf(x), lv, war: x.war, lead: x.lead, int: x.int, sol, solMax: sol, sp: Math.round(spMax(x, rec)), spells: x.spells, gid: x.id, color: f.color, wpn: Math.round(lv / 4), arm: Math.round(lv / 4) }; });
+    for (let i = 0; i < 2; i++) foes.push(this.foe(`${f.name}軍士兵`, 'soldier', Math.max(1, this.lvOf(gs[0]) - 3), f.color, false));
+    this.g.audio.sfx('encounter');
+    const r = await this.fight(foes, { terrain: this.terrainAt(), title: `截擊${f.name}軍大軍！` });
+    const fought = this.last?.foes || foes, lost = fought.reduce((s, u) => s + (u.solMax - Math.max(0, u.sol)), 0);
+    // the men lost in the fight, and (a win) as many again who scatter
+    c.troops = Math.max(0, c.troops - lost * (r === 'win' ? 2 : 1)); if (r !== 'win') return;
+    H.fame += 10; const ours = t.owner && t.owner === mine;
+    if (mine && !this.g.isLord()) { me.merit += Math.round((ours ? 15 : 8) * (1 + partyFx(this.g, 'merit'))); this.promote(); }
+    const back = c.troops < c.troops0 * 0.5 || c.troops < 3000; if (back) { this.g.camps.turnBack(c); H.fame += 10; deed(this.g, `截擊${f.name}軍，解${t.name}之圍`); }
+    record(G, 'war', 'roadWin', { g: me.name, x: gs[0].name, f: f.name }, mine, back ? 2 : 1, { g: gs[0].id });
+    this.g.hud();
+    await this.ui.say('', back ? `${f.name}軍大亂，${gs[0].name}下令撤退！\n${t.name}之圍解了。名聲 +20${mine ? '、功績' : ''}` : `${f.name}軍損兵折將，還剩 ${c.troops} 人。\n名聲 +10${mine ? '、功績' : ''}`);
+  }
   // a general taken on the road: win him over, let him go, or put him to death
   async captive(x, pf) {
     const G = this.G, me = this.me, H = this.H, mine = this.g.myFaction(), p = clamp(0.2 + (me.cha - x.loyalty) / 160 + (fameOf(H).defect || 0), 0.03, 0.9);
