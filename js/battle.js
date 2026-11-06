@@ -15,6 +15,7 @@ import { groupTraits, comboLines, syncParty } from './traits.js';
 import { FX } from './fx.js';
 import { diff } from './hardship.js';
 import { bondOf } from './bonds.js';
+import { setupField } from './field.js';
 
 const PACE = 2, HIT = 1.8, MEND = 1.5;   // the pace of a battle: animations quicker, blows harder, so a fight takes fewer rounds
 const wait = (ms) => new Promise((r) => setTimeout(r, ms / PACE));
@@ -128,12 +129,15 @@ export class Battle {
     for (const l of this.comboSay.slice(0, 4)) { this.game.audio?.sfx('level'); await this.say(`★ ${l}`, 1000); }
     const drum = Math.max(0, ...this.party.map((u) => u.arms.startRouse || 0));
     if (drum) { for (const u of this.party) { u.status.rouse = drum + 1; this.float(u, '攻擊↑', '#ffb04a'); } await this.say('戰鼓擂響，全軍士氣大振！', 900); }
+    // the lie of the land
+    this.fieldFx = null; try { this.fieldFx = await setupField(this); } catch (e) { console.error(e); } if (this.fieldFx?.tag) this.formBar();
     let result;
     for (;;) {
       this.round++;
       const orders = await this.orders(); if (orders === 'flee') { if (await this.tryFlee()) { result = 'flee'; break; } else continue; }
       if (orders.duel) { const r = await this.duelFrom(orders.duel); if (r) { result = r; } }
-      if (!result) await this.playRound(orders.list);
+      if (!result && this.fieldFx?.round) await this.fieldFx.round(this.round);
+      if (!result && this.foes.some((f) => f.sol > 0)) await this.playRound(orders.list);
       if (this.foes.every((f) => f.sol <= 0)) { result = 'win'; break; }
       if (this.party.every((u) => u.sol <= 0)) { result = 'lose'; break; }
       if (result) break;
@@ -149,7 +153,7 @@ export class Battle {
   formBar() {
     let el = this.ui.querySelector('.b-form'); if (!el) { el = document.createElement('div'); el.className = 'b-form'; this.ui.appendChild(el); }
     const F = this.form, beat = F.foe && FORMS[F.party].beats === F.foe ? ' <em>克制！</em>' : F.foe && FORMS[F.foe].beats === F.party ? ' <em class="bad">被克制</em>' : '';
-    el.innerHTML = `${F.foe ? `<span>敵　${FORMS[F.foe].n}陣</span>` : ''}<span>我軍　${FORMS[F.party].n}陣${beat}</span>`;
+    el.innerHTML = `${F.foe ? `<span>敵　${FORMS[F.foe].n}陣</span>` : ''}<span>我軍　${FORMS[F.party].n}陣${beat}</span>${this.fieldFx?.tag ? `<span>${this.fieldFx.tag}</span>` : ''}`;
   }
   async chooseForm() {
     const F = this.form, k = await this.menu('陣型', Object.entries(FORMS).map(([k, f]) => ({ k, n: `${f.n}陣${k === F.party ? '（目前）' : ''}${F.foe && f.beats === F.foe ? '　克制敵陣' : ''}`, d: f.d })).concat([{ k: null, n: '← 返回' }]));
@@ -334,6 +338,7 @@ export class Battle {
     d *= troopMul(u.troop, t.troop, this.o.terrain) * (fu?.atk || 1) * (fu && kt && fu.beats === kt ? 1.15 : 1);
     if (u.troop === 'bow' && fu?.bow) d *= fu.bow; if (u.troop === 'cav') d *= u.arms?.cav || 1;
     if (this.mods) d *= u.side === 'party' ? this.mods.atk : this.mods.foeAtk;
+    if (this.fieldFx) d *= this.fieldFx.dmg(u, t, this.round);
     if (u.troop === 'bow') d *= 1 + (u.arms?.bowPow || 0); if (u.troop === 'navy') d *= 1 + (u.arms?.navyPow || 0);
     if (u.troop === 'inf') d *= 1 + (u.arms?.infPow || 0); if (u.troop === 'cav' && u.arms?.horse) d *= 1 + u.arms.horse / 2;
     if (this.o.siege && u.side === 'party') d *= 1 + (u.arms?.siege || 0); if (this.o.siege && t.side === 'foe') d *= 1 - (t.arms?.wall || 0);
