@@ -545,7 +545,7 @@ export class Actions {
   // ---------------------------------------------------------------- time passing (in town: rest, work, search)
   async passDays(n, msg) {
     if (msg) this.ui.toast(msg);
-    for (let i = 0; i < n; i++) { this.g.roam.step(30); this.H.days++; if (this.H.days % 30 === 0) { this.g.monthTick(); if (this.g.mode === 'title') return; } }
+    for (let i = 0; i < n; i++) { this.g.roam.step(30); this.g.crowd.step(30); this.H.days++; if (this.H.days % 30 === 0) { this.g.monthTick(); if (this.g.mode === 'title') return; } }
     this.g.hud();
   }
   // ---------------------------------------------------------------- missions: a bandit chief somewhere near a city
