@@ -24,6 +24,7 @@ import { Armies } from './armies.js';
 import { rankMonth, rankTag } from './martial.js';
 import { Outlaws } from './outlaws.js';
 import { Horses } from './horses.js';
+import { Stories } from './stories.js';
 import { fromOld } from './data/ranks.js';
 import { fameOf, fameCheck } from './fame.js';
 import { govern } from './govern.js';
@@ -41,7 +42,7 @@ const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 
 
 class Game {
   constructor() {
-    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet); this.camps = new Armies(this, personSheet); this.outlaws = new Outlaws(this, personSheet); this.horses = new Horses(this);
+    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet); this.camps = new Armies(this, personSheet); this.outlaws = new Outlaws(this, personSheet); this.horses = new Horses(this); this.stories = new Stories(this);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
@@ -292,6 +293,7 @@ class Game {
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
     if (this.steps > 5 && this.board.walk()) { this.steps = 0; return; }
     if (this.steps > 3 && this.H.challenger && !this.auto.on) { this.steps = 0; this.act.rankChallenge(); return; }
+    if (this.steps > 2 && this.H.storyDue && !this.auto.on) { this.H.storyDue = false; this.stories.month(); }
     if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (this.night() ? 1.4 : 1) * (hasT(this.H, 'canbao') ? 0.6 : 1) * (1 - partyFx(this, 'encounter'))) { this.steps = 0; if (!this.outlaws.hunters()) this.act.encounter(regionAt(P.x, P.z), k); return; }
     if (this.H.walk % 10 === 0) this.happen('field');
     if (this.H.walk % 10 === 0 || this.shichen() !== this.lastSc) { this.lastSc = this.shichen(); this.hud(); }
@@ -361,7 +363,7 @@ class Game {
     if (!before.lord && this.isLord()) this.ui.toast(`<b style="color:#ffd86a">你繼承了${G.factions[now].name}軍之主的地位！</b>`, 5000);
     noteDisasters(this, logs); this.roam.month();
     govern(this);
-    this.board.month(); rankMonth(this); this.outlaws.month();
+    this.board.month(); rankMonth(this); this.outlaws.month(); this.H.storyDue = true;
     { const loyal = partyFx(this, 'loyal'), mine = this.myFaction(); if (loyal) for (const id of this.H.party) { const x = G.gens[id]; if (x.status === 'serving') x.loyalty = Math.min(100, x.loyalty + Math.round(loyal * 10)); } if (mine && this.isLord()) G.factions[mine].diplo = Math.min(0.3, partyFx(this, 'diplo')); }
     if (!before.lord && this.isLord()) deed(this, `繼${G.factions[now].name}之位`, true);
     if (before.fac && !now) deed(this, `${G.factions[before.fac]?.name || ''}亡，${g.name}流落在野`);

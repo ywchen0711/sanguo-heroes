@@ -55,6 +55,7 @@ export class Actions {
   }
   // ---------------------------------------------------------------- counties, villages and caves
   async placeGate(q) {
+    await this.g.stories.arrive(q);   // a companion's lost kin, or his old master (stories.js)
     if (q.kind === 'cave') {
       const st = this.H.places?.[q.id];
       const c = await this.ui.ask(`${q.name}　危險 ${'★'.repeat(q.tier)}${st?.boss ? '（洞主已被打倒）' : ''}\n${q.deep ? '地面裂開一個大洞，石階一路往下，看不到底。陰風陣陣，像是有人在下面哭……' : '洞裡黑漆漆的，深處傳來奇怪的聲音……'}${q.tier >= 4 ? '\n（非常危險：建議隊伍等級 ' + (6 + q.tier * 4) + ' 以上）' : ''}`, [{ k: true, n: '進去探險' }, { k: false, n: '離開' }]);
@@ -190,7 +191,7 @@ export class Actions {
   async people() {
     const H = this.H, ts = (H.titles || []).map((id) => TITLES.find((t) => t.id === id)).filter(Boolean);
     const next = TITLES.filter((t) => !(H.titles || []).includes(t.id) && !t.bad).slice(0, 6);
-    await this.ui.panel(`<h4>稱號</h4>${ts.length ? ts.map((t) => `<p><b style="color:${t.bad ? '#ff8a6a' : '#ffd86a'}">「${t.n}」</b>　<small>${t.d}</small></p>`).join('') : '<p class="dim">還沒有稱號。</p>'}<p class="dim">還沒得到：${next.map((t) => t.n).join('、')}……</p>${bondsHTML(this.g)}`, { title: '人物', cls: 'wide' });
+    await this.ui.panel(`<h4>稱號</h4>${ts.length ? ts.map((t) => `<p><b style="color:${t.bad ? '#ff8a6a' : '#ffd86a'}">「${t.n}」</b>　<small>${t.d}</small></p>`).join('') : '<p class="dim">還沒有稱號。</p>'}<p class="dim">還沒得到：${next.map((t) => t.n).join('、')}……</p>${bondsHTML(this.g)}${this.g.stories.html()}`, { title: '人物', cls: 'wide' });
   }
   async partyMenu() {
     for (;;) {
@@ -707,6 +708,7 @@ export class Actions {
       await this.ui.say('', `討伐了「${m.boss}」！\n得到 ${m.gold} 金${m.official ? `、功績 ${m.merit}` : ''}、名聲 ${m.fame}。`);
       this.dropBanner(m);
       this.H.missions = this.H.missions.filter((x) => !x.done);
+      if (m.story != null) await this.g.stories.done(m.story);
     }
   }
   // ---------------------------------------------------------------- fights on the road
