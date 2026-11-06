@@ -18,6 +18,13 @@ function px(w, h) {
   return { c, x, P, R, w, h };
 }
 // a dark outline around everything drawn (the crisp HD-2D sprite look)
+// a sheet drawn one frame at a time: each frame on a canvas of its own (so a foot or a spear that reaches past the frame is
+// cut off rather than drawn into the next one, and the outline stays inside it too), outlined, then put in its place
+function sheetOf(cols, rows, fw, fh, draw, col) {
+  const cv = px(fw * cols, fh * rows);
+  for (let r = 0; r < rows; r++) for (let f = 0; f < cols; f++) { const one = px(fw, fh); draw(one, f, r); outline(one, col); cv.x.drawImage(one.c, f * fw, r * fh); }
+  return cv;
+}
 function outline(cv, col = '#1a1410') {
   const { c, x, w, h } = cv, d = x.getImageData(0, 0, w, h), a = d.data, o = new Uint8ClampedArray(a);
   const [r, g, b] = hex(col);
@@ -159,9 +166,7 @@ const FW = 24, FH = 32;
 const cache = new Map();
 export function personSheet(L) {
   if (cache.has(L.key)) return cache.get(L.key);
-  const cv = px(FW * 3, FH * 4);
-  for (let d = 0; d < 4; d++) for (let f = 0; f < 3; f++) drawPerson(cv, f * FW, d * FH, d, f, L);
-  outline(cv);
+  const cv = sheetOf(3, 4, FW, FH, (one, f, d) => drawPerson(one, 0, 0, d, f, L));
   const out = fine({ canvas: cv.c, fw: FW, fh: FH });
   cache.set(L.key, out);
   return out;
@@ -301,9 +306,7 @@ export function soldierSheet(kind = 'soldier', color = '#8a4a3a', role = 'spear'
   const key = `sol_${kind}_${color}_${role}`; if (cache.has(key)) return cache.get(key);
   const S = (SOL[kind] || SOL.soldier)(color); if (role === 'bow') S.wpn = 'bow', S.shield = false; if (role === 'flag') S.wpn = 'flag', S.shield = false;
   if (role === 'cav') return riderSheet(key, S, color);
-  const cv = px(FW * 3, FH * 4);
-  for (let f = 0; f < 3; f++) { drawSoldier(cv, f * FW, 1 * FH, f, S, color, false); drawSoldier(cv, f * FW, 2 * FH, f, S, color, true); drawSoldier(cv, f * FW, 0, f, S, color, false); drawSoldier(cv, f * FW, 3 * FH, f, S, color, true); }
-  outline(cv, '#140e0a');
+  const cv = sheetOf(3, 4, FW, FH, (one, f, row) => drawSoldier(one, 0, 0, f, S, color, row >= 2), '#140e0a');
   const out = fine({ canvas: cv.c, fw: FW, fh: FH }); cache.set(key, out); return out;
 }
 function drawSoldier(cv, ox, oy, frame, S, color, flip) {
@@ -347,9 +350,7 @@ function drawSoldier(cv, ox, oy, frame, S, color, flip) {
 // a horseman: 32x32 cells, the same 4 rows x 3 frames as a soldier (the left- and right-facing rows are what battles use)
 const CW = 32;
 function riderSheet(key, S, color) {
-  const cv = px(CW * 3, FH * 4);
-  for (let f = 0; f < 3; f++) for (let row = 0; row < 4; row++) drawRider(cv, f * CW, row * FH, f, S, color, row >= 2);
-  outline(cv, '#140e0a');
+  const cv = sheetOf(3, 4, CW, FH, (one, f, row) => drawRider(one, 0, 0, f, S, color, row >= 2), '#140e0a');
   const out = fine({ canvas: cv.c, fw: CW, fh: FH, rider: true }); cache.set(key, out); return out;
 }
 function drawRider(cv, ox, oy, frame, S, color, flip) {
@@ -480,9 +481,7 @@ function drawBeast(K, kind, f) {
 }
 export function beastSheet(kind) {
   const key = 'beast2_' + kind; if (cache.has(key)) return cache.get(key);
-  const cv = px(BW * 2, BH);
-  for (let f = 0; f < 2; f++) { const K = beastKit(cv, f * BW); drawBeast(K, kind, f); K.flush(); }
-  outline(cv);
+  const cv = sheetOf(2, 1, BW, BH, (one, f) => { const K = beastKit(one, 0); drawBeast(K, kind, f); K.flush(); });
   const out = fine({ canvas: cv.c, fw: BW, fh: BH, beast: true }); cache.set(key, out); return out;
 }
 
