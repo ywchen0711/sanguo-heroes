@@ -243,9 +243,12 @@ export class Actions {
     // busy on the road (crowd.js): fighting bandits, or another officer
     const foe = n.stop === 'clash' && G.gens[n.foe];
     if (n.stop === 'bandit') opts.unshift({ k: 'helpB', n: '助陣討賊', d: `和${x.name}一起打山賊` });
+    const enemy = n.stop === 'duel' && G.gens[n.foe];
+    if (enemy) opts.unshift({ k: 'helpD', n: `代他出戰（單挑${enemy.name}）`, d: `${x.name}和${enemy.name}是宿敵` });
     if (foe && this.canAmbush(foe)) opts.unshift({ k: 'helpC', n: `助陣（攻擊${foe.name}）`, d: `幫${x.name}打${G.factions[foe.fac].name}軍` });
     opts.push({ k: null, n: '離開' });
-    let c; for (;;) { c = await this.ui.ask(info, opts, x.name, look); if (c !== 'traits') break; await this.ui.panel(traitCard(this.g, x), { title: `${x.name}的特性`, cls: 'wide' }); }
+    const tie = this.g.ties.info(x);
+    let c; for (;;) { c = await this.ui.ask(info + tie, opts, x.name, look); if (c !== 'traits') break; await this.ui.panel(traitCard(this.g, x), { title: `${x.name}的特性`, cls: 'wide' }); }
     if (c === 'talk') await this.ui.say(x.name, this.lineOf(x, f, sameSide), look);
     if (['heal', 'wuqin', 'fu'].includes(c)) await sageGen(this.g, x, c);
     if (c === 'recruit') await this.recruit(x, n);
@@ -255,6 +258,7 @@ export class Actions {
     if (c === 'ambush') await this.roadFight(x, n);
     if (c === 'helpB') await this.helpBandits(x);
     if (c === 'helpC') await this.helpClash(x, foe);
+    if (c === 'helpD') { const r = await this.duelWith(enemy, 'spar'); if (r === 'win') { this.g.crowd.home(enemy); addBond(this.g, x.id, 20); await this.ui.say(x.name, `${enemy.name}這口氣，你替我出了！\n（好感 +20）`, look); } }
   }
   // an officer fighting bandits on the road: fight them for him
   async helpBandits(x) {
@@ -431,7 +435,7 @@ export class Actions {
     if (r === 'win') {
       this.H.st.duels++; x.duelsLost = (x.duelsLost || 0) + 1; me.duelsWon++;
       gainExp(G, me, rec, 40 + b.lv * 8);
-      if (kind === 'spar') { this.H.fame += 5; addBond(this.g, x.id, 3); checkTitles(this.g); await this.ui.say(x.name, '好身手！我服了。', b.look); return; }
+      if (kind === 'spar') { this.H.fame += 5; addBond(this.g, x.id, 3); checkTitles(this.g); await this.ui.say(x.name, '好身手！我服了。', b.look); return r; }
       const c = await this.ui.ask(`${x.name}倒在地上。`, [{ k: 'kill', n: '斬殺' }, { k: 'spare', n: '饒他一命' }]);
       if (c === 'kill') {
         const had = G.items.filter((it) => it.holder === x.id);
@@ -444,12 +448,12 @@ export class Actions {
         if (f && x.city === this.g.town?.city) { await this.ui.say('守城士兵', '殺人兇手！把他趕出城去！', LOOKS.soldier(f.color)); this.g.leaveTown(); }
       } else { this.H.fame += 20; bump(this.H, 'ren'); addBond(this.g, x.id, 15); checkTitles(this.g); await this.ui.say(x.name, '……今日之恩，他日必報。', b.look); }
     } else if (r === 'lose') {
-      if (kind === 'spar') { gainExp(G, me, rec, 15); await this.ui.say(x.name, '還要多加磨練啊。', b.look); return; }
+      if (kind === 'spar') { gainExp(G, me, rec, 15); await this.ui.say(x.name, '還要多加磨練啊。', b.look); return r; }
       const lost = Math.round(this.H.gold * 0.2); this.H.gold -= lost; for (const p of this.g.partyList()) p.rec.sol = Math.round(p.rec.sol * 0.5);
       await this.ui.say(x.name, `就這點本事？滾吧！\n（失去了 ${lost} 金，兵力減半）`, b.look);
       if (f && x.city === this.g.town?.city) this.g.leaveTown();
     }
-    this.g.hud();
+    this.g.hud(); return r;
   }
   // ---------------------------------------------------------------- buildings
   async building(door) {

@@ -16,14 +16,14 @@
 // player's name if it is known, and true rumours (a weak garrison near by, a cave and what is in it).
 // A stop is a few steps of a walk spent in one place: { i (where on the path), n (how long), what }.
 import { CITY_POS, T, K } from './world.js';
-import { busy, allied } from './sim/engine.js';
+import { busy, allied, record, die } from './sim/engine.js';
 import { LOOKS } from './sprites.js';
 import { FX } from './fx.js';
 import { rankTag } from './martial.js';
 
 const SEE = 30, KEEP = 34, MAX = 36, LOOPS = 5, CREW = 14, TALK = 14;
 const KIND_N = { scout: '偵察', patrol: '巡邏', hunt: '討賊', drill: '操練', post: '赴任', wander: '雲遊' };
-const STOP_N = { bandit: ['討賊中', '#ff8a6a'], clash: ['交戰中', '#ff5a4a'], drill: ['操練中', '#ffd86a'], rest: ['歇息', '#b8d8a0'], train: ['練武', '#ffd86a'], camp: ['紮營', '#b8d8a0'] };
+const STOP_N = { bandit: ['討賊中', '#ff8a6a'], clash: ['交戰中', '#ff5a4a'], duel: ['單挑中', '#ff5a4a'], drill: ['操練中', '#ffd86a'], rest: ['歇息', '#b8d8a0'], train: ['練武', '#ffd86a'], camp: ['紮營', '#b8d8a0'] };
 const CREW_N = { scout: 2, patrol: 2, hunt: 3, drill: 4, post: 1 };
 const R = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -88,6 +88,9 @@ export class Crowd {
       const st = p.length > 40 && Math.random() < 0.3 ? [{ i: R(15, p.length - 15), n: R(8, 16), what: 'camp' }] : [];
       return this.walk(g.status === 'serving' ? 'post' : 'wander', g.city, p, t0, st, this.G.cities[g.city]?.name);
     }
+    // sworn brothers in one city ride out together: the others go with the first of them
+    const lead = g.status === 'serving' && this.g.ties ? this.g.ties.leadIn(g) : g.id, LG = this.G.gens[lead];
+    if (lead !== g.id && this.who(LG)) { const L = this.cur(LG); return L.path ? { ...L, stops: (L.stops || []).map((q) => ({ ...q })), t0: L.t0 + 1, end: L.end + 1, with: lead } : { kind: 'stay', cid: s.cid, t0, end: Math.max(t0 + 1, L.end + 1) }; }
     const sc = g.status === 'serving' && Math.random() < 0.3 && this.scout(g, s.cid);
     if (sc) return this.walk('scout', s.cid, sc, t0, Math.random() < 0.3 ? [{ i: Math.floor(sc.length / 2), n: R(6, 12), what: 'camp' }] : []);
     const p = this.loop(s.cid); if (!p) return this.stay(g, s.cid, t0);
@@ -131,27 +134,38 @@ export class Crowd {
   // what he is busy with on the road now, for a talk: { stop, foe }
   doing(g) { const s = this.N.get(g.id); if (!s?.path) return {}; const { q } = this.at(s); return q ? { stop: q.what, foe: q.foe } : {}; }
   // ---------------------------------------------------------------- two enemy officers meet on the road
-  clash(A, B) {
+  clash(A, B, what = 'clash') {
     const ga = this.G.gens[A.id], gb = this.G.gens[B.id], n = R(8, 14);
-    for (const [S, o] of [[A.s, gb], [B.s, ga]]) { const { i } = this.at(S), q = { i, n, what: 'clash', foe: o.id }; S.stops = [...(S.stops || []), q].sort((x, y) => x.i - y.i); S.end += n; }
-    this.fights.push({ a: ga.id, b: gb.id, end: this.now + n, at: [...A.at] });
+    for (const [S, o] of [[A.s, gb], [B.s, ga]]) { const { i } = this.at(S), q = { i, n, what, foe: o.id }; S.stops = [...(S.stops || []), q].sort((x, y) => x.i - y.i); S.end += n; }
+    this.fights.push({ a: ga.id, b: gb.id, end: this.now + n, at: [...A.at], duel: what === 'duel' });
   }
   // a fight on the road is over: the stronger side (with luck) drives the other home, and his city loses men
   settle() {
     const G = this.G, P = this.g.pos;
     for (const F of [...this.fights]) {
       if (this.now < F.end) continue; this.fights = this.fights.filter((x) => x !== F);
-      const a = G.gens[F.a], b = G.gens[F.b]; if (!a || !b || a.status !== 'serving' || b.status !== 'serving') continue;
+      const a = G.gens[F.a], b = G.gens[F.b];
+      if (F.duel) { if (a && b && a.status !== 'dead' && b.status !== 'dead') this.duelEnd(a, b, F); continue; }
+      if (!a || !b || a.status !== 'serving' || b.status !== 'serving') continue;
       const sc = (g) => g.war + g.lead + (g.life?.lv || 0) * 1.5 + Math.random() * 50, [w, l] = sc(a) >= sc(b) ? [a, b] : [b, a];
       const C = G.cities[l.city]; if (C && C.owner === l.fac) C.troops = Math.max(0, C.troops - R(80, 300));
       this.N.set(l.id, this.stay(l, l.city, this.now));
       if (P && this.g.mode === 'world' && Math.hypot(F.at[0] - P.x, F.at[1] - P.z) < SEE) this.g.ui.toast(`⚔ <b style="color:${G.factions[w.fac]?.color}">${G.factions[w.fac]?.name}軍</b>的${w.name}擊退了<b style="color:${G.factions[l.fac]?.color}">${G.factions[l.fac]?.name}軍</b>的${l.name}`, 3500);
     }
   }
+  // two sworn enemies fought it out on the road, man to man: the loser rides home, if he lives
+  duelEnd(a, b, F) {
+    const G = this.G, P = this.g.pos, roll = a.war - b.war + (Math.random() - 0.5) * 40, [w, l] = roll >= 0 ? [a, b] : [b, a];
+    const killed = Math.abs(roll) > 22 && Math.random() < 0.3 && l.war < 95 && G.factions[l.fac]?.lord !== l.id;
+    record(G, 'tie', 'feudDuel', { w: w.name, l: l.name, c: G.cities[w.city]?.name || '', killed }, w.status === 'serving' ? w.fac : null, 2, { g: w.id });
+    if (killed) die(G, l, 'duel', w); else this.N.set(l.id, this.stay(l, l.city, this.now));
+    if (P && this.g.mode === 'world' && Math.hypot(F.at[0] - P.x, F.at[1] - P.z) < SEE) this.g.ui.toast(`⚔ 宿敵單挑：<b>${w.name}</b>擊敗了${l.name}${killed ? `，<b style="color:#ff8a6a">${l.name}戰死</b>` : ''}！`, 4000);
+  }
   // ---------------------------------------------------------------- what they say
   line(g, s, q) {
     const G = this.G, H = this.g.H, me = this.g.me, f = g.status === 'serving' && G.factions[g.fac], lord = f && G.gens[f.lord], P = this.g.pos;
     if (q?.what === 'bandit') return pick(['賊寇休走！', '弟兄們，上！', '大膽毛賊，還敢作亂！', '一個也別放跑！']);
+    if (q?.what === 'duel') { const o = G.gens[q.foe]; return pick([`${o?.name}！今天就做個了斷！`, '你我之間，只能活一個！', `${o?.name}，我等這一天很久了！`]); }
     if (q?.what === 'clash') { const o = G.gens[q.foe], of = o && G.factions[o.fac]; return pick([`${o?.name || '敵將'}，納命來！`, `${of?.name || '敵'}軍的鼠輩，看招！`, '殺──！', '休想過去！']); }
     if (q?.what === 'drill') return pick(['列陣！', '一、二……殺！', '盾牌舉高！', '再來一次！', '腳步要穩！']);
     if (q?.what === 'rest' || q?.what === 'camp') return pick(['走累了，歇一會兒。', '這裡風景不錯。', '天下何時才能太平……', '今晚就在這裡過夜吧。']);
@@ -179,7 +193,7 @@ export class Crowd {
   // ---------------------------------------------------------------- drawn on the land
   label(g, s, q) {
     const f = g.status === 'serving' && this.G.factions[g.fac], col = f?.color || '#b8c8a0', side = f ? f.name : '在野', sn = q && STOP_N[q.what];
-    const vs = q?.what === 'clash' && this.G.gens[q.foe] ? ` vs ${this.G.gens[q.foe].name}` : '';
+    const vs = (q?.what === 'clash' || q?.what === 'duel') && this.G.gens[q.foe] ? ` vs ${this.G.gens[q.foe].name}` : '';
     return `${rankTag(this.g, g.id)}<b>${g.name}</b><i style="color:${col}">${side}・${sn ? `<span style="color:${sn[1]}">${sn[0]}${vs}</span>` : `${KIND_N[s.kind] || ''}${s.kind === 'post' && s.to ? s.to : ''}`}</i>`;
   }
   // a small figure that goes with a body (one of his men, or a bandit): it eases towards where it should be
@@ -212,7 +226,7 @@ export class Crowd {
       const a = B.a, f = g.status === 'serving' && this.G.factions[g.fac];
       if (B.at[0] !== px || B.at[1] !== pz) { B.from = [a.x, a.z]; B.at = [px, pz]; B.mt = 0; }
       // the foe he is fighting: bandits beside him, or the other officer
-      const other = q?.what === 'clash' ? this.bodies.get(q.foe) : null, fight = q && (q.what === 'bandit' || (q.what === 'clash' && other));
+      const other = q?.what === 'clash' || q?.what === 'duel' ? this.bodies.get(q.foe) : null, fight = q && (q.what === 'bandit' || ((q.what === 'clash' || q.what === 'duel') && other));
       // two officers fighting meet half way (a few tiles apart on their roads)
       if (other) { const ox = other.at[0] - tx, oz = other.at[1] - tz, od = Math.hypot(ox, oz); if (od > 1.2) { tx += ox / od * (od - 1.2) / 2; tz += oz / od * (od - 1.2) / 2; } }
       const fx = q?.what === 'bandit' ? tx + 1.6 : other ? other.a.x : tx, fz = q?.what === 'bandit' ? tz : other ? other.a.z : tz;
@@ -246,10 +260,12 @@ export class Crowd {
     for (const [id, B] of this.bodies) if (!live.has(id)) this.drop(V, id, B);
     // two enemy officers near each other on the road: they fight (once for each meeting)
     if (this.clashAt !== this.now) {
-      this.clashAt = this.now; const L = [...this.bodies.values()].filter((B) => this.G.gens[B.id].status === 'serving' && B.s.path && !this.at(B.s).q);
+      this.clashAt = this.now; const L = [...this.bodies.values()].filter((B) => B.s.path && !this.at(B.s).q), T = this.g.ties;
       for (let x = 0; x < L.length; x++) for (let y = x + 1; y < L.length; y++) {
-        const A = L[x], C = L[y], ga = this.G.gens[A.id], gc = this.G.gens[C.id]; if (ga.fac === gc.fac || allied(this.G, ga.fac, gc.fac)) continue;
-        if (Math.hypot(A.at[0] - C.at[0], A.at[1] - C.at[1]) > 5) continue;
+        const A = L[x], C = L[y], ga = this.G.gens[A.id], gc = this.G.gens[C.id], d = Math.hypot(A.at[0] - C.at[0], A.at[1] - C.at[1]);
+        if (T && d <= 8 && T.feuding(ga.id, gc.id)) { const k = 'd' + A.s.t0 + ':' + C.s.t0; if (!this.tried.has(k)) { this.tried.add(k); this.clash(A, C, 'duel'); } continue; }
+        if (ga.status !== 'serving' || gc.status !== 'serving' || ga.fac === gc.fac || allied(this.G, ga.fac, gc.fac)) continue;
+        if (d > 5) continue;
         const k = A.s.t0 + ':' + C.s.t0; if (this.tried.has(k)) continue; this.tried.add(k);
         if (Math.random() < 0.7 && !this.at(A.s).q && !this.at(C.s).q) this.clash(A, C);
       }
