@@ -82,6 +82,7 @@ export function fmt(e, lang = 'zh') {
     case 'warWin': return en ? `The ${N('f')} army (${N('g')}) takes ${C('c')} from ${p.o ? `the ${N('o')} army` : 'its garrison'}${notes()}.` : `${p.f}軍（${p.g}）攻陷${p.c}，擊破${p.o ? p.o + '軍' : '守軍'}${notes()}。`;
     case 'warLose': return en ? `The ${N('f')} army (${N('g')}) attacks ${C('c')} but is driven back by ${p.o ? `the ${N('o')} army` : 'its garrison'}${notes()}.` : `${p.f}軍（${p.g}）進攻${p.c}，被${p.o ? p.o + '軍' : '守軍'}擊退${notes()}。`;
     case 'captive': return en ? `${N('g')} is captured and joins the ${N('f')} army.` : `${p.g}被俘，歸順${p.f}軍。`;
+    case 'roadWin': return en ? `${N('g')} falls on ${N('x')} of the ${N('f')} army on the road and wins.` : `${p.g}在路上截擊${p.f}軍的${p.x}，大獲全勝。`;
     case 'releaseHome': return en ? `${N('x')} releases the captured ${N('g')}, who returns to ${C('c')}.` : `${p.x}釋放了被俘的${p.g}，${p.g}返回${p.c}。`;
     case 'release': return en ? `${N('x')} releases the captured ${N('g')}.` : `${p.x}釋放了被俘的${p.g}。`;
     case 'refuse': return en ? `The captured ${N('g')} refuses to serve ${N('x')} and is let go.` : `被俘的${p.g}不肯歸順${p.x}，被放走了。`;

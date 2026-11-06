@@ -69,6 +69,8 @@ export class Crowd {
     for (let k = 0; this.now >= s.end && k < 6; k++) s = this.next(g, s);
     this.N.set(g.id, s); return s;
   }
+  // back to his city at once (beaten on the road)
+  home(g) { this.sync(); this.N.set(g.id, this.stay(g, g.city, this.now)); }
   posOf(s) { return s.path ? s.path[Math.max(0, Math.min(s.path.length - 1, this.now - s.t0))] : null; }
   // out on the land: where, or null in a city
   out(g) { if (!this.who(g)) return null; return this.posOf(this.cur(g)); }
@@ -110,7 +112,7 @@ export class Crowd {
     for (const B of this.bodies.values()) {
       if (B.at[0] !== P.x || B.at[1] !== P.z) continue;
       const g = this.G.gens[B.id]; if (!this.who(g) || (this.met.get(g.id) ?? -999) > H.walk - 90) continue;
-      this.met.set(g.id, H.walk); B.s.end += 3; game.act.talk({ gen: g.id, a: B.a, x: B.at[0], z: B.at[1] }); return true;
+      this.met.set(g.id, H.walk); B.s.end += 3; game.act.talk({ gen: g.id, a: B.a, x: B.at[0], z: B.at[1], road: true, kind: B.s.kind }); return true;
     }
     return false;
   }
