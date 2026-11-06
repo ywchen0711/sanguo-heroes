@@ -19,6 +19,7 @@ import { meetSage, sageOpts, sageGen, sageRumor } from './sages.js';
 import { priceMul, garrisonMul, disasterAt, DIS_N } from './disaster.js';
 import { tire, tired, eraBonus } from './board.js';
 import { fameOf, fameName } from './fame.js';
+import { beat, rankOf as listRank, rankHTML } from './martial.js';
 import { jobMenu, governor, canGovern, cityLine } from './govern.js';
 import { bLv } from './sim/build.js';
 import { awaken, traitsOf, traitHTML, combosWith, TRAIT, reroll } from './traits.js';
@@ -162,7 +163,7 @@ export class Actions {
   // ---------------------------------------------------------------- the menu
   async menu() {
     if (this.ui.busy) return;
-    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'board', n: '情勢', d: '時局、機會（有期限）、民心', sub: (this.H.opps || []).filter((o) => !o.done && !o.missed).length || '' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'tdex', n: '特性圖鑑', d: '特性、名組合、誰有哪個特性、神器錄' }, { k: 'save', n: '存檔' }, { k: 'auto', n: this.g.auto.on ? `電腦代玩：開（${this.g.auto.style.n}）` : '電腦代玩：關', d: '讓電腦替你玩，可以選方針：均衡、練功、打寶、積極攻城（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
+    const k = await this.ui.choose([{ k: 'status', n: '狀態' }, { k: 'party', n: '隊伍' }, { k: 'equip', n: '裝備', sub: (this.H.bag || []).length || '' }, { k: 'items', n: '道具' }, { k: 'board', n: '情勢', d: '時局、機會（有期限）、民心', sub: (this.H.opps || []).filter((o) => !o.done && !o.missed).length || '' }, { k: 'missions', n: '任務', sub: this.H.missions.filter((m) => !m.done).length || '' }, { k: 'news', n: '年表' }, { k: 'realm', n: '天下' }, ...((this.G.rivals || []).length ? [{ k: 'rivals', n: '群雄榜', d: '你和電腦對手的排名' }, { k: 'martial', n: '武力榜', d: '天下最強的二十人' }] : []), { k: 'people', n: '人物', d: '稱號、結義兄弟、宿敵' }, { k: 'dex', n: '武將圖鑑', sub: Object.keys(this.H.dex || {}).length }, { k: 'tdex', n: '特性圖鑑', d: '特性、名組合、誰有哪個特性、神器錄' }, { k: 'save', n: '存檔' }, { k: 'auto', n: this.g.auto.on ? `電腦代玩：開（${this.g.auto.style.n}）` : '電腦代玩：關', d: '讓電腦替你玩，可以選方針：均衡、練功、打寶、積極攻城（P 鍵也可以切換，按方向鍵取回控制）' }, { k: 'end', n: '提前結算' }, { k: 'sound', n: `音樂 ${this.g.audio.on ? '開' : '關'}` }], { title: '選單', cls: 'main-menu' });
     if (k === 'status') await this.g.screens.status();
     if (k === 'party') await this.partyMenu();
     if (k === 'equip') await equipScreen(this.g);
@@ -172,6 +173,7 @@ export class Actions {
     if (k === 'news') await this.g.screens.news();
     if (k === 'realm') await this.g.screens.realm();
     if (k === 'rivals') await this.g.screens.rivals();
+    if (k === 'martial') await this.ui.panel(rankHTML(this.g), { title: '天下武力排行榜', cls: 'wide' });
     if (k === 'people') await this.people();
     if (k === 'dex') await dexScreen(this.g);
     if (k === 'tdex') await traitDex(this.g);
@@ -293,6 +295,29 @@ export class Actions {
     if ((fought.find((u) => u.gid === x.id)?.sol ?? 1) <= 0 && Math.random() < 0.5) await this.captive(x, f);
     return r;
   }
+  // ---------------------------------------------------------------- the martial ranking (martial.js)
+  // a win or a loss in a duel moves the names on the list
+  rankAfter(x, won) {
+    const me = this.me, H = this.H;
+    if (won) { const n = beat(this.g, me, x); if (!n) return; H.fame += (21 - n) * 2; this.ui.toast(`<b style="color:#ffd86a">你擊敗了${x.name}，成為天下第${n}！</b>`, 4500); this.g.audio.sfx('level'); if (n === 1) deed(this.g, '天下第一', true); else if (n <= 10) deed(this.g, `武力名列天下第${n}`); }
+    else { const was = listRank(this.g, me.id), n = beat(this.g, x, me); if (n && was) this.ui.toast(`${x.name}奪走了你天下第${n}的名號……`, 4000); }
+  }
+  // someone below the player on the list comes to challenge him
+  async rankChallenge() {
+    const G = this.G, H = this.H, me = this.me, x = G.gens[H.challenger?.id]; H.challenger = null;
+    if (!x || !(x.status === 'serving' || x.status === 'free')) return;
+    const n = listRank(this.g, me.id), look = this.g.lookOf(x); if (!n) return;
+    const c = await this.ui.ask(`天下第${listRank(this.g, x.id) || '?'}的${x.name}找上門來：\n「${me.name}！天下第${n}的名號，今天就讓給我吧！」\n武力 ${x.war}　Lv ${this.lvOf(x)}`, [{ k: 'go', n: '應戰', d: '一對一單挑，輸了名次讓給他' }, { k: 'no', n: '不理他', d: '名聲 -10，名次讓給他' }], x.name, look);
+    if (c !== 'go') { H.fame = Math.max(0, H.fame - 10); beat(this.g, x, me); await this.ui.say(x.name, '哼，原來是個膽小鬼！', look); this.g.hud(); return; }
+    const rec = H.rec[me.id], a = { name: me.name, look: this.g.lookOf(me), lv: rec.lv, st: bstats(me, rec), isPlayer: true, arms: relicFx(rec) }, b = this.duelFoe(x), was = this.g.mode;
+    this.g.mode = 'battle'; this.g.audio.music('battle');
+    const r = await this.g.battle.soloDuel(a, b, { noFlee: true });
+    this.g.battle.close(); this.g.mode = was; this.g.audio.music(was === 'town' ? 'town' : 'field');
+    if (r === 'win' || r === 'lose') versus(this.g, x.id, r === 'win');
+    if (r === 'win') { H.st.duels++; me.duelsWon++; gainExp(G, me, rec, 40 + b.lv * 8); H.fame += 10; await this.ui.say(x.name, `……不愧是天下第${n}。我還會再來的！\n（名聲 +10）`, look); }
+    else if (r === 'lose') { this.rankAfter(x, false); await this.ui.say(x.name, `天下第${n}的名號，從今天起是我的了！`, look); }
+    this.g.hud();
+  }
   // ---------------------------------------------------------------- an army on the march (armies.js)
   // the vanguard: the garrison rides out to meet the column, and the player's party meets them first
   async vanguard(c) {
@@ -396,10 +421,11 @@ export class Actions {
     const G = this.G, me = this.me, f = x.status === 'serving' && G.factions[x.fac];
     if (kind === 'kill' && !await this.ui.yesno(`真的要向${x.name}挑戰生死決鬥嗎？\n${f ? `會與${f.name}軍結仇。` : ''}`)) return;
     const rec = this.H.rec[me.id], a = { name: me.name, look: this.g.lookOf(me), lv: rec.lv, st: bstats(me, rec), isPlayer: true, arms: relicFx(rec) }, b = this.duelFoe(x);
-    this.g.mode = 'battle'; this.g.audio.music('battle');
+    const was = this.g.mode; this.g.mode = 'battle'; this.g.audio.music('battle');
     const r = await this.g.battle.soloDuel(a, b, { noFlee: kind === 'kill' });
-    this.g.battle.close(); this.g.mode = 'town'; this.g.audio.music('town');
-    mark(this.g, x.id, 2); if (r === 'win' || r === 'lose') versus(this.g, x.id, r === 'win');
+    // back where the duel was: in a town, or out on the road
+    this.g.battle.close(); this.g.mode = was === 'world' ? 'world' : 'town'; this.g.audio.music(was === 'world' ? 'field' : 'town');
+    mark(this.g, x.id, 2); if (r === 'win' || r === 'lose') { versus(this.g, x.id, r === 'win'); this.rankAfter(x, r === 'win'); }
     if (r === 'win') {
       this.H.st.duels++; x.duelsLost = (x.duelsLost || 0) + 1; me.duelsWon++;
       gainExp(G, me, rec, 40 + b.lv * 8);

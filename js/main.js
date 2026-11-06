@@ -21,6 +21,7 @@ import { Board } from './board.js';
 import { Roam } from './roam.js';
 import { Crowd } from './crowd.js';
 import { Armies } from './armies.js';
+import { rankMonth, rankTag } from './martial.js';
 import { fromOld } from './data/ranks.js';
 import { fameOf, fameCheck } from './fame.js';
 import { govern } from './govern.js';
@@ -215,7 +216,7 @@ class Game {
     const here = this.G.gens.filter((g) => !busy(g) && (g.status === 'serving' || g.status === 'free') && g.city === C.id && !g.held && (!g.rivalHero || this.roam.inCity(g.id, C.id)) && this.crowd.inCity(g, C.id));
     const serving = here.filter((g) => g.status === 'serving').sort((a, b) => (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, 6), free = here.filter((g) => g.status === 'free').slice(0, 4);
     const spots = [[11, 7], [18, 7], [12, 8], [17, 8], [10, 8], [19, 8]], fspots = [[22, 10], [25, 10], [23, 14], [26, 14]];
-    serving.forEach((g, i) => { const [x, z] = spots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`<b>${g.name}</b>${g.rivalHero ? '<i style="color:#ff9a6a">★對手</i>' : ''}`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
+    serving.forEach((g, i) => { const [x, z] = spots[i]; const a = this.view.addActor(personSheet(this.lookOf(g)), x, z); a.label = this.view.addLabel(`${rankTag(this, g.id)}<b>${g.name}</b>${g.rivalHero ? '<i style="color:#ff9a6a">★對手</i>' : ''}`, a.sprite, 1.75, 'npc'); this.npcs.push({ x, z, a, gen: g.id, home: [x, z] }); });
     for (const g of [...serving, ...free]) mark(this, g.id, 1);
     for (const id of sagesHere(this)) {
       const [x, z] = M.cave ? this.freeSpot(M.boss[0] + 2, M.boss[1] - 1) : this.freeSpot(M.spawn[0], Math.max(2, M.spawn[1] - 4)); const S = SAGES[id], a = this.view.addActor(personSheet(S.look()), x, z, { scale: 0.95 });
@@ -288,6 +289,7 @@ class Game {
     if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
     const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
     if (this.steps > 5 && this.board.walk()) { this.steps = 0; return; }
+    if (this.steps > 3 && this.H.challenger && !this.auto.on) { this.steps = 0; this.act.rankChallenge(); return; }
     if (this.steps > 5 && Math.random() < (ENC[k] || 0) * (hasT(this.H, 'canbao') ? 0.6 : 1) * (1 - partyFx(this, 'encounter'))) { this.steps = 0; this.act.encounter(regionAt(P.x, P.z), k); return; }
     if (this.H.walk % 10 === 0) this.happen('field');
     if (this.H.walk % 10 === 0) this.hud();
@@ -357,7 +359,7 @@ class Game {
     if (!before.lord && this.isLord()) this.ui.toast(`<b style="color:#ffd86a">你繼承了${G.factions[now].name}軍之主的地位！</b>`, 5000);
     noteDisasters(this, logs); this.roam.month();
     govern(this);
-    this.board.month();
+    this.board.month(); rankMonth(this);
     { const loyal = partyFx(this, 'loyal'), mine = this.myFaction(); if (loyal) for (const id of this.H.party) { const x = G.gens[id]; if (x.status === 'serving') x.loyalty = Math.min(100, x.loyalty + Math.round(loyal * 10)); } if (mine && this.isLord()) G.factions[mine].diplo = Math.min(0.3, partyFx(this, 'diplo')); }
     if (!before.lord && this.isLord()) deed(this, `繼${G.factions[now].name}之位`, true);
     if (before.fac && !now) deed(this, `${G.factions[before.fac]?.name || ''}亡，${g.name}流落在野`);

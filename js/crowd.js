@@ -19,6 +19,7 @@ import { CITY_POS, T, K } from './world.js';
 import { busy, allied } from './sim/engine.js';
 import { LOOKS } from './sprites.js';
 import { FX } from './fx.js';
+import { rankTag } from './martial.js';
 
 const SEE = 30, KEEP = 34, MAX = 36, LOOPS = 5, CREW = 14, TALK = 14;
 const KIND_N = { scout: '偵察', patrol: '巡邏', hunt: '討賊', drill: '操練', post: '赴任', wander: '雲遊' };
@@ -177,7 +178,7 @@ export class Crowd {
   label(g, s, q) {
     const f = g.status === 'serving' && this.G.factions[g.fac], col = f?.color || '#b8c8a0', side = f ? f.name : '在野', sn = q && STOP_N[q.what];
     const vs = q?.what === 'clash' && this.G.gens[q.foe] ? ` vs ${this.G.gens[q.foe].name}` : '';
-    return `<b>${g.name}</b><i style="color:${col}">${side}・${sn ? `<span style="color:${sn[1]}">${sn[0]}${vs}</span>` : `${KIND_N[s.kind] || ''}${s.kind === 'post' && s.to ? s.to : ''}`}</i>`;
+    return `${rankTag(this.g, g.id)}<b>${g.name}</b><i style="color:${col}">${side}・${sn ? `<span style="color:${sn[1]}">${sn[0]}${vs}</span>` : `${KIND_N[s.kind] || ''}${s.kind === 'post' && s.to ? s.to : ''}`}</i>`;
   }
   // a small figure that goes with a body (one of his men, or a bandit): it eases towards where it should be
   put(V, a, tx, tz, dt, look) {
