@@ -26,10 +26,10 @@ export class Screens {
     const el = document.getElementById('title'); el.classList.add('on');
     let best = null; try { best = JSON.parse(localStorage.getItem(BEST) || 'null'); } catch (e) {}
     el.querySelector('.t-best').innerHTML = best ? `最佳紀錄：${best.name}　${best.total} 分「${best.title}」` : '';
-    const k = await this.ui.choose([...(this.g.hasSave() ? [{ k: 'load', n: '繼續遊戲' }] : []), { k: 'new', n: '新的天下' }, { k: 'help', n: '遊戲說明' }], { host: el.querySelector('.t-menu'), cls: 'title-menu', noBack: true });
+    const k = await this.ui.choose([...(this.g.hasSave() ? [{ k: 'load', n: '繼續遊戲' }] : []), { k: 'new', n: '新的天下' }, { k: 'saga', n: '英傑傳奇', d: '劇情 RPG：四位超級武將的三國冒險' }, { k: 'help', n: '遊戲說明' }], { host: el.querySelector('.t-menu'), cls: 'title-menu', noBack: true });
     if (k === 'help') { await this.help(); return this.title(); }
     if (k === 'load') { el.classList.remove('on'); try { this.g.loadGame(); } catch (e) { console.error(e); this.ui.toast('讀檔失敗'); return this.title(); } return; }
-    const o = await this.setup(); if (!o) return this.title();
+    const o = k === 'saga' ? await this.sagaSetup() : await this.setup(); if (!o) return this.title();
     el.classList.remove('on'); this.g.start(o);
   }
   async help() {
@@ -47,6 +47,7 @@ export class Screens {
       <p>⚔ <b>宿敵</b>：被你打敗又逃走的武將會苦練變強，帶人回來找你。在別人手下功勞太大，君主也會猜忌你。</p>
       <p>🏆 <b>比武大會</b>：每年八月在一座大城舉辦，可以報名，也可以押注。</p>
       <p>🔥 <b>計略與地利</b>：對行軍的大軍可以火攻、斷糧道、離間、散布謠言；戰鬥前看地形搶高地、埋伏、背水一戰。</p>
+      <p>📜 <b>英傑傳奇</b>：標題畫面的劇情模式。帶領 Jeff、Erin、Josh、Jasper 其中一人，找回失散的家人、奪回古鏡碎片、討伐玄冥子。目標用黑旗標在地圖上，選單的「劇情」看得到進度。</p>
       <p>🏁 <b>結束</b>：選定的年數到了、天下統一、或是提前結算時，計算你一生的功績。</p>
       <p>操作：方向鍵／WASD 移動，Z／Enter 確認，X／Esc 取消，C 選單。手機用畫面上的按鈕。</p>
       <p>🤖 <b>電腦代玩</b>：按 P（或選單裡的「電腦代玩」）讓電腦替你玩，按方向鍵取回控制。</p>
@@ -82,6 +83,17 @@ export class Screens {
       return { scenario: sc, years, pid, seed, rivals, rivalHow, diff: dif, iron };
     }
   }
+  // 英傑傳奇 (saga.js): 190, thirty years, no computer players; lead one of the four
+  async sagaSetup() {
+    await this.ui.panel(`<p><b>英傑傳奇・四劍歸鏡</b></p><p>陳家四口——Jeff、Erin、Josh、Jasper——在博物館看一面青銅古鏡時，被拉進了東漢末年，散落在天下四方。</p><p>帶領其中一人，找回失散的家人，奪回古鏡的三片碎片，登上泰山討伐打碎古鏡的玄冥子。</p><p class="dim">天下照常運轉：群雄征戰、武將生老病死。你可以一邊跟著劇情走，一邊練功、投靠明主、攻城自立。劇本固定為 190 年，遊戲時間 30 年。</p>`, { title: '英傑傳奇' });
+    const seed = Date.now() & 0x7fffffff, G = newGame({ seed, scenario: '190' }); assignLooks(G.gens);
+    const D = { Jeff: '爸爸。運籌帷幄的軍師，干將劍、八陣圖、呼風喚雨、奇門遁甲', Erin: '媽媽。才貌雙全的女傑，莫邪劍、呼風喚雨、治癒之術、八陣圖', Josh: '哥哥。勇冠三軍的少年，赤霄劍、落雷之術、妖術', Jasper: '弟弟。雙劍如風的少年俠客，太阿劍、奇門遁甲、幻術、落雷之術' };
+    const n = await this.ui.choose([...Object.keys(D).map((x) => ({ k: x, n: x, d: D[x] })), { k: null, n: '← 返回' }], { title: '帶領哪一位？' });
+    if (!n) return null;
+    const dif = await this.ui.choose(Object.entries(DIFF).map(([k, D2]) => ({ k, n: D2.n, d: D2.d })), { title: '難度', noBack: true });
+    const iron = await this.ui.choose([{ k: false, n: '一般', d: '隨時可以存檔、讀檔' }, { k: true, n: '鐵人模式', d: '只有一個存檔，離開城鎮、每場戰鬥、每個月都會自動存檔' }], { title: '存檔方式', noBack: true });
+    return { scenario: '190', years: 30, pid: G.byName[n].id, seed, rivals: 0, diff: dif, iron, saga: true };
+  }
   pickGen(G, list, title) {
     return this.ui.choose(list.map((g) => { const f = g.status === 'serving' && G.factions[g.fac]; return { k: g.id, n: g.name, sub: `統${g.lead} 武${g.war} 智${g.int} 政${g.pol} 魅${g.cha}`, d: `${G.year - g.born}歲　${f ? f.name + '軍' + (f.lord === g.id ? '・君主' : '') : '在野'}　${G.cities[g.city].name}` }; }).concat([{ k: null, n: '← 返回' }]), { title: `${title}（${list.length}）`, cls: 'wide tall' });
   }
@@ -100,7 +112,7 @@ export class Screens {
         <div class="traits">${traitsOf(g).map((n) => traitHTML(n)).join('')}</div>${actHTML(PT?.get(gid)?.act || [])}
         ${armsOf(G, g).list.map((A) => `<div class="arms">✦ ${A.n}：${A.d}</div>`).join('')}
         ${items.length ? `<div>寶物：${items.join('、')}</div>` : ''}<div class="dim">策略：${tac.join('、') || '無'}</div>
-        ${gid !== H.pid ? `<div>${isSworn(H, gid) ? '<b style="color:#ffd86a">結義兄弟</b>' : `好感 ${bondOf(H, gid)}／100`}</div>` : ''}
+        ${gid !== H.pid ? `<div>${isSworn(H, gid) ? `<b style="color:#ffd86a">${H.saga && G.gens[gid].hidden ? '家人' : '結義兄弟'}</b>` : `好感 ${bondOf(H, gid)}／100`}</div>` : ''}
         ${gid === H.pid && (H.titles || []).length ? `<div>稱號：${H.titles.map((t) => `「${titleName(t)}」`).join('')}</div>` : ''}${gid === H.pid && H.wound > G.t ? '<div style="color:#ff8a6a">負傷中（攻擊、防禦 -15%）</div>' : ''}
         ${gid === H.pid ? `${fameHTML(H)}${govHTML(this.g)}<div class="dim">${this.g.rank()}${this.g.perk().noble ? `・${this.g.perk().noble}` : ''}：${perkText(this.g.perk())}${g.status === 'serving' && !this.g.isLord() && RANKS[rankOf(g.merit) + 1] ? `<br>下一級「${RANKS[rankOf(g.merit) + 1][0]}」還要功績 ${RANKS[rankOf(g.merit) + 1][1] - g.merit}` : ''}</div>` : ''}
         ${gid === H.pid ? `<div>功績 ${g.merit}　名聲 ${H.fame}　${this.g.rank()}　戰績 ${H.st.wins} 勝／一騎討 ${H.st.duels} 勝／討取 ${H.st.kills.length} 將／攻城 ${H.st.cities.length}</div>` : ''}</div></div>`;

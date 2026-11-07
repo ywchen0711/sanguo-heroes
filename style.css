@@ -187,3 +187,5 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 #wx.snow { display: block; background-image: radial-gradient(circle, rgba(255,255,255,.9) 0 1.6px, transparent 2px), radial-gradient(circle, rgba(255,255,255,.7) 0 1.1px, transparent 1.5px); background-size: 90px 90px, 55px 55px; background-position: 0 0, 30px 20px; animation: snowfall 6s linear infinite; }
 @keyframes rainfall { from { background-position: 0 0, 0 0; } to { background-position: -38px 140px, -40px 220px; } }
 @keyframes snowfall { from { background-position: 0 0, 30px 20px; } to { background-position: 40px 90px, 0 75px; } }
+.h-row.h-saga { color: #ffd86a; font-size: 0.92em; max-width: 340px; white-space: normal; line-height: 1.35; }
+.lbl.mission.saga b { color: #ffd86a; border: 1px solid #ffd86a; }

@@ -103,11 +103,13 @@ export class Hardship {
       if (r > 0.55) { H.rec[x.id].sol = Math.max(1, Math.round(H.rec[x.id].sol * 0.5)); lines.push(`${x.name}斷後殺退了追兵，平安歸隊！`); addBond(g, x.id, 8); }
       else if (r > 0.2) { H.rec[x.id].hurt = G.t + 2; H.rec[x.id].sol = 1; lines.push(`${x.name}斷後時受了重傷，總算逃了回來`); }
       else if (Math.random() < 0.5 * Math.max(0.5, D.fall)) await this.fall(x, null, `${x.name}為了掩護大家撤退，力戰而死`);
+      else if (H.saga && x.hidden) { H.rec[x.id].hurt = G.t + 2; H.rec[x.id].sol = 1; lines.push(`${x.name}斷後時受了重傷，總算逃了回來`); }
       else { H.party = H.party.filter((i) => i !== x.id); x.follow = null; if (x.status === 'serving') { x.status = 'free'; x.fac = null; } g.respawnParty(); lines.push(`${x.name}斷後時被敵軍衝散，下落不明`); }
     }
     if (lines.length) await g.ui.say('', lines.join('\n'));
   }
   async fall(x, by, text) {
+    if (this.H.saga && x.hidden) { this.H.rec[x.id].hurt = this.G.t + 2; await this.g.ui.say('', `${x.name}傷得很重，被家人拚命救了回來（兩個月內攻擊、防禦下降）`); return; }   // the family of the story never die (saga.js)
     const g = this.g, G = this.G, H = this.H;
     H.party = H.party.filter((i) => i !== x.id); x.follow = null; die(G, x, 'battle', by || undefined); g.respawnParty();
     deed(g, `${x.name}戰歿`, false);

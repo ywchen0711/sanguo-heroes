@@ -19,7 +19,7 @@ import { rivalsMonth } from './rivals.js';
 // Sanguo Heroes: the player's general (isPlayer) and the companions who travel with them (follow = the player's id) are
 // moved by the player, not by the simulation: they take no monthly job, are not sent to war or moved about, and are
 // never caught in a siege. The game drives them through the exported helpers at the bottom.
-export const busy = (g) => !!(g && (g.isPlayer || g.follow != null));
+export const busy = (g) => !!(g && (g.isPlayer || g.follow != null || g.saga));   // saga: waiting for the story (saga.js)
 
 // ---------------------------------------------------------------- random numbers (seeded, so a game can be replayed)
 import { eraMonth, harvestMul, taxMul, rebelMul, warPause, warBias } from './era.js';

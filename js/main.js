@@ -25,6 +25,7 @@ import { rankMonth, rankTag } from './martial.js';
 import { Outlaws } from './outlaws.js';
 import { Horses } from './horses.js';
 import { Stories } from './stories.js';
+import { Saga } from './saga.js';
 import { Ties } from './ties.js';
 import { Hardship, diff, DIFF } from './hardship.js';
 import { Nemesis } from './nemesis.js';
@@ -49,7 +50,7 @@ const DIRS = { down: [0, 1, 0], left: [-1, 0, 1], right: [1, 0, 2], up: [0, -1, 
 
 class Game {
   constructor() {
-    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet); this.camps = new Armies(this, personSheet); this.outlaws = new Outlaws(this, personSheet); this.horses = new Horses(this); this.stories = new Stories(this); this.ties = new Ties(this); this.hard = new Hardship(this); this.nemesis = new Nemesis(this); this.court = new Court(this); this.arena = new Arena(this); this.unrest = new Unrest(this, personSheet); this.ploys = new Ploys(this);
+    this.ui = new UI(this); this.audio = new Audio(); this.battle = new Battle(this); this.act = new Actions(this); this.screens = new Screens(this); this.events = new Events(this); this.story = new Story(this); this.auto = new AutoPlay(this); this.board = new Board(this); this.roam = new Roam(this, personSheet); this.crowd = new Crowd(this, personSheet); this.camps = new Armies(this, personSheet); this.outlaws = new Outlaws(this, personSheet); this.horses = new Horses(this); this.stories = new Stories(this); this.ties = new Ties(this); this.hard = new Hardship(this); this.nemesis = new Nemesis(this); this.court = new Court(this); this.arena = new Arena(this); this.unrest = new Unrest(this, personSheet); this.ploys = new Ploys(this); this.saga = new Saga(this);
     this.view = new View(document.getElementById('stage'));
     this.keys = new Set(); this.mode = 'title';
     addEventListener('keydown', (e) => { if (this.ui.busy) return; this.keys.add(e.key); if (e.repeat && !e.key.startsWith('Arrow') && !'wasdWASD'.includes(e.key)) return; if (['c', 'C', 'Escape', 'm', 'M'].includes(e.key) && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.act.menu(); } if ((e.key === 'z' || e.key === 'Z' || e.key === 'Enter' || e.key === ' ') && (this.mode === 'world' || this.mode === 'town')) { e.preventDefault(); this.interact(); } if (e.key.startsWith('Arrow')) e.preventDefault(); });
@@ -63,7 +64,7 @@ class Game {
   // ---------------------------------------------------------------- starting and loading
   start(o) {
     const G = this.G = newGame({ seed: o.seed ?? (Date.now() & 0x7fffffff), scenario: o.scenario });
-    const g = G.gens[o.pid]; g.isPlayer = true; g.died = Math.max(g.died, G.year + o.years + 1);
+    const g = G.gens[o.pid]; if (o.saga) Saga.prepare(G, g.name); g.isPlayer = true; g.died = Math.max(g.died, G.year + o.years + 1);
     // the computer players: they live as long as the player does (unless killed)
     if (o.rivals) { G.rivals = pickRivals(G, o.rivals, g.id, G.r, o.rivalHow || 'famous'); for (const R of G.rivals) { const x = G.gens[R.id]; x.died = Math.max(x.died, G.year + o.years + 1); } }
     const f = g.status === 'serving' ? G.factions[g.fac] : null, lord = f && f.lord === g.id;
@@ -74,11 +75,11 @@ class Game {
     this.H.hist = histDeaths(G); this.H.startFac = f ? f.name : null; this.H.st.lastFac = f ? f.id : null;
     for (const [n, d] of Object.entries(this.H.hist)) if (n === g.name) delete this.H.hist[n];
     // the companions history gave them: the sworn brothers, and a lord's best generals
-    this.H.diff = o.diff || 'normal'; this.H.iron = !!o.iron;
+    this.H.diff = o.diff || 'normal'; this.H.iron = !!o.iron; if (o.saga) this.saga.begin(g.name);
     this.load2(); this.H.food = Math.round(25 * this.hard.need()); this.H.fatigue = 0;
     this.enterTown(g.city, true);
     this.ui.toast(`<b>${dateStr(G.year, G.month)}</b>　${g.name}的故事開始了。`);
-    this.act.intro();
+    if (o.saga) this.saga.intro(); else this.act.intro();
   }
   saveGame() { try { const G = { ...this.G, r: undefined, pending: [], byName: undefined }; localStorage.setItem(SAVE, JSON.stringify({ G, H: this.H, pos: this.pos, mapW: WW })); return true; } catch (e) { console.error(e); return false; } }
   hasSave() { try { return !!localStorage.getItem(SAVE); } catch (e) { return false; } }
@@ -218,11 +219,11 @@ class Game {
   // stories first, then the random events of the place
   async happen(where) {
     if (this.ui.busy || this.locked || !this.G || (this.mode !== 'town' && this.mode !== 'world')) return;
-    if (where === 'town') { if (await this.arena.check()) return; if (await this.story.check('town')) return; await this.events.maybe('w', 0.3); }
+    if (where === 'town') { if (await this.saga.town()) return; if (await this.arena.check()) return; if (await this.story.check('town')) return; await this.events.maybe('w', 0.3); }
     if (where === 'walk') await this.events.maybe('w', 0.15);
     if (where === 'field') await this.events.maybe('f', 0.1);
     if (where === 'month' && (await this.court.check() || await this.arena.check())) return;
-    if (where === 'month') { if ((this.H.sworn || []).some((id) => this.G.gens[id].status === 'dead' && !(this.H.mourned || []).includes(id))) { await mourn(this); return; } await this.story.check('month'); }
+    if (where === 'month') { if ((this.H.sworn || []).some((id) => this.G.gens[id].status === 'dead' && !(this.H.mourned || []).includes(id))) { await mourn(this); return; } if (await this.saga.month()) return; await this.story.check('month'); }
   }
   townNPCs() {
     const M = this.town, C = M.C; this.npcs = [];
@@ -302,7 +303,7 @@ class Game {
     if (this.H.walk % 30 === 0) { this.H.days++; this.hard.dayOut(); if (this.H.days % 30 === 0) { this.monthTick(); if (this.mode !== 'world') return; } }
     if (k === T.CITY) { const c = this.world.cityAt(P.x, P.z); this.act.cityGate(c); return; }
     if (k === T.COUNTY || k === T.VILLAGE || k === T.CAVE) { const q = this.world.placeAt(P.x, P.z); if (q) { this.act.placeGate(q); return; } }
-    const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { this.act.missionFight(m); return; }
+    const m = this.H.missions.find((m) => m.x === P.x && m.z === P.z && !m.done); if (m) { if (m.saga) this.saga.banner(m); else this.act.missionFight(m); return; }
     if (this.steps > 5 && this.board.walk()) { this.steps = 0; return; }
     if (this.steps > 4 && this.H.nemDue != null) { this.steps = 0; this.nemesis.strike(); return; }
     if (this.steps > 3 && this.H.challenger && !this.auto.on) { this.steps = 0; this.act.rankChallenge(); return; }
@@ -427,7 +428,7 @@ class Game {
     if (!this.armies?.length) return;
     for (const a of [...this.armies]) { const m = a.march; m.t += dt; const p = Math.min(1, m.t / m.dur); a.x = m.a.x + (m.b.x - m.a.x) * p; a.z = m.a.y + 1 + (m.b.y - m.a.y) * p; a.dir = Math.abs(m.b.x - m.a.x) > Math.abs(m.b.y - m.a.y) ? (m.b.x > m.a.x ? 2 : 1) : m.b.y > m.a.y ? 0 : 3; a.frame = Math.floor(m.t * 6) % 2 ? 0 : 2; a.y = this.mode === 'world' ? Math.max(0, this.world.hAt(Math.round(a.x), Math.round(a.z))) : 0; this.view.placeActor(a); if (p >= 1) { this.view.removeActor(a); this.armies = this.armies.filter((x) => x !== a); } }
   }
-  missionMarks(list = this.H.missions) { for (const m of list) if (!m.done) this.view.addProp({ kind: 'banner', x: m.x, z: m.z, y: Math.max(0, this.world.hAt(m.x, m.z)), color: '#2a2a2a', label: `<b>${m.boss}</b>`, labelY: 1.8, labelClass: 'mission' }); }
+  missionMarks(list = this.H.missions) { for (const m of list) if (!m.done) this.view.addProp({ kind: 'banner', x: m.x, z: m.z, y: Math.max(0, this.world.hAt(m.x, m.z)), color: '#2a2a2a', label: `<b>${m.boss}</b>`, labelY: m.labelY || 1.8, labelClass: 'mission' + (m.saga ? ' saga' : '') }); }
   // ---------------------------------------------------------------- the HUD
   hud() {
     const G = this.G, g = this.me, f = this.myFaction() && G.factions[this.myFaction()], el = document.getElementById('hud');
@@ -437,7 +438,7 @@ class Game {
     el.innerHTML = `<div class="h-name"><b>${g.name}</b>${tt ? `<em class="h-title">「${tt}」</em>` : ''}<span style="color:${f ? f.color : '#c8c8c8'}">${f ? f.name + '軍・' + this.rank() : '在野'}</span>${hurt ? '<em class="h-hurt">負傷</em>' : ''}${bot ? `<em class="h-bot">🤖 代玩・${this.auto.style.n}</em>` : ''}</div>
       <div class="h-row"><span>${dateStr(G.year, G.month)}${this.H.days % 30 + 1}日 ${this.shichen()}${{ rain: '🌧', snow: '❄' }[this.H.wxK] || (this.night() ? '🌙' : '☀')}</span><span>金 ${this.H.gold}</span><span>名聲 ${this.H.fame}</span>${this.H.wanted ? `<span style="color:#ff8a6a">通緝 ${this.H.wanted * 10}金</span>` : ''}</div>
       <div class="h-row"><span>兵力 ${sol}/${max}</span><span>Lv ${this.H.rec[this.H.pid].lv}</span><span>隊伍 ${this.H.party.length + 1}</span></div>
-      <div class="h-row"><span style="color:${food < 5 ? '#ff8a6a' : food < 10 ? '#ffd86a' : 'inherit'}">糧 ${food} 天</span>${tired >= 40 ? `<span style="color:${tired >= 70 ? '#ff8a6a' : '#ffd86a'}">${tired >= 70 ? '精疲力竭' : '疲憊'}</span>` : `<span>疲勞 ${tired}</span>`}${this.H.diff && this.H.diff !== 'normal' ? `<span class="dim">${DIFF[this.H.diff].n}</span>` : ''}${this.H.iron ? '<span class="dim">鐵人</span>' : ''}</div>`;
+      <div class="h-row"><span style="color:${food < 5 ? '#ff8a6a' : food < 10 ? '#ffd86a' : 'inherit'}">糧 ${food} 天</span>${tired >= 40 ? `<span style="color:${tired >= 70 ? '#ff8a6a' : '#ffd86a'}">${tired >= 70 ? '精疲力竭' : '疲憊'}</span>` : `<span>疲勞 ${tired}</span>`}${this.H.diff && this.H.diff !== 'normal' ? `<span class="dim">${DIFF[this.H.diff].n}</span>` : ''}${this.H.iron ? '<span class="dim">鐵人</span>' : ''}</div>${this.saga.hudRow()}`;
     this.screens.minimap();
   }
   // ---------------------------------------------------------------- the free camera: drag to turn, the wheel to zoom,
