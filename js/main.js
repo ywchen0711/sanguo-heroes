@@ -98,7 +98,7 @@ class Game {
   load2() { this.world ||= buildWorld(); this.G.roam = true; this.mode = 'world'; document.body.classList.add('playing'); assignLooks(this.G.gens); }
   get me() { return this.G.gens[this.H.pid]; }
   // the party as [{ g, rec, look, solMax, spMax }]
-  partyList() { syncParty(this); const cmd = this.perk().troop, curb = this.court?.curbed(); return [this.H.pid, ...this.H.party].map((id) => { const g = this.G.gens[id], rec = this.H.rec[id]; rec.cmd = cmd; return { g, rec, look: this.lookOf(g), solMax: Math.round(solMax(g, rec) * (curb ? 0.75 : 1)), spMax: spMax(g, rec) }; }); }
+  partyList() { syncParty(this); const cmd = this.perk().troop, curb = this.court?.curbed(); return [this.H.pid, ...this.H.party, ...(this.H.guests || [])].map((id) => { const g = this.G.gens[id], rec = this.H.rec[id]; rec.cmd = cmd; return { g, rec, look: this.lookOf(g), solMax: Math.round(solMax(g, rec) * (curb ? 0.75 : 1)), spMax: spMax(g, rec) }; }); }
   // what the player's rank brings (see PERKS), and how many may travel with them
   perk() { const g = this.me; return PERKS[this.isLord() ? PERKS.length - 1 : g.status === 'serving' ? 1 + rankOf(g.merit) : 0]; }
   partyMax() { return this.perk().party; }

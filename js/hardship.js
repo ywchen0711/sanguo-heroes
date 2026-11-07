@@ -92,7 +92,7 @@ export class Hardship {
   async after(out, o) {
     const g = this.g, G = this.G, H = this.H, D = diff(g), lines = []; if (o.drill || !out.party) return;
     for (const u of out.party) {
-      if (u.isPlayer || u.sol > 0) continue; const x = u.g, by = u.routedBy?.gid != null ? G.gens[u.routedBy.gid] : null;
+      if (u.isPlayer || u.sol > 0 || u.guest) continue; const x = u.g, by = u.routedBy?.gid != null ? G.gens[u.routedBy.gid] : null;
       const pDie = D.fall * (out.result === 'lose' ? 0.06 : 0.025) * (H.rec[x.id]?.hurt > G.t ? 2 : 1);
       if (Math.random() < pDie) { await this.fall(x, by, `${x.name}在亂軍之中戰死了`); continue; }
       if (Math.random() < 0.35) { H.rec[x.id].hurt = G.t + 2; lines.push(`${x.name}身負重傷（兩個月內攻擊、防禦下降）`); }

@@ -4,12 +4,15 @@
 // 南中), then climb 泰山 to his hall and end it. The realm runs on as in any other game around the story.
 // Goals are black banners (H.missions with .saga): a city's banner is reached by walking into the city, a field
 // banner by stepping on it. State: H.saga = { lead, ch: 'find' | 'shards' | 'final' | 'done', fam: { name: 0 waiting,
-// 1 found, 2 done }, shards: { tian, di, ren }, log: [], ambush }.
+// 1 found, 2 done }, shards: { tian, di, ren }, log: [], ambush, lgz: the side story with 劉關張 (0 not yet, 1 their city,
+// 2 the impostors' camp, 3 done: they come to the last battle) }.
+// Every chief of the story has weaknesses and resistances (TRAIT, see weak.js) and a great move it gathers itself for.
 import { LOOKS } from './sprites.js';
 import { CITY_POS, T, K } from './world.js';
 import { refresh } from './sim/engine.js';
 import { addBond, swear } from './bonds.js';
 import { deed } from './deeds.js';
+import { newRec } from './hero.js';
 
 export const FAMILY = ['Jeff', 'Erin', 'Josh', 'Jasper'];
 const ROLE = { Jeff: 'dad', Erin: 'mom', Josh: 'big', Jasper: 'small' };
@@ -42,6 +45,7 @@ const STAT_N = { lead: '統率', war: '武力', int: '智力' };
 const V = (seed, o) => ({ ...LOOKS.villager(seed), lady: false, mark: null, ...o, key: 'saga-' + seed });
 const LK = {
   jingweng: () => V('鏡翁', { hat: 'taoist', hatC: '#c8a860', body: '#e8e0c8', trim: '#c8a860', cape: '#a89060', beard: 'long', beardC: '#f8f8f8', hair: '#f0f0f0', wpn: 'staff', robe: true }),
+  bandit0: () => LOOKS.bandit(),
   cult: () => ({ ...LOOKS.bandit(), beard: null, hatC: '#1a1a2a', body: '#2a2a3a', trim: '#6a3a8a', key: 'saga-cult' }),
   xuefu: () => V('血蝠', { hat: 'taoist', hatC: '#3a1a2a', body: '#3a1a2a', trim: '#8a1a2a', cape: '#8a1a2a', beard: 'goatee', beardC: '#1a1410', skin: '#d8c8b8', wpn: 'fan', robe: true }),
   black: () => ({ ...LOOKS.turban(), hatC: '#1a1a1a', body: '#4a4a4a', trim: '#2a2a2a', key: 'saga-black' }),
@@ -60,6 +64,23 @@ const LK = {
   hufa: () => ({ ...LOOKS.bandit(), beard: 'long', beardC: '#d8d8e8', hat: 'helmet', hatC: '#3a1a5a', body: '#2a1a3a', trim: '#8a5ad8', cape: '#1a1a2a', key: 'saga-hufa' }),
 };
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
+// what each of the story's enemies fears and shrugs off, and the great moves of the chiefs (battle.js: prep / ult)
+const U = (n, prep, fx, pow = 0.4, every = 3, first = 2) => ({ ult: { n, prep, fx, pow, every, first } });
+const TRAIT = {
+  玄冥教徒: { weak: ['fire'] }, 血蝠: { weak: ['fire'], res: ['mind'], ...U('萬蝠噬血', '張開黑袍，滿廟的蝙蝠尖叫著飛起', 'feng', 0.28) },
+  飛熊軍: { weak: ['earth'] }, 天牢守將: { weak: ['mind'] },
+  翻江蛟: { weak: ['thunder'], res: ['water'], ...U('翻江倒海', '跳進湖裡，湖面捲起了巨浪', 'flood', 0.3) },
+  黑巾軍: { weak: ['mind'] }, 黑巾護法: { weak: ['mind'] }, 黑天王: { weak: ['mind'], res: ['fire'], ...U('黑風捲地', '舉起黑旗，四野颳起了黑風', 'feng', 0.3) },
+  假面郎君: { weak: ['mind'], res: ['phys'], ...U('千面幻殺', '的身影一分為十', 'feng', 0.32) }, 假劉備: { weak: ['mind'] }, 假關羽: { weak: ['mind'] }, 假張飛: { weak: ['mind'] },
+  冰傀儡: { weak: ['fire'], res: ['phys'], immune: ['water'] }, 雪狼: { weak: ['fire'] },
+  冰魄夫人: { weak: ['fire'], res: ['thunder', 'mind'], immune: ['water'], ...U('冰封千里', '雙袖一揮，冰宮裡的寒氣全往她身上聚', 'flood', 0.42) },
+  火鴉騎: { weak: ['water'], immune: ['fire'] }, 赤炎童子: { weak: ['water'], immune: ['fire'], ...U('焚天烈焰', '拍著手笑，火圈越燒越高', 'blaze', 0.42) },
+  巨蟒: { weak: ['earth'] }, 蠱人: { weak: ['fire'], immune: ['mind'] }, 萬蠱婆婆: { weak: ['fire'], res: ['water'], immune: ['mind'], ...U('萬蠱噬心', '打開了腰間最大的那個陶罐', 'feng', 0.4) },
+  陰兵: { undead: true, weak: ['thunder'], res: ['phys'], immune: ['mind'] },
+  玄冥左護法: { weak: ['fire'], res: ['thunder'], ...U('陰雷', '口中念念有詞，雲層裡雷聲滾滾', 'lei', 0.3, 3, 3) }, 玄冥右護法: { weak: ['thunder'], res: ['fire'], ...U('陰火', '袖中飛出點點鬼火', 'blaze', 0.3, 3, 2) },
+  玄冥子: { weak: ['thunder'], res: ['fire', 'water'], immune: ['mind'], ...U('玄冥滅世', '高舉鏡心，整座玄冥宮都暗了下來', 'lei', 0.42, 3, 2) },
+  刺客首領: { res: ['mind'] },
+};
 
 export class Saga {
   constructor(game) { this.g = game; }
@@ -133,7 +154,7 @@ export class Saga {
     const sh = Object.entries(SHARD).map(([id, s]) => `<span style="color:${S.shards[id] ? '#8aff8a' : '#9a9a9a'}">「${s.n}」${s.where}・${s.boss}${S.shards[id] ? '　✔' : ''}</span>`).join('　');
     const tip = { find: '建議等級 8 以上。', shards: '鏡片的守護者很強，建議等級 16 以上。', final: '玄冥宮是最後的決戰，建議等級 24 以上。', done: '' }[S.ch];
     await this.g.ui.panel(`<h3>英傑傳奇　${ch}</h3>${S.ch !== 'done' ? `<p><b style="color:#ffd86a">目標：</b>${this.goal()}</p><p class="dim">${tip}黑旗標在大地圖和小地圖上。</p>` : '<p>故事已經完結。天下還在運轉，你們可以繼續闖蕩。</p>'}
-      <h4>家人</h4><p>${fam}</p>${S.ch !== 'find' ? `<h4>軒轅古鏡的碎片</h4><p>${sh}</p>` : ''}<h4>經過</h4>${S.log.map((t) => `<p>✦ ${t}</p>`).join('')}`, { title: '劇情', cls: 'wide' });
+      <h4>家人</h4><p>${fam}</p>${S.ch !== 'find' ? `<h4>軒轅古鏡的碎片</h4><p>${sh}</p>` : ''}${S.lgz ? `<h4>支線</h4><p>桃園之約（劉備、關羽、張飛）：${{ 1: `到${this.G.cities[this.gen('劉備')?.city]?.name || ''}拜訪`, 2: '討伐冒名的匪徒', 3: '<span style="color:#8aff8a">完成・決戰時會來助陣</span>', 9: '錯過了' }[S.lgz] || ''}</p>` : ''}<h4>經過</h4>${S.log.map((t) => `<p>✦ ${t}</p>`).join('')}`, { title: '劇情', cls: 'wide' });
   }
   // ---------------------------------------------------------------- the levels of the story's enemies: set by the chapter and the years, never by the party
   lv(base) { return Math.max(base, this.g.act.foeLv(false) + Math.round(base / 6)); }
@@ -147,6 +168,7 @@ export class Saga {
     if (o.war) f.war = Math.max(f.war, o.war);
     if (o.sol) { f.solMax = Math.round(f.solMax * o.sol); f.sol = f.solMax; }
     const A = this.arms ?? 0; f.wpn += Math.round(A * lv / 3 * (o.boss ? 2 : 1)); f.arm += Math.round(A * lv / 4 * (o.boss ? 2 : 1));
+    const T = TRAIT[name]; if (T) { for (const k of ['weak', 'res', 'immune']) f[k] = (T[k] || []).slice(); if (T.ult) f.ult = { ...T.ult }; if (T.undead) f.undead = true; }
     return f;
   }
   // how well the story's enemies are armed: 0 in the first chapter, then more (set by the goal being fought)
@@ -154,7 +176,9 @@ export class Saga {
   many(n, name, kind, lv, look) { return Array.from({ length: n }, () => this.foe(name, kind, lv, look)); }
   // ---------------------------------------------------------------- walking into a city
   async town() {
-    if (!this.on() || this.S.ch !== 'find' || !this.g.town) return false;
+    if (!this.on() || !this.g.town) return false;
+    if (await this.lgzTown()) return true;
+    if (this.S.ch !== 'find') return false;
     const C = this.g.town.C, n = Object.keys(this.S.fam).find((x) => this.S.fam[x] === 0 && HOME[x] === C.name);
     if (!n) return false;
     this.g.locked = true;
@@ -233,7 +257,7 @@ export class Saga {
   // ---------------------------------------------------------------- stepping on a banner
   async banner(m) {
     this.g.locked = true;
-    try { const [kind, id] = m.saga.split(':'); this.armed({ fam: 0, fam2: 0, shard: 2, final: 1.8 }[kind] ?? 0); if (kind === 'fam') await this.k.say('', `${HOME[id]}就在附近。走進城裡看看吧。`); if (kind === 'fam2') await this['field' + id](); if (kind === 'shard') await this.shard(id); if (kind === 'final') await this.final(); }
+    try { const [kind, id] = m.saga.split(':'); this.armed({ fam: 0, fam2: 0, shard: 2, final: 1.8 }[kind] ?? 0); if (kind === 'fam') await this.k.say('', `${HOME[id]}就在附近。走進城裡看看吧。`); if (kind === 'fam2') await this['field' + id](); if (kind === 'shard') await this.shard(id); if (kind === 'final') await this.final(); if (kind === 'side') await this.lgzCamp(); }
     catch (e) { console.error(e); } finally { this.g.locked = false; this.g.hud(); }
   }
   // the second half of each chapter
@@ -242,7 +266,7 @@ export class Saga {
     await k.say('', '城西的荒廟裡點著幽綠的燈火。一個瘦得像竹竿的人，正把黑色的蟲子倒進陶罐裡。');
     await k.say('血蝠', '嘻……被發現了？無所謂。教主要的不是這座城的人命，是那把莫邪劍。\n把劍留下，我就讓這座城的人多活幾天。', LK.xuefu());
     await k.say('Erin', '我是醫生。害人的蠱，我一隻也不會留下。', 'Erin');
-    const r = await k.battle([this.foe('血蝠', 'bandit', lv + 3, LK.xuefu(), { boss: true, spells: ['yao'], int: 80 }), ...this.many(3, '玄冥教徒', 'bandit', lv, LK.cult())], { terrain: 'forest', title: '荒廟的毒師！', night: true });
+    const r = await k.battle([this.foe('血蝠', 'bandit', lv + 3, LK.xuefu(), { boss: true, spells: ['yao'], int: 80 }), ...this.many(3, '玄冥教徒', 'bandit', lv, LK.cult())], { terrain: 'forest', title: '荒廟的毒師！', night: true, foeForm: 'heyi' });
     if (r !== 'win') return this.lost();
     await k.say('血蝠', '玄冥……教主……會替我報仇的……鏡子……的力量……', LK.xuefu());
     await k.say('Erin', '玄冥教？鏡子？……看來把我們帶到這裡來的，就是他們。', 'Erin');
@@ -253,7 +277,8 @@ export class Saga {
     const k = this.k, lv = this.lv(this.findLv()), lu = this.k.enemy('呂布', 500 + lv * 60, '#8a2a2a', 6);
     await k.say('呂布', '小子，昨天的架還沒打完！\n還有你們——想從我呂奉先手上把人帶走？', '呂布');
     await k.say('Josh', '上次是你們放冷箭！這次我們一家人一起上，看你還怎麼囂張！', 'Josh');
-    const r = await k.battle([lu, ...this.many(2, '飛熊軍', 'soldier', lv, LK.guard())], { terrain: 'plain', title: '呂布追來了！' });
+    if (lu.gid != null || lu.name === '呂布') { lu.ult = { n: '天下無雙', prep: '勒住赤兔馬，方天畫戟高高舉起', fx: 'rock', pow: 0.32, every: 3, first: 2 }; lu.res = ['mind']; lu.weak = []; }
+    const r = await k.battle([lu, ...this.many(2, '飛熊軍', 'soldier', lv, LK.guard())], { terrain: 'plain', title: '呂布追來了！', foeForm: 'fengshi' });
     if (r !== 'win') return this.lost();
     await k.say('呂布', '哼……那小子身邊的人也不簡單。今天就放你們一馬！', '呂布');
     await k.say('Josh', '下次我一個人就贏你！', 'Josh');
@@ -265,7 +290,7 @@ export class Saga {
     await k.say('', '太湖上霧氣茫茫。水寨的木樁上綁著幾十個漁夫，岸邊停著一艘掛黑帆的大船。');
     await k.say('翻江蛟', '哪來的小鬼？這批人牲是玄冥教主訂下的，誰敢動，老子就把他也捆上船！', LK.jiao());
     await k.say('Jasper', '翻江蛟，你的錢我已經偷光了。現在換你的寨子。', 'Jasper');
-    const r = await k.battle([this.foe('翻江蛟', 'pirate', lv + 3, LK.jiao(), { boss: true, war: 88 }), ...this.many(3, '水賊', 'pirate', lv)], { terrain: 'river', title: '太湖水寨！' });
+    const r = await k.battle([this.foe('翻江蛟', 'pirate', lv + 3, LK.jiao(), { boss: true, war: 88 }), ...this.many(3, '水賊', 'pirate', lv)], { terrain: 'river', title: '太湖水寨！', foeForm: 'changshe' });
     if (r !== 'win') return this.lost();
     await k.say('', '水寨燒起來了。漁夫們一個一個被鬆綁，跪在岸邊磕頭。');
     await k.say('Jasper', '……其實我一直很怕。一個人在這裡，什麼人都不認識。\n還好你們來了。', 'Jasper');
@@ -322,10 +347,10 @@ export class Saga {
       await k.say('Josh', '好噁心！Jasper，你負責那些蟲，我負責那個婆婆！', 'Josh');
     }
     const minions = { tian: () => [...this.many(2, '雪狼', 'wolf', lv), ...this.many(3, '冰傀儡', 'soldier', lv, LK.ice())], di: () => this.many(5, '火鴉騎', 'nomad', lv, LK.fire()), ren: () => [...this.many(2, '巨蟒', 'snake', lv), ...this.many(3, '蠱人', 'barbarian', lv, LK.gu())] }[id];
-    const boss = { tian: () => [this.foe('冰魄夫人', 'bandit', lv + 5, LK.bingpo(), { boss: true, spells: ['feng', 'zhen'], int: 95, sol: 3.6 }), ...this.many(3, '冰傀儡', 'soldier', lv + 2, LK.ice())],
-      di: () => [this.foe('赤炎童子', 'bandit', lv + 5, LK.chiyan(), { boss: true, spells: ['lei', 'yao'], int: 92, war: 92, sol: 3.6 }), ...this.many(3, '火鴉騎', 'nomad', lv + 2, LK.fire())],
-      ren: () => [this.foe('萬蠱婆婆', 'bandit', lv + 5, LK.wangu(), { boss: true, spells: ['yao', 'huan'], int: 96, sol: 3.6 }), ...this.many(3, '蠱人', 'barbarian', lv + 2, LK.gu())] }[id];
-    const ok = await k.waves([minions, boss], { terrain: s.terrain, titles: [`闖入${s.place.split('・')[1]}！`, `${s.boss}出手了！`] });
+    const boss = { tian: () => [this.foe('冰魄夫人', 'bandit', lv + 5, LK.bingpo(), { boss: true, spells: ['feng', 'zhen'], int: 95, sol: 5 }), ...this.many(3, '冰傀儡', 'soldier', lv + 2, LK.ice())],
+      di: () => [this.foe('赤炎童子', 'bandit', lv + 5, LK.chiyan(), { boss: true, spells: ['lei', 'yao'], int: 92, war: 92, sol: 5 }), ...this.many(3, '火鴉騎', 'nomad', lv + 2, LK.fire())],
+      ren: () => [this.foe('萬蠱婆婆', 'bandit', lv + 5, LK.wangu(), { boss: true, spells: ['yao', 'huan'], int: 96, sol: 5 }), ...this.many(3, '蠱人', 'barbarian', lv + 2, LK.gu())] }[id];
+    const ok = await k.waves([minions, boss], { terrain: s.terrain, foeForm: { tian: 'fangyuan', di: 'fengshi', ren: 'heyi' }[id], titles: [`闖入${s.place.split('・')[1]}！`, `${s.boss}出手了！`] });
     if (!ok) return this.lost();
     if (id === 'tian') {
       await k.say('冰魄夫人', '師父……玄冥子……他說只要我守住鏡片，就讓我永遠不老……\n原來，他根本不在乎我們……', LK.bingpo());
@@ -367,10 +392,12 @@ export class Saga {
     const c = await k.ask('玄冥子問你——', [{ k: 'a', n: '「用千萬冤魂換來的太平，不是太平。」' }, { k: 'b', n: '「天下該怎麼走，不是你一個人說了算。」' }, { k: 'c', n: '「少廢話，把鏡心交出來！」' }]);
     await k.say(L, { a: '用千萬冤魂換來的太平，不是太平。', b: '天下該怎麼走，不是你一個人說了算。', c: '少廢話，把鏡心交出來！' }[c], L);
     await k.say('玄冥子', '……那就讓你們也變成我的陰兵吧！', LK.xuanming());
-    const ok = await k.waves([() => this.many(5, '陰兵', 'soldier', lv + 1, LK.ghost()),
-      () => [this.foe('玄冥護法', 'bandit', lv + 3, LK.hufa(), { boss: true, spells: ['lei'], int: 85, sol: 1.6 }), this.foe('玄冥護法', 'bandit', lv + 3, LK.hufa(), { boss: true, spells: ['huan'], int: 85, sol: 1.6 }), ...this.many(3, '陰兵', 'soldier', lv + 2, LK.ghost())],
+    const helpers = this.S.lgz === 3 ? ['劉備', '關羽', '張飛'].map((n) => this.gen(n)).filter((x) => x && (x.status === 'serving' || x.status === 'free') && !x.isPlayer && !this.H.party.includes(x.id)) : [];
+    if (helpers.length) { await k.say('', '山道上傳來一陣急促的馬蹄聲——'); await k.say('劉備', '桃園之約，備不敢忘！雲長、翼德，隨我殺進去！', '劉備'); await k.say('張飛', '燕人張翼德在此！哪個妖道敢欺負俺的朋友！', '張飛'); this.guests(helpers); }
+    let ok; try { ok = await k.waves([() => this.many(5, '陰兵', 'soldier', lv + 1, LK.ghost()),
+      () => [this.foe('玄冥左護法', 'bandit', lv + 3, LK.hufa(), { boss: true, spells: ['lei'], int: 85, sol: 1.6 }), this.foe('玄冥右護法', 'bandit', lv + 3, LK.hufa(), { boss: true, spells: ['huan'], int: 85, sol: 1.6 }), ...this.many(3, '陰兵', 'soldier', lv + 2, LK.ghost())],
       () => [this.foe('玄冥子', 'bandit', lv + 8, LK.xuanming(), { boss: true, spells: ['lei', 'yao', 'feng', 'huan'], int: 99, war: 97, sol: 3.4 }), ...this.many(3, '陰兵', 'soldier', lv + 3, LK.ghost())]],
-      { terrain: 'hill', noFlee: true, titles: ['玄冥宮・陰兵出陣', '玄冥護法擋住了去路！', '決戰玄冥子！'] });
+      { terrain: 'hill', noFlee: true, foeForm: 'heyi', titles: ['玄冥宮・陰兵出陣', '玄冥護法擋住了去路！', '決戰玄冥子！'] }); } finally { this.H.guests = []; }
     if (!ok) return this.lost();
     await k.say('玄冥子', '不可能……我的陰兵……\n——鏡心還在我手上！只要殺了你，四劍就湊不齊了！', LK.xuanming());
     await k.say('', `玄冥子化作一道黑影，直撲${L}！`);
@@ -403,8 +430,66 @@ export class Saga {
       this.S.log.push('終章：選擇留在亂世'); k.toast('英傑傳奇完結！天下還在運轉，你們可以繼續闖蕩。');
     }
   }
+  // ---------------------------------------------------------------- 支線　桃園之約: 劉備、關羽、張飛
+  // opens once one of the family is found; the banner follows 劉備 wherever he is
+  lgzOk() { return ['劉備', '關羽', '張飛'].every((n) => { const x = this.gen(n); return x && (x.status === 'serving' || x.status === 'free') && !x.isPlayer && !x.saga && !this.H.party.includes(x.id); }); }
+  lgzOpen() {
+    const S = this.S; if (!this.on() || (S.lgz || 0) >= 2) return;
+    if (!this.lgzOk()) { if (S.lgz === 1) { this.unmark('side:lgz'); S.lgz = 0; } return; }
+    if (S.ch === 'find' && !Object.values(S.fam).some((v) => v === 2)) return;
+    const c = this.G.cities[this.gen('劉備').city], m = this.H.missions.find((x) => x.saga === 'side:lgz');
+    if (m && m.city === c.id) return;
+    if (m) this.unmark('side:lgz'); else this.k.toast(`支線「桃園之約」：聽說${c.name}有三位結義兄弟，仁德之名傳遍四方。`);
+    S.lgz = 1; this.mark('side:lgz', c.name, `支線：桃園三兄弟（${c.name}）`);
+  }
+  async lgzTown() {
+    const S = this.S; this.lgzOpen(); if (S.lgz !== 1 || !this.lgzOk() || this.gen('劉備').city !== this.g.town.city) return false;
+    this.g.locked = true;
+    try {
+      const k = this.k, L = this.lead(), josh = this.H.party.includes(this.gen('Josh').id) || L === 'Josh';
+      await k.say('', '城門口貼著一張告示，墨跡還沒乾：「劉玄德招募義勇，共扶漢室。」\n旁邊一個賣草鞋的老伯說：「劉皇叔是好人啊，前年大旱，他把自家的糧都分給了我們。」');
+      await k.say('劉備', '聽說有幾位持名劍的奇人在各地行俠仗義，備仰慕已久。今日一見，果然氣度不凡。\n這兩位是我的結義兄弟，關雲長、張翼德。', '劉備');
+      await k.say('張飛', '大哥說你們厲害，俺老張就是不服！\n誰敢跟俺比劃比劃？', '張飛');
+      const c = await k.ask('張飛捲起袖子，一副要打架的樣子——', [{ k: 'duel', n: josh ? 'Josh：「我來！」（一騎討）' : '跟他過幾招（一騎討）' }, { k: 'drink', n: '比喝酒（看武力與魅力）' }, { k: 'talk', n: '「張將軍息怒，我們是來交朋友的。」' }]);
+      if (c === 'duel') { const r = await k.duel(this.gen('張飛')); await k.say('張飛', r === 'win' ? '……好！好身手！俺老張服了！' : '哈哈哈！你也不賴嘛，能在俺手下撐這麼久的人不多！', '張飛'); }
+      else if (c === 'drink') { const ok = k.check('war', 90) && k.check('cha', 90); await k.say('', ok ? '一罈、兩罈、三罈……張飛「咚」的一聲趴在桌上，打起了呼嚕。' : '一罈、兩罈、三罈……你眼前一黑，醒來時張飛正拍著你的背大笑。'); await k.say('張飛', ok ? '（醒來後）俺老張這輩子，頭一回喝輸給別人！' : '酒量差了點，人倒是爽快！', '張飛'); }
+      else await k.say('關羽', '三弟，不得無禮。……諸位，見笑了。', '關羽');
+      await k.say('關羽', '實不相瞞，近來有一夥人打著我家兄長的旗號，在城外的村子強徵糧食、拉走壯丁。\n百姓都在說，劉玄德原來是個偽君子。', '關羽');
+      await k.say('Jeff', '冒你們的名號，壞你們的名聲……這不是一般的山賊會做的事。', 'Jeff');
+      await k.say('劉備', '備的名聲事小，百姓的性命事大。諸位若肯相助，備兄弟三人願與諸位同去！', '劉備');
+      for (const n of ['劉備', '關羽', '張飛']) addBond(this.g, this.gen(n).id, 20);
+      S.lgz = 2; this.unmark('side:lgz'); this.field('side:lgz', this.g.town.C.name, '冒名的匪徒', 6, 11);
+      k.toast('黑旗標出了冒名匪徒的營地。到了那裡，劉關張會和你們並肩作戰。');
+    } catch (e) { console.error(e); } finally { this.g.locked = false; this.g.hud(); }
+    return true;
+  }
+  // the battle at the impostors' camp, 劉關張 fighting beside the family
+  guests(xs) { const lv = this.H.rec[this.H.pid].lv; this.H.guests = xs.map((x) => x.id); for (const x of xs) { const r = this.H.rec[x.id] ||= newRec(x); r.lv = Math.max(r.lv, lv - 2); } this.g.partyList().forEach((p) => { if (this.H.guests.includes(p.g.id)) { p.rec.sol = p.solMax; p.rec.sp = p.spMax; } }); }
+  async lgzCamp() {
+    const k = this.k, S = this.S;
+    if (!this.lgzOk()) { await k.say('', '劉關張已經不在這裡了……這件事只好作罷。'); this.unmark('side:lgz'); S.lgz = 9; return; }
+    await k.say('', '營地裡插著一面「劉」字大旗。三個人坐在火堆旁喝酒——一個大耳垂肩，一個紅臉長鬚，一個豹頭環眼。\n可是仔細一看，耳朵是糊上去的，鬍子是馬尾巴做的。');
+    await k.say('張飛', '呸！這也叫俺老張？俺哪有這麼醜！', '張飛');
+    await k.say('假面郎君', '嘿嘿，正主兒來了？正好。教主說了，劉備的名聲壞不了，就讓他的人頭落地！', LK.cult());
+    const lv = this.lv(this.findLv() + 4), mk = (n) => this.foe(n, 'bandit', lv, { ...LK.bandit0(), key: 'saga-fake-' + n });
+    this.guests(['劉備', '關羽', '張飛'].map((n) => this.gen(n)));
+    let r; try { r = await k.battle([this.foe('假面郎君', 'bandit', lv + 3, LK.cult(), { boss: true, sol: 1.5 }), mk('假劉備'), mk('假關羽'), mk('假張飛')], { terrain: 'forest', title: '桃園三兄弟 vs 冒牌三兄弟！', foeForm: 'yulin' }); } finally { this.H.guests = []; }
+    if (r !== 'win') return this.lost();
+    await k.say('假面郎君', '咳……教主在鏡中看見……你劉備將來會三分天下……\n他要你在那之前……身敗名裂……', LK.cult());
+    await k.say('劉備', '三分天下？……備只想讓百姓過幾天安穩日子罷了。', '劉備');
+    await k.say('', '那天晚上，城外的桃園裡擺了一桌酒。劉備把搶來的糧食一車一車還給了村民。');
+    await k.say('劉備', '今日之恩，備沒齒難忘。\n日後諸位若有危難，不論天涯海角，備兄弟三人必來相助！', '劉備');
+    await k.say('關羽', '關某這一生，只認信義二字。', '關羽');
+    await k.say('張飛', '喝！今天不醉不歸！', '張飛');
+    S.lgz = 3; this.unmark('side:lgz'); k.gold(500); k.fame(200);
+    for (const n of FAMILY) { const x = this.gen(n); if (x && x.status !== 'dead') { x.base.cha = Math.min(110, x.base.cha + 2); refresh(this.G, x); } }
+    for (const n of ['劉備', '關羽', '張飛']) addBond(this.g, this.gen(n).id, 30);
+    S.log.push('支線　桃園之約：和劉備、關羽、張飛結為好友'); deed(this.g, '與劉關張桃園共飲');
+    await k.say('', '支線「桃園之約」完成！金 +500、名聲 +200，四人的魅力 +2。\n最後的決戰時，劉關張會趕來助陣。');
+  }
   // ---------------------------------------------------------------- the month: 玄冥子's men on the road
   async month() {
+    this.lgzOpen();
     const S = this.S; if (!this.on() || (S.ch !== 'shards' && S.ch !== 'final') || S.ambush >= 4 || this.g.mode !== 'world' || Math.random() > 0.35) return false;
     S.ambush++; this.g.locked = true; this.armed(0.6);
     try {

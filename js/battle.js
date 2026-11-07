@@ -5,6 +5,10 @@
 //
 // Duels (一騎討): two generals alone between the armies. Each turn both choose — 攻擊, 猛攻 (strong, but a guard turns it
 // back), 防守 (blocks most and builds fury) or 必殺 (when fury is full) — and 武力 decides the rest.
+//
+// Weaknesses (weak.js): every foe may fear or shrug off fire, water, thunder, rocks, steel or confusion; 看破 shows them.
+// Chiefs with a great move (f.ult) gather their strength for a round first (蓄力): 防禦 and 八陣圖 soften the blow, and
+// enough damage in between (15% of its soldiers) or a confusion breaks it off. Guests (H.guests) fight on their own.
 import { View, THREE, personSheet, beastSheet, canvasTex } from './render.js';
 import { LOOKS, shade, soldierSheet } from './sprites.js';
 import { TACTICS, tacticsOf, bstats, ITEMS, usable, armsOf, hasHorse, TROOPS, troopMul, FORMS } from './hero.js';
@@ -16,6 +20,7 @@ import { FX } from './fx.js';
 import { diff } from './hardship.js';
 import { bondOf } from './bonds.js';
 import { setupField } from './field.js';
+import { defaults, elMul, EL, EL_N, loreKey, tagsHTML, tagsText } from './weak.js';
 
 const PACE = 2, HIT = 1.8, MEND = 1.5;   // the pace of a battle: animations quicker, blows harder, so a fight takes fewer rounds
 const wait = (ms) => new Promise((r) => setTimeout(r, ms / PACE));
@@ -66,7 +71,7 @@ export class Battle {
   setFrame(a, f) { if (a.beast) { a.bframe = f === 2 ? 1 : 0; this.view.placeActor(a); return; } a.frame = f; a.dir = a.face; this.view.placeActor(a); }
   drawBar(u) {
     const p = Math.max(0, u.sol / u.solMax);
-    u.bar.el.innerHTML = `<b>${u.troop ? `<small class="tr ${u.troop}">${TROOPS[u.troop].n[0]}</small>` : ''}${u.name}</b><i style="--p:${p * 100}%;--c:${p > 0.5 ? '#6ae06a' : p > 0.25 ? '#e8c84a' : '#e85a4a'}"></i><span>${Math.max(0, Math.round(u.sol))}</span>${u.status.confuse ? '<em>混亂</em>' : ''}`;
+    u.bar.el.innerHTML = `<b>${u.troop ? `<small class="tr ${u.troop}">${TROOPS[u.troop].n[0]}</small>` : ''}${u.name}</b><i style="--p:${p * 100}%;--c:${p > 0.5 ? '#6ae06a' : p > 0.25 ? '#e8c84a' : '#e85a4a'}"></i><span>${Math.max(0, Math.round(u.sol))}</span>${u.status.confuse ? '<em>混亂</em>' : ''}${u.charging ? '<em class="chg">蓄力</em>' : ''}${u.guarding ? '<em class="gd">防禦</em>' : ''}${u.side === 'foe' ? tagsHTML(u) : ''}`;
     const n = u.sol > 0 ? Math.ceil((u.squad?.length || 0) * p) : 0;
     u.squad?.forEach((s, k) => { if (k < n) { s.down = 0; s.sprite.visible = s.shadow.visible = true; s.sprite.rotation.z = 0; s.sprite.material.opacity = 1; } else if (s.sprite.visible && !s.down) s.down = 0.001; });
     if (u.sol <= 0 && u.actor && !u.routT) u.routT = 0.001;
@@ -89,12 +94,13 @@ export class Battle {
       if ((g.isPlayer && wounded) || (!g.isPlayer && this.game.hard?.hurt(g.id))) { st.atk *= 0.85; st.def *= 0.85; }
       st.spd += arms.spd + (arms.first ? 999 : 0);
       const troop = r.troop === 'cav' && !hasHorse(G, g, r) ? 'inf' : r.troop || (hasHorse(G, g, r) ? 'cav' : p.look?.wpn === 'bow' ? 'bow' : 'inf');
-      return { side: 'party', g, rec: r, name: g.name, look: p.look, lv: r.lv, sol: r.sol, solMax: p.solMax, sp: r.sp, spMax: p.spMax, st, arms, troop, tactics: arms.thunder > 0 && !tacticsOf(g).includes('lei') ? [...tacticsOf(g), 'lei'] : tacticsOf(g), status: {}, isPlayer: g.isPlayer }; }; // 雷法 brings 落雷 with it
+      return { side: 'party', g, rec: r, name: g.name, look: p.look, lv: r.lv, sol: r.sol, solMax: p.solMax, sp: r.sp, spMax: p.spMax, st, arms, troop, tactics: arms.thunder > 0 && !tacticsOf(g).includes('lei') ? [...tacticsOf(g), 'lei'] : tacticsOf(g), status: {}, isPlayer: g.isPlayer, guest: !!H?.guests?.includes(g.id) }; }; // 雷法 brings 落雷 with it
     const PT = H && !o.drill ? syncParty(this.game) : null;
     this.party = party.map(mk);
     const foeTroop = (f) => f.troop || (f.beast ? null : f.solKind === 'nomad' ? 'cav' : f.solKind === 'pirate' ? 'navy' : f.gid != null ? (hasHorse(G, G.gens[f.gid]) ? 'cav' : f.int > f.war + 10 ? 'bow' : 'inf') : o.siege ? 'bow' : 'inf');
     this.foes = foes.map((f) => { const arms = armsOf(G, f.gid != null ? G.gens[f.gid] : { id: -9 });
       return { side: 'foe', ...f, arms, troop: foeTroop(f), st: { atk: f.war + (f.wpn || 0), def: f.lead * 0.6 + (f.arm || 0) * 1.6 + f.lv + (o.siege ? f.wall ?? 18 : 0), int: f.int, spd: (f.war + f.lead) / 2 + f.lv * 0.3 + arms.spd + (arms.first ? 999 : 0), lead: f.lead, war: f.war }, tactics: f.beast ? [] : tacticsOf({ int: f.int, spells: f.spells || [] }), status: {}, spMax: f.sp, solLook: f.solLook || LOOKS.soldier(f.color || '#8a4a3a') }; });
+    for (const f of this.foes) { defaults(f); if (H?.lore?.[loreKey(f)]) f.seen = true; }
     const named = this.foes.filter((f) => f.gid != null), FT = named.length ? groupTraits(named.map((f) => G.gens[f.gid])) : null;
     for (const f of named) { const fx = FT.get(f.gid).fx; for (const [k, v] of Object.entries(fx)) { if (['war', 'lead', 'int'].includes(k)) { if (k === 'war') f.st.atk += v; if (k === 'int') f.st.int += v; continue; } if (k === 'spd') { f.st.spd += v; continue; } if (k === 'first') { f.st.spd += 999; continue; } if (k === 'cavPow') { f.arms.cav = (f.arms.cav || 1) * (1 + v); continue; } f.arms[k] = (typeof v === 'number' && typeof f.arms[k] === 'number') ? f.arms[k] + v : v; } for (const k in CAP) if (f.arms[k] > CAP[k]) f.arms[k] = CAP[k]; }
     this.comboSay = [...(PT ? comboLines(PT, party.map((p) => p.g), '') : []), ...(FT ? comboLines(FT, named.map((f) => G.gens[f.gid]), '敵軍') : [])];
@@ -103,7 +109,7 @@ export class Battle {
     if (o.wx === 'rain') this.comboSay.unshift('大雨滂沱：弓兵威力下降、火攻難以施展、水攻更強');
     if (o.wx === 'snow') this.comboSay.unshift('大雪紛飛：騎兵行動遲緩');
     // formations: ours as last chosen; an army led by generals (or a siege) draws one up too
-    this.form = { party: H?.form || 'yulin', foe: foes.some((f) => f.gid != null) || o.siege ? Object.keys(FORMS)[Math.floor(Math.random() * 5)] : null };
+    this.form = { party: H?.form || 'yulin', foe: o.foeForm || foes.some((f) => f.gid != null) || o.siege ? Object.keys(FORMS)[Math.floor(Math.random() * 5)] : null };
     // what the people in the player's life bring: sworn brothers, a fury for a fallen one, rivals, a killer to avenge
     this.mods = H && !o.drill ? battleMods(this.game, this.foes) : { atk: 1, foeAtk: 1, lines: [] };
     if (H && this.game.perk) this.mods.atk *= 1 + (this.game.perk().atk || 0);
@@ -153,7 +159,7 @@ export class Battle {
   formBar() {
     let el = this.ui.querySelector('.b-form'); if (!el) { el = document.createElement('div'); el.className = 'b-form'; this.ui.appendChild(el); }
     const F = this.form, beat = F.foe && FORMS[F.party].beats === F.foe ? ' <em>克制！</em>' : F.foe && FORMS[F.foe].beats === F.party ? ' <em class="bad">被克制</em>' : '';
-    el.innerHTML = `${F.foe ? `<span>敵　${FORMS[F.foe].n}陣</span>` : ''}<span>我軍　${FORMS[F.party].n}陣${beat}</span>${this.fieldFx?.tag ? `<span>${this.fieldFx.tag}</span>` : ''}`;
+    el.innerHTML = `${F.foe ? `<span>敵　${FORMS[F.foe].n}陣</span>` : ''}<span>我軍　${FORMS[F.party].n}陣${beat}</span>${this.fieldFx?.tag ? `<span>${this.fieldFx.tag}</span>` : ''}${this.foes.filter((f) => f.charging && f.sol > 0).map((f) => `<span class="warn">⚠ ${f.name}蓄力中：「${f.ult.n}」</span>`).join('')}`;
   }
   async chooseForm() {
     const F = this.form, k = await this.menu('陣型', Object.entries(FORMS).map(([k, f]) => ({ k, n: `${f.n}陣${k === F.party ? '（目前）' : ''}${F.foe && f.beats === F.foe ? '　克制敵陣' : ''}`, d: f.d })).concat([{ k: null, n: '← 返回' }]));
@@ -197,9 +203,9 @@ export class Battle {
     for (let i = 0; i < this.party.length; i++) {
       const u = this.party[i]; if (u.sol <= 0) continue;
       if (u.status.confuse) { list.push({ u, kind: 'confused' }); continue; }
-      if (this.auto) { list.push(this.autoOrder(u)); continue; }
+      if (this.auto || u.guest) { list.push(this.autoOrder(u, list)); continue; }
       const c = await this.menu(`${u.name}　兵 ${Math.round(u.sol)}／策 ${Math.round(u.sp)}`, [
-        { k: 'atk', n: '攻擊' }, { k: 'tac', n: '策略', off: !u.tactics.length }, { k: 'item', n: '道具', off: !this.game.H.items || !Object.keys(this.game.H.items).some((k) => this.game.H.items[k] > 0 && usable(k)) },
+        { k: 'atk', n: '攻擊' }, { k: 'tac', n: '策略', off: !u.tactics.length }, { k: 'def', n: '防禦', d: '這一回合受到的傷害減半，敵將的大招減少六成；回復一些策略點' }, { k: 'scout', n: '看破', off: this.foes.every((f) => f.seen || f.sol <= 0), d: '看穿敵軍的弱點與抗性（看智力）。看過一次的敵人以後都會記得' }, { k: 'item', n: '道具', off: !this.game.H.items || !Object.keys(this.game.H.items).some((k) => this.game.H.items[k] > 0 && usable(k)) },
         ...(u.isPlayer && this.foes.some((f) => f.sol > 0 && f.gid != null) ? [{ k: 'duel', n: '一騎討' }] : []), ...(list.length === 0 && !this.o.drill ? [{ k: 'form', n: `陣型（${FORMS[this.form.party].n}）` }] : []), { k: 'auto', n: '全軍突擊' }, ...(this.o.noFlee ? [] : [{ k: 'flee', n: '撤退' }]), ...(i > 0 ? [{ k: 'back', n: '← 返回' }] : [])]);
       if (c == null) { i--; continue; }
       if (c === 'back') { list.pop(); i -= 2; while (i >= 0 && this.party[i + 1] && this.party[i + 1].sol <= 0) i--; continue; }
@@ -207,9 +213,11 @@ export class Battle {
       if (c === 'auto') { this.auto = true; i--; continue; }
       if (c === 'form') { await this.chooseForm(); i--; continue; }
       if (c === 'atk') { const t = await this.pick(this.foes, '攻擊哪一隊？'); if (!t) { i--; continue; } list.push({ u, kind: 'atk', t }); }
+      if (c === 'def') list.push({ u, kind: 'def' });
+      if (c === 'scout') list.push({ u, kind: 'scout' });
       if (c === 'duel') { const t = await this.pick(this.foes.filter((f) => f.gid != null), '向誰挑戰一騎討？'); if (!t) { i--; continue; } return { duel: { u, t }, list }; }
       if (c === 'tac') {
-        const k = await this.menu('使用哪個策略？', [...u.tactics.map((k) => ({ k, n: `${TACTICS[k].n}　${this.cost(u, k)}`, off: u.sp < this.cost(u, k), d: TACTICS[k].d })), { k: null, n: '← 返回' }]);
+        const k = await this.menu('使用哪個策略？', [...u.tactics.map((k) => ({ k, n: `${TACTICS[k].n}${EL[k] ? `〔${EL_N[EL[k]]}〕` : TACTICS[k].kind === 'confuse' ? '〔心〕' : ''}　${this.cost(u, k)}`, off: u.sp < this.cost(u, k), d: TACTICS[k].d })), { k: null, n: '← 返回' }]);
         if (!k) { i--; continue; }
         const T = TACTICS[k]; let t = null;
         if (T.tgt === 'one') { t = await this.pick(this.foes, `${T.n}：哪一隊？`); if (!t) { i--; continue; } }
@@ -226,13 +234,17 @@ export class Battle {
     }
     return { list };
   }
-  autoOrder(u) {
+  autoOrder(u, list = []) {
     const live = this.foes.filter((f) => f.sol > 0), weak = live.sort((a, b) => a.sol - b.sol)[0];
     const hurt = this.party.filter((x) => x.sol > 0 && x.sol < x.solMax * 0.35);
     const can = (k) => u.tactics.includes(k) && u.sp >= this.cost(u, k);
     if (hurt.length && can('rally')) return { u, kind: 'tac', k: 'rally' };
     if (hurt.length && can('zhi')) return { u, kind: 'tac', k: 'zhi' };
     if (hurt.length && can('cheer')) return { u, kind: 'tac', k: 'cheer', t: hurt[0] };
+    // a chief gathering his strength: one throws up the Eight Gates, the strongest try to break it off, the rest brace
+    const ch = live.find((f) => f.charging);
+    if (ch) { if (can('zhen') && !list.some((o) => o.k === 'zhen')) return { u, kind: 'tac', k: 'zhen' }; if (can('confuse') && !ch.immune?.includes('mind')) return { u, kind: 'tac', k: 'confuse', t: ch }; if (u.st.atk >= 90 || list.some((o) => o.k === 'zhen')) return { u, kind: 'atk', t: ch }; return { u, kind: 'def' }; }
+    if (undeadHeal(this, u, can)) return { u, kind: 'tac', k: undeadHeal(this, u, can) };
     const k = this.bestTac(u, live, can); if (k) return { u, kind: 'tac', k, t: weak };
     return { u, kind: 'atk', t: weak };
   }
@@ -241,15 +253,17 @@ export class Battle {
     const n = live.length, tint = live.reduce((s, t) => s + t.st.int, 0) / Math.max(1, n), tdef = live.reduce((s, t) => s + t.st.def, 0) / Math.max(1, n);
     const blow = (u.st.atk * 2.4 + (u.lv || 1) * 3) * (100 / (100 + tdef * 0.8)) * (u.troop === 'cav' ? u.arms?.cav || 1 : 1);
     const wits = Math.max(0.55, Math.min(1.5, 1 + (u.st.int - tint) / 120)), hit = Math.max(0.18, Math.min(0.97, 0.6 + (u.st.int - tint) / 110));
-    let best = null, bv = blow * 1.1;
+    let best = null, bv = blow * 1.1 * (live.length ? live.reduce((s, t) => s + elMul(t, 'phys'), 0) / live.length : 1);
     for (const k of u.tactics) { const T = TACTICS[k]; if (T.kind !== 'dmg' || !can(k)) continue;
-      const v = (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * (T.tgt === 'all' ? n : 1) * wits * hit * (1 + (u.arms?.tacDmg || 0)) * (k === 'fire' || k === 'blaze' || k === 'feng' ? 1 + (u.arms?.fire || 0) : 1) * (k === 'lei' ? 1 + (u.arms?.thunder || 0) : 1);
+      const em = EL[k] ? (T.tgt === 'all' ? live.reduce((s, t) => s + elMul(t, EL[k]), 0) / Math.max(1, n) : elMul(live.slice().sort((a, b) => a.sol - b.sol)[0] || {}, EL[k])) : 1;
+      const v = em * (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * (T.tgt === 'all' ? n : 1) * wits * hit * (1 + (u.arms?.tacDmg || 0)) * (k === 'fire' || k === 'blaze' || k === 'feng' ? 1 + (u.arms?.fire || 0) : 1) * (k === 'lei' ? 1 + (u.arms?.thunder || 0) : 1);
       if (v > bv) { bv = v; best = k; } }
     return best;
   }
   // ---------------------------------------------------------------- a round
   async playRound(list) {
     const foeOrders = this.foes.filter((f) => f.sol > 0).map((f) => this.foeOrder(f));
+    for (const o of list) if (o.kind === 'def') { o.u.guarding = true; this.drawBar(o.u); }
     const all = [...list, ...foeOrders].map((o) => ({ ...o, sp: o.u.st.spd + Math.random() * 25 })).sort((a, b) => b.sp - a.sp);
     for (const o of all) {
       if (o.u.sol <= 0) continue;
@@ -259,11 +273,14 @@ export class Battle {
     }
     // treasures that mend: soldiers and stratagem points come back at the end of each round
     for (const u of [...this.party, ...this.foes]) { if (u.sol <= 0 || !u.arms) continue; if (u.arms.regen) { const n = Math.round(u.solMax * u.arms.regen); u.sol = Math.min(u.solMax, u.sol + n); this.float(u, '+' + n, '#8aff8a'); } if (u.arms.spRegen && u.spMax) u.sp = Math.min(u.spMax, u.sp + u.arms.spRegen); }
+    for (const u of this.party) delete u.guarding;
     for (const u of [...this.party, ...this.foes]) for (const k of Object.keys(u.status)) if (--u.status[k] <= 0) delete u.status[k];
     for (const u of [...this.party, ...this.foes]) if (u.sol > 0) this.drawBar(u);
   }
   foeOrder(f) {
     if (f.status.confuse) return { u: f, kind: 'confused' };
+    if (f.ult && f.charging) return { u: f, kind: 'ult' };
+    if (f.ult && this.round >= (f.ult.first || 2) && (this.round - (f.ult.first || 2)) % (f.ult.every || 3) === 0) return { u: f, kind: 'prep' };
     const live = this.party.filter((u) => u.sol > 0); if (!live.length) return { u: f, kind: 'wait' };
     const can = f.tactics.filter((k) => f.sp >= this.cost(f, k) && TACTICS[k].kind !== 'heal');
     // a stratagem when it pays (now and then one of the others: a buff, a confusion)
@@ -279,7 +296,12 @@ export class Battle {
   other(u) { return u.side === 'party' ? this.foes : this.party; }
   async act(o) {
     const u = o.u;
-    if (o.kind === 'confused') { this.float(u, '混亂中', '#c8a0ff'); this.fx.stars(u.home[0] + 0.5, 1.6, u.home[1] + 0.5); await wait(280); return; }
+    if (o.kind === 'def') { u.sp = Math.min(u.spMax, u.sp + 4); this.float(u, '防禦', '#8ac8ff'); await wait(200); return; }
+    if (o.kind === 'scout') return this.scout(u);
+    if (o.kind === 'prep') return this.prep(u);
+    if (o.kind === 'ult') return this.ult(u);
+    if (o.kind === 'confused') { if (u.charging) { u.charging = false; this.float(u, '蓄力中斷', '#8aff8a'); this.formBar(); }
+      this.float(u, '混亂中', '#c8a0ff'); this.fx.stars(u.home[0] + 0.5, 1.6, u.home[1] + 0.5); await wait(280); return; }
     if (o.kind === 'wait') return;
     if (o.kind === 'atk') {
       let t = o.t; if (!t || t.sol <= 0) t = this.other(u).find((x) => x.sol > 0); if (!t) return;
@@ -306,13 +328,17 @@ export class Battle {
           const fm = FORMS[this.form[u.side === 'party' ? 'party' : 'foe']]?.tac || 1, tm = u.side === 'party' && hasT(this.game.H, 'zhiduo') ? 1.1 : 1;
           const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * (1 + ((o.k === 'fire' || o.k === 'blaze' || o.k === 'feng') ? u.arms?.fire || 0 : 0)) * (o.k === 'lei' ? 1 + (u.arms?.thunder || 0) : 1) * (this.round === 1 ? 1 + (u.arms?.firstAtk || 0) : 1) * (this.o.siege && t.side === 'foe' ? 1 - (t.arms?.wall || 0) : 1);
           const sfU = 0.4 + 0.6 * Math.sqrt(Math.max(0, u.sol) / u.solMax), wits = clamp(1 + (u.st.int - t.st.int) / 120, 0.55, 1.5);   // wits against wits, carried out by the troops left
-          const d = Math.round(HIT * (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * wet * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * (0.9 + Math.random() * 0.2));
+          const em = elMul(t, EL[o.k]); if (em === 0) { this.float(t, '無效', '#c8e8ff'); t.seen = true; this.drawBar(t); continue; }
+          if (em > 1) { this.float(t, '弱點！', '#ffd84a', true); t.seen = true; } else if (em < 1) { this.float(t, '抵抗', '#c8e8ff'); t.seen = true; }
+          const d = Math.round(HIT * (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * wet * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * em * (t.guarding ? 0.6 : 1) * (0.9 + Math.random() * 0.2));
           if (u.side === 'party' && this.game.H) bump(this.game.H, 'tacs');
           this.hit(t, d, u, true);
         }
       }
-      if (T.kind === 'heal') { const ts = T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine.sort((a, b) => a.sol / a.solMax - b.sol / b.solMax)[0]]; for (const t of ts) { const n = Math.round(MEND * (u.st.int * 2 + 40) * T.pow * (1 + (u.arms?.healPow || 0))); t.sol = Math.min(t.solMax, t.sol + n); this.float(t, '+' + n, '#8aff8a'); this.drawBar(t); } }
-      if (T.kind === 'confuse') { const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 ? o.t : foes[0]]; for (const t of ts) { if (t.arms?.noConfuse) { this.float(t, '無效', '#c8e8ff'); continue; } if (Math.random() < clamp(0.55 + (u.st.int - t.st.int) / 100, 0.1, 0.9) * (T.tgt === 'all' ? 0.65 : 1)) { t.status.confuse = 2; this.float(t, '混亂！', '#c8a0ff'); this.drawBar(t); } else this.float(t, '識破！', '#c8e8ff'); } }
+      if (T.kind === 'heal') { const ts = T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine.sort((a, b) => a.sol / a.solMax - b.sol / b.solMax)[0]]; const n = Math.round(MEND * (u.st.int * 2 + 40) * T.pow * (1 + (u.arms?.healPow || 0))); for (const t of ts) { t.sol = Math.min(t.solMax, t.sol + n); this.float(t, '+' + n, '#8aff8a'); this.drawBar(t); }
+        // the light of healing burns the dead who walk
+        for (const t of foes.filter((x) => x.undead && x.sol > 0)) { t.seen = true; setTimeout(() => this.float(t, '淨化！', '#ffffa0', true), 200); this.hit(t, n * (T.tgt === 'allies' ? 0.9 : 1.4), u, true); } }
+      if (T.kind === 'confuse') { const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 ? o.t : foes[0]]; for (const t of ts) { const em = elMul(t, 'mind'); if (t.arms?.noConfuse || em === 0) { this.float(t, '無效', '#c8e8ff'); if (em === 0) { t.seen = true; this.drawBar(t); } continue; } if (Math.random() < clamp((0.55 + (u.st.int - t.st.int) / 100) * (em > 1 ? 1.5 : em < 1 ? 0.5 : 1), 0.1, 0.95) * (T.tgt === 'all' ? 0.65 : 1)) { t.status.confuse = 2; this.float(t, em > 1 ? '弱點！混亂！' : '混亂！', '#c8a0ff'); if (t.charging) { t.charging = false; this.float(t, '蓄力中斷', '#8aff8a'); this.formBar(); } this.drawBar(t); } else this.float(t, '識破！', '#c8e8ff'); } }
       if (T.kind === 'buff') for (const t of mine) { t.status.rouse = 3; this.float(t, '攻擊↑', '#ffb04a'); }
       if (T.kind === 'guard') for (const t of mine) { t.status.guard = 3; this.float(t, '防禦↑', '#8ac8ff'); }
       if (T.kind === 'evade') for (const t of mine) { t.status.evade = 3; this.float(t, '迴避↑', '#c8e8ff'); }
@@ -344,7 +370,7 @@ export class Battle {
     if (this.o.siege && u.side === 'party') d *= 1 + (u.arms?.siege || 0); if (this.o.siege && t.side === 'foe') d *= 1 - (t.arms?.wall || 0);
     if (this.round === 1) d *= 1 + (u.arms?.firstAtk || 0); if (u.sol < u.solMax * 0.3) d *= 1 + (u.arms?.lowAtk || 0);
     if (t.gid != null || t.boss) d *= 1 + (u.arms?.bossDmg || 0); if (t.beast) d *= 1 + (u.arms?.beastDmg || 0);
-    d *= (1 - (t.arms?.physRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1);
+    d *= (1 - (t.arms?.physRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * elMul(t, 'phys') * (t.guarding ? 0.5 : 1);
     if (t.arms?.block && Math.random() < t.arms.block) { d *= 0.5; this.float(t, '格擋', '#c8e8ff'); }
     if (Math.random() < 0.06 + u.st.war / 1500 + (u.arms?.crit || 0)) { d *= 1.6; this.float(u, '會心！', '#ffe04a'); }
     return Math.max(1, Math.round(d * HIT));
@@ -354,6 +380,7 @@ export class Battle {
     // a companion who loves the player throws himself in front of the blow that would rout them (once a battle)
     if (t.isPlayer && by && t.sol - d <= 0 && !this.guarded && this.game.H) { const sh = this.party.find((x) => !x.isPlayer && x.sol > d * 0.5 && bondOf(this.game.H, x.g.id) >= 80); if (sh) { this.guarded = true; this.float(t, `${sh.name}挺身擋刀！`, '#ffd86a', true); t = sh; } }
     t.sol = Math.max(0, t.sol - d); this.float(t, d, magic ? '#ffb04a' : '#ffffff', d > t.solMax * 0.25);
+    if (t.charging && by && by.side !== t.side && (t.chargeHit = (t.chargeHit || 0) + d) >= t.solMax * 0.15 && t.sol > 0) { t.charging = false; t.status.confuse = 1; setTimeout(() => this.float(t, '打斷！', '#8aff8a', true), 250); this.formBar(); }
     if (by && !magic && by.arms?.steal && by.sol > 0) { const n = Math.round(d * by.arms.steal); by.sol = Math.min(by.solMax, by.sol + n); this.drawBar(by); }
     if (t.sol <= 0 && t.arms?.revive && !t.revived) { t.revived = true; t.sol = Math.round(t.solMax * t.arms.revive); setTimeout(() => this.float(t, '重整旗鼓！', '#ffd86a', true), 300); }
     else if (t.sol > 0 && t.sol < t.solMax * 0.3 && t.arms?.lowHeal && !t.lowHealed) { t.lowHealed = true; const n = Math.round(t.solMax * t.arms.lowHeal); t.sol = Math.min(t.solMax, t.sol + n); setTimeout(() => this.float(t, '急救 +' + n, '#8aff8a'), 300); }
@@ -393,6 +420,29 @@ export class Battle {
     u.running = false; u.squadK = 1; u.ox = u.oz = 0; u.busy = false;
   }
   lunge(u, t) { return this.charge(u, t, () => {}); }
+  // 看破: what each foe fears, seen by wits (a wiser enemy hides it better); remembered for the battles after
+  async scout(u) {
+    const H = this.game.H, live = this.foes.filter((f) => f.sol > 0 && !f.seen); let seen = 0;
+    this.fx.aura(u.home[0] + 0.5, u.home[1] + 0.5, '#e8f4ff');
+    for (const f of live) { if (Math.random() < clamp(0.75 + (u.st.int - f.st.int) / 80, 0.3, 1)) { f.seen = true; seen++; if (H) (H.lore ||= {})[loreKey(f)] = 1; this.float(f, '看破！', '#ffe8a0'); this.drawBar(f); } else this.float(f, '看不透', '#c8c8c8'); }
+    const lines = this.foes.filter((f) => f.seen && f.sol > 0).map((f) => `${f.name}：${tagsText(f)}`); const uniq = [...new Set(lines)];
+    await this.say(seen ? `${u.name}看穿了敵軍的虛實！` : `${u.name}看不透敵軍的虛實……`, 700);
+    for (const l of uniq.slice(0, 3)) await this.say(l, 1200);
+  }
+  // a chief gathers his strength
+  async prep(f) {
+    f.charging = true; f.chargeHit = 0; this.fx.aura(f.home[0] + 0.5, f.home[1] + 0.5, '#ff4a4a'); this.shake(0.15); this.drawBar(f); this.formBar();
+    this.float(f, '蓄力', '#ff6a5a', true);
+    await this.say(`⚠ ${f.name}${f.ult.prep || '正在凝聚力量'}……下一回合將發動「${f.ult.n}」！`, 1400);
+    if (!this.taught && this.game.H) { this.taught = true; await this.say('（防禦、八陣圖可以減輕；趁現在打掉它一成五的兵力，或使它混亂，就能打斷）', 1700); }
+  }
+  async ult(f) {
+    f.charging = false; this.formBar();
+    const T = { n: f.ult.n, kind: 'dmg' }, ts = this.party.filter((u) => u.sol > 0);
+    await this.cast(f, T, f.ult.fx || 'lei', ts);
+    for (const t of ts) { if (t.status.evade && Math.random() < 0.5) { this.float(t, '閃開了！', '#c8e8ff'); continue; } this.hit(t, t.solMax * (f.ult.pow || 0.4) * (t.guarding ? 0.4 : 1) * (t.status.guard ? 0.5 : 1) * (0.9 + Math.random() * 0.2), f, true); }
+    await wait(500);
+  }
   // the caster raises a hand (a hop and a ring of light), the name of the stratagem sweeps across, then the effect
   async cast(u, T, k, targets) {
     const col = { dmg: '#ffb04a', heal: '#8aff9a', confuse: '#d8a0ff', buff: '#ff8a4a', guard: '#8ac8ff', evade: '#e8f4ff' }[T.kind];
@@ -536,8 +586,11 @@ export class Battle {
   menu(title, opts) { return this.game.ui.choose(opts, { title, host: this.ui, cls: 'b-menu' }); }
   async pick(list, title, ally) {
     const live = list.filter((u) => ally || u.sol > 0); if (live.length === 1 && !ally) return live[0];
-    const k = await this.game.ui.choose([...live.map((u, i) => ({ k: i, n: `${u.name}　兵 ${Math.round(u.sol)}` })), { k: null, n: '← 返回' }], { title, host: this.ui, cls: 'b-menu', hover: (i) => { for (const u of list) u.actor && (u.actor.sprite.material.color.set(live[i] === u ? '#ffe8a0' : '#ffffff')); } });
+    const k = await this.game.ui.choose([...live.map((u, i) => ({ k: i, n: `${u.name}　兵 ${Math.round(u.sol)}`, d: u.side === 'foe' ? tagsText(u) : '' })), { k: null, n: '← 返回' }], { title, host: this.ui, cls: 'b-menu', hover: (i) => { for (const u of list) u.actor && (u.actor.sprite.material.color.set(live[i] === u ? '#ffe8a0' : '#ffffff')); } });
     for (const u of list) u.actor?.sprite.material.color.set('#ffffff');
     return k == null ? null : live[k];
   }
 }
+
+// the healing spell that would burn the dead on the other side, if any walk there and nobody on ours is hurt
+function undeadHeal(b, u, can) { if (!b.foes.some((f) => f.undead && f.sol > 0)) return null; return ['zhi', 'rally'].find((k) => can(k)) || null; }
