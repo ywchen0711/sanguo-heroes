@@ -194,3 +194,5 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 .lbl.u-bar em.chg { color: #ff6a5a; font-weight: bold; animation: chgBlink 0.6s infinite alternate; } .lbl.u-bar em.gd { color: #8ac8ff; }
 @keyframes chgBlink { from { opacity: 1; } to { opacity: 0.35; } }
 .b-form span.warn { color: #ff8a6a; border-color: #ff6a5a; font-weight: bold; }
+.lbl.u-bar em.it { color: #ffd8a0; font-size: 10px; background: rgba(0, 0, 0, 0.5); border-radius: 3px; padding: 0 4px; margin-top: 1px; display: inline-block; }
+.b-form span.mo b { font-size: 14px; }

@@ -9,6 +9,16 @@
 // Weaknesses (weak.js): every foe may fear or shrug off fire, water, thunder, rocks, steel or confusion; 看破 shows them.
 // Chiefs with a great move (f.ult) gather their strength for a round first (蓄力): 防禦 and 八陣圖 soften the blow, and
 // enough damage in between (15% of its soldiers) or a confusion breaks it off. Guests (H.guests) fight on their own.
+//
+// 士氣 (morale, 0–100 a side): routing a general, hitting a weakness, breaking a charge, a cheer lift it; losses and a
+// chief's great move sink it. It sways every blow (±20%); an enemy army whose morale falls apart may scatter — the hurt
+// stragglers first, then all at once (never while a chief of the story still stands).
+// 意圖: what each enemy means to do this round is planned before you give orders and shown over its head — if it has
+// been seen through (看破) or one of yours is far wiser — else "？". But plans change: one in five (one in ten when read)
+// does something else after all (變卦). 掩護: one of yours stands before another and takes the blows meant for them
+// (×0.7); enemy guards do the same for their chief. 戰場變數: from the second round, now and then something happens —
+// the wind turns (fire stronger for one side), fog (blows and stratagems miss more), reinforcements, a quarrel in the
+// enemy's ranks, stray arrows, a supply cart on fire.
 import { View, THREE, personSheet, beastSheet, canvasTex } from './render.js';
 import { LOOKS, shade, soldierSheet } from './sprites.js';
 import { TACTICS, tacticsOf, bstats, ITEMS, usable, armsOf, hasHorse, TROOPS, troopMul, FORMS } from './hero.js';
@@ -71,7 +81,7 @@ export class Battle {
   setFrame(a, f) { if (a.beast) { a.bframe = f === 2 ? 1 : 0; this.view.placeActor(a); return; } a.frame = f; a.dir = a.face; this.view.placeActor(a); }
   drawBar(u) {
     const p = Math.max(0, u.sol / u.solMax);
-    u.bar.el.innerHTML = `<b>${u.troop ? `<small class="tr ${u.troop}">${TROOPS[u.troop].n[0]}</small>` : ''}${u.name}</b><i style="--p:${p * 100}%;--c:${p > 0.5 ? '#6ae06a' : p > 0.25 ? '#e8c84a' : '#e85a4a'}"></i><span>${Math.max(0, Math.round(u.sol))}</span>${u.status.confuse ? '<em>混亂</em>' : ''}${u.charging ? '<em class="chg">蓄力</em>' : ''}${u.guarding ? '<em class="gd">防禦</em>' : ''}${u.side === 'foe' ? tagsHTML(u) : ''}`;
+    u.bar.el.innerHTML = `<b>${u.troop ? `<small class="tr ${u.troop}">${TROOPS[u.troop].n[0]}</small>` : ''}${u.name}</b><i style="--p:${p * 100}%;--c:${p > 0.5 ? '#6ae06a' : p > 0.25 ? '#e8c84a' : '#e85a4a'}"></i><span>${Math.max(0, Math.round(u.sol))}</span>${u.status.confuse ? '<em>混亂</em>' : ''}${u.charging ? '<em class="chg">蓄力</em>' : ''}${u.guarding ? '<em class="gd">防禦</em>' : ''}${u.coveredBy && u.coveredBy.sol > 0 ? `<em class="gd">受${u.coveredBy.name}掩護</em>` : ''}${u.side === 'foe' && u.sol > 0 && !u.charging && !u.status.confuse && u.intent ? `<em class="it">${this.intentText(u)}</em>` : ''}${u.side === 'foe' ? tagsHTML(u) : ''}`;
     const n = u.sol > 0 ? Math.ceil((u.squad?.length || 0) * p) : 0;
     u.squad?.forEach((s, k) => { if (k < n) { s.down = 0; s.sprite.visible = s.shadow.visible = true; s.sprite.rotation.z = 0; s.sprite.material.opacity = 1; } else if (s.sprite.visible && !s.down) s.down = 0.001; });
     if (u.sol <= 0 && u.actor && !u.routT) u.routT = 0.001;
@@ -121,6 +131,9 @@ export class Battle {
     if (H && !o.drill) { const nm = this.game.nemesis?.mods(this.foes); if (nm) { this.mods.foeAtk *= nm.foeAtk; this.mods.lines.push(...nm.lines); } }
     if (H && !o.drill) { this.mods.foeAtk *= diff(this.game).foeK; const tf = this.game.hard?.battle(); if (tf) { this.mods.atk *= tf.atk; this.partyDef *= tf.dmg; this.mods.lines.push(tf.line); } }
     this.guarded = false; this.foeDef = 1 - Math.min(0.3, this.foes.reduce((t, u) => t + (u.arms.auraDef || 0), 0));
+    // 士氣: a chief steadies his men; a night attack shakes the side surprised
+    this.morale = { party: 55, foe: this.foes.some((f) => f.boss) ? 60 : 50 }; this.events = 0; this.wind = null; this.fog = 0; this.lowSaid = false;
+    if (o.night && o.terrain !== 'cave') { this.morale[o.ambush ? 'party' : 'foe'] += 10; this.morale[o.ambush ? 'foe' : 'party'] -= 10; }
     // a column for each side, spread from front to back, every other general a step out
     const zs = (n) => Array.from({ length: n }, (_, i) => OZ + (n === 1 ? 6.2 : 3.7 + i * Math.min(1.9, 5.2 / (n - 1))));
     const pz = zs(this.party.length), fz = zs(this.foes.length);
@@ -140,6 +153,9 @@ export class Battle {
     let result;
     for (;;) {
       this.round++;
+      if (this.round > 1) { try { await this.battleEvent(); } catch (e) { console.error(e); } }
+      if (this.foes.every((f) => f.sol <= 0)) { result = 'win'; break; }
+      this.planFoes();
       const orders = await this.orders(); if (orders === 'flee') { if (await this.tryFlee()) { result = 'flee'; break; } else continue; }
       if (orders.duel) { const r = await this.duelFrom(orders.duel); if (r) { result = r; } }
       if (!result && this.fieldFx?.round) await this.fieldFx.round(this.round);
@@ -147,6 +163,7 @@ export class Battle {
       if (this.foes.every((f) => f.sol <= 0)) { result = 'win'; break; }
       if (this.party.every((u) => u.sol <= 0)) { result = 'lose'; break; }
       if (result) break;
+      if (await this.breakCheck()) { result = 'win'; break; }
     }
     if (result === 'win') await this.cheer();
     if (result === 'flee') await this.retreat();
@@ -159,7 +176,8 @@ export class Battle {
   formBar() {
     let el = this.ui.querySelector('.b-form'); if (!el) { el = document.createElement('div'); el.className = 'b-form'; this.ui.appendChild(el); }
     const F = this.form, beat = F.foe && FORMS[F.party].beats === F.foe ? ' <em>克制！</em>' : F.foe && FORMS[F.foe].beats === F.party ? ' <em class="bad">被克制</em>' : '';
-    el.innerHTML = `${F.foe ? `<span>敵　${FORMS[F.foe].n}陣</span>` : ''}<span>我軍　${FORMS[F.party].n}陣${beat}</span>${this.fieldFx?.tag ? `<span>${this.fieldFx.tag}</span>` : ''}${this.foes.filter((f) => f.charging && f.sol > 0).map((f) => `<span class="warn">⚠ ${f.name}蓄力中：「${f.ult.n}」</span>`).join('')}`;
+    const M = this.morale, mc = (v) => (v >= 65 ? '#8aff8a' : v <= 30 ? '#ff8a6a' : '#ffd86a');
+    el.innerHTML = `${M ? `<span class="mo">士氣　我 <b style="color:${mc(M.party)}">${Math.round(M.party)}</b>　敵 <b style="color:${mc(M.foe)}">${Math.round(M.foe)}</b></span>` : ''}${F.foe ? `<span>敵　${FORMS[F.foe].n}陣</span>` : ''}<span>我軍　${FORMS[F.party].n}陣${beat}</span>${this.fieldFx?.tag ? `<span>${this.fieldFx.tag}</span>` : ''}${this.wind && this.round <= this.wind.until ? `<span>${this.wind.side === 'party' ? '順風：我軍火攻大增' : '逆風：敵軍火攻大增'}</span>` : ''}${(this.fog && this.fog >= this.round) ? '<span>大霧：容易落空</span>' : ''}${this.foes.filter((f) => f.charging && f.sol > 0).map((f) => `<span class="warn">⚠ ${f.name}蓄力中：「${f.ult.n}」</span>`).join('')}`;
   }
   async chooseForm() {
     const F = this.form, k = await this.menu('陣型', Object.entries(FORMS).map(([k, f]) => ({ k, n: `${f.n}陣${k === F.party ? '（目前）' : ''}${F.foe && f.beats === F.foe ? '　克制敵陣' : ''}`, d: f.d })).concat([{ k: null, n: '← 返回' }]));
@@ -173,7 +191,7 @@ export class Battle {
   }
   async cheer() { const live = this.party.filter((u) => u.sol > 0); for (const u of live) u.cheer = true; await this.tween(1.0, (p) => { for (const u of live) u.oy = Math.abs(Math.sin(p * Math.PI * 3)) * 0.45; }); for (const u of live) { u.cheer = false; u.oy = 0; } }
   async retreat() { const live = this.party.filter((u) => u.sol > 0); for (const u of live) { u.running = true; u.actor.face = 2; for (const s of u.squad) s.face = 2; } await this.tween(0.7, (p) => { for (const u of live) { u.ox = easeIn(p) * 8; if (Math.random() < 0.3) this.fx.dust(u.home[0] + u.ox, u.home[1], 1, 1); } }); }
-  close() { this.fx?.clear(); this.tw = []; this.loop = false; this.root.classList.remove('on'); this.ui.innerHTML = ''; this.view?.clearMap(); }
+  close() { this.morale = null; this.wind = null; this.fog = 0; this.fx?.clear(); this.tw = []; this.loop = false; this.root.classList.remove('on'); this.ui.innerHTML = ''; this.view?.clearMap(); }
   anim(dt) {
     this.at = (this.at || 0) + dt; const f = Math.floor(this.at * 3) % 2 ? 0 : 2;
     for (const w of [...this.tw]) { w.t += dt; const p = Math.min(1, w.t / w.dur); w.fn(p); if (p >= 1) { this.tw = this.tw.filter((x) => x !== w); w.res(); } }
@@ -205,7 +223,7 @@ export class Battle {
       if (u.status.confuse) { list.push({ u, kind: 'confused' }); continue; }
       if (this.auto || u.guest) { list.push(this.autoOrder(u, list)); continue; }
       const c = await this.menu(`${u.name}　兵 ${Math.round(u.sol)}／策 ${Math.round(u.sp)}`, [
-        { k: 'atk', n: '攻擊' }, { k: 'tac', n: '策略', off: !u.tactics.length }, { k: 'def', n: '防禦', d: '這一回合受到的傷害減半，敵將的大招減少六成；回復一些策略點' }, { k: 'scout', n: '看破', off: this.foes.every((f) => f.seen || f.sol <= 0), d: '看穿敵軍的弱點與抗性（看智力）。看過一次的敵人以後都會記得' }, { k: 'item', n: '道具', off: !this.game.H.items || !Object.keys(this.game.H.items).some((k) => this.game.H.items[k] > 0 && usable(k)) },
+        { k: 'atk', n: '攻擊' }, { k: 'tac', n: '策略', off: !u.tactics.length }, { k: 'def', n: '防禦', d: '這一回合受到的傷害減半，敵將的大招減少六成；回復一些策略點' }, ...(this.party.filter((x) => x.sol > 0).length > 1 ? [{ k: 'cover', n: '掩護', d: '擋在一位同伴前面：這一回合敵人打他的攻擊和單體策略都改打你（傷害減三成）。看敵人頭上的意圖決定掩護誰' }] : []), { k: 'scout', n: '看破', off: this.foes.every((f) => f.seen || f.sol <= 0), d: '看穿敵軍的弱點與抗性（看智力）。看過一次的敵人以後都會記得' }, { k: 'item', n: '道具', off: !this.game.H.items || !Object.keys(this.game.H.items).some((k) => this.game.H.items[k] > 0 && usable(k)) },
         ...(u.isPlayer && this.foes.some((f) => f.sol > 0 && f.gid != null) ? [{ k: 'duel', n: '一騎討' }] : []), ...(list.length === 0 && !this.o.drill ? [{ k: 'form', n: `陣型（${FORMS[this.form.party].n}）` }] : []), { k: 'auto', n: '全軍突擊' }, ...(this.o.noFlee ? [] : [{ k: 'flee', n: '撤退' }]), ...(i > 0 ? [{ k: 'back', n: '← 返回' }] : [])]);
       if (c == null) { i--; continue; }
       if (c === 'back') { list.pop(); i -= 2; while (i >= 0 && this.party[i + 1] && this.party[i + 1].sol <= 0) i--; continue; }
@@ -214,6 +232,7 @@ export class Battle {
       if (c === 'form') { await this.chooseForm(); i--; continue; }
       if (c === 'atk') { const t = await this.pick(this.foes, '攻擊哪一隊？'); if (!t) { i--; continue; } list.push({ u, kind: 'atk', t }); }
       if (c === 'def') list.push({ u, kind: 'def' });
+      if (c === 'cover') { const t = await this.pick(this.party.filter((x) => x !== u && x.sol > 0), '掩護誰？', true); if (!t) { i--; continue; } list.push({ u, kind: 'cover', t }); }
       if (c === 'scout') list.push({ u, kind: 'scout' });
       if (c === 'duel') { const t = await this.pick(this.foes.filter((f) => f.gid != null), '向誰挑戰一騎討？'); if (!t) { i--; continue; } return { duel: { u, t }, list }; }
       if (c === 'tac') {
@@ -262,8 +281,9 @@ export class Battle {
   }
   // ---------------------------------------------------------------- a round
   async playRound(list) {
-    const foeOrders = this.foes.filter((f) => f.sol > 0).map((f) => this.foeOrder(f));
+    const foeOrders = this.foes.filter((f) => f.sol > 0).map((f) => this.carryOut(f));
     for (const o of list) if (o.kind === 'def') { o.u.guarding = true; this.drawBar(o.u); }
+    for (const o of [...list, ...foeOrders]) if (o.kind === 'cover' && o.t && o.t.sol > 0) { o.t.coveredBy = o.u; o.u.covering = true; this.drawBar(o.t); }
     const all = [...list, ...foeOrders].map((o) => ({ ...o, sp: o.u.st.spd + Math.random() * 25 })).sort((a, b) => b.sp - a.sp);
     for (const o of all) {
       if (o.u.sol <= 0) continue;
@@ -274,6 +294,8 @@ export class Battle {
     // treasures that mend: soldiers and stratagem points come back at the end of each round
     for (const u of [...this.party, ...this.foes]) { if (u.sol <= 0 || !u.arms) continue; if (u.arms.regen) { const n = Math.round(u.solMax * u.arms.regen); u.sol = Math.min(u.solMax, u.sol + n); this.float(u, '+' + n, '#8aff8a'); } if (u.arms.spRegen && u.spMax) u.sp = Math.min(u.spMax, u.sp + u.arms.spRegen); }
     for (const u of this.party) delete u.guarding;
+    for (const u of [...this.party, ...this.foes]) { delete u.coveredBy; delete u.covering; delete u.intent; }
+    await this.lowMorale();
     for (const u of [...this.party, ...this.foes]) for (const k of Object.keys(u.status)) if (--u.status[k] <= 0) delete u.status[k];
     for (const u of [...this.party, ...this.foes]) if (u.sol > 0) this.drawBar(u);
   }
@@ -288,15 +310,84 @@ export class Battle {
     if (best && Math.random() < 0.8) return { u: f, kind: 'tac', k: best, t: live[Math.floor(Math.random() * live.length)] };
     const other = can.filter((k) => TACTICS[k].kind !== 'dmg');
     if (other.length && Math.random() < 0.15) { const k = other[Math.floor(Math.random() * other.length)]; return { u: f, kind: 'tac', k, t: live[Math.floor(Math.random() * live.length)] }; }
-    const t = Math.random() < 0.5 ? live.sort((a, b) => a.sol - b.sol)[0] : live[Math.floor(Math.random() * live.length)];
+    const chief = !f.boss && this.foes.find((x) => x.boss && x !== f && x.sol > 0);
+    if (chief && f.sol > f.solMax * 0.5 && Math.random() < 0.25 && !this.foes.some((x) => x.intent?.kind === 'cover')) return { u: f, kind: 'cover', t: chief };
+    const r = Math.random(), pl = live.find((u) => u.isPlayer);
+    const t = r < 0.45 ? live.slice().sort((a, b) => a.sol - b.sol)[0] : r < 0.62 && pl ? pl : live[Math.floor(Math.random() * live.length)];
     return { u: f, kind: 'atk', t };
+  }
+  // ---------------------------------------------------------------- the enemy's plans
+  planFoes() { for (const f of this.foes) { f.intent = f.sol > 0 ? this.foeOrder(f) : null; if (f.sol > 0) this.drawBar(f); } }
+  // one of ours far wiser reads an enemy's mind; 看破 does too
+  canRead(f) { return f.seen || Math.max(0, ...this.party.filter((u) => u.sol > 0).map((u) => u.st.int)) >= f.st.int + 20; }
+  intentText(f) {
+    if (!this.canRead(f)) return '意圖：？';
+    const o = f.intent, T = o.k && TACTICS[o.k];
+    if (o.kind === 'atk') return `→ 攻擊${o.t?.name || ''}`;
+    if (o.kind === 'cover') return `掩護${o.t?.name || ''}`;
+    if (o.kind === 'prep' || o.kind === 'ult') return '大招！';
+    if (o.kind === 'tac') return T.kind === 'dmg' ? (T.tgt === 'all' ? `策：${T.n}（全軍）` : `策：${T.n} → ${o.t?.name || ''}`) : `策：${T.n}`;
+    return '';
+  }
+  carryOut(f) {
+    let o = f.intent;
+    if (!o || f.status.confuse || (o.t && o.t.sol <= 0) || (o.kind === 'tac' && f.sp < this.cost(f, o.k))) return this.foeOrder(f);
+    if (o.kind !== 'ult' && o.kind !== 'prep' && Math.random() < (this.canRead(f) ? 0.1 : 0.2)) { const n = this.foeOrder(f); if (n.kind !== o.kind || n.t !== o.t || n.k !== o.k) return { ...n, changed: true }; }
+    return o;
+  }
+  // the blow meant for one goes to the one standing before them
+  covered(u, t) {
+    const c = t?.coveredBy; if (!c || c.sol <= 0 || c === t || c.side !== t.side || u.side === t.side || c.status.confuse) return t;
+    this.float(c, `掩護${t.name}！`, '#8ac8ff'); return c;
+  }
+  // ---------------------------------------------------------------- 士氣
+  cheerUp(side, n) { if (!this.morale) return; this.morale[side] = clamp(this.morale[side] + n, 0, 100); this.formBar(); }
+  moraleMul(u) { return this.morale ? clamp(1 + (this.morale[u.side === 'party' ? 'party' : 'foe'] - 50) / 250, 0.8, 1.2) : 1; }
+  async lowMorale() {
+    if (!this.morale || this.o.drill || this.o.duelOnly) return;
+    // hurt stragglers slip away from a shaken army
+    if (this.morale.foe < 30) for (const f of this.foes) if (f.sol > 0 && !f.boss && f.gid == null && f.sol < f.solMax * 0.3 && Math.random() < (30 - this.morale.foe) / 60) { f.sol = 0; this.float(f, '逃走了', '#c8c8c8', true); f.flee = 0; this.tween(0.8, (p) => { f.flee = easeIn(p) * 3; }); this.drawBar(f); await this.say(`${f.name}的部隊丟下兵器逃走了！`, 800); }
+    if (this.morale.party <= 20 && !this.lowSaid) { this.lowSaid = true; await this.say('我軍士氣低落……（攻擊下降。擊潰敵將、打中弱點、激勵可以提振士氣）', 1300); }
+  }
+  async breakCheck() {
+    const live = this.foes.filter((f) => f.sol > 0);
+    if (!this.morale || this.o.drill || this.o.duelOnly || !live.length || live.some((f) => f.boss) || this.morale.foe > 12) return false;
+    if (Math.random() > 0.5 + (12 - this.morale.foe) / 25) return false;
+    await this.say('敵軍士氣崩潰，全軍四散奔逃！', 1300);
+    for (const f of live) { f.sol = 0; f.flee = 0; this.tween(0.8, (p) => { f.flee = easeIn(p) * 3; }); this.drawBar(f); }
+    return true;
+  }
+  // ---------------------------------------------------------------- 戰場變數: now and then, between rounds
+  async battleEvent() {
+    if (this.o.drill || this.o.duelOnly || this.events >= 2 || Math.random() > 0.22) return;
+    const live = (L) => L.filter((u) => u.sol > 0), F = live(this.foes), P = live(this.party), side = Math.random() < 0.5 ? 'party' : 'foe';
+    const fireUser = [...F, ...P].some((u) => u.tactics?.some((k) => k === 'fire' || k === 'blaze' || k === 'feng'));
+    const evs = [
+      fireUser && this.o.wx !== 'rain' && this.o.terrain !== 'cave' && 'wind',
+      this.o.terrain !== 'cave' && 'fog', 'relief', F.length > 1 && F.some((f) => !f.boss) && 'strife', 'arrows', 'cart',
+    ].filter(Boolean);
+    const ev = evs[Math.floor(Math.random() * evs.length)]; this.events++;
+    if (ev === 'wind') { this.wind = { side, until: this.round + 1 }; await this.say(side === 'party' ? '風向變了！我軍順風：兩回合內我軍的火攻威力大增，敵軍的減弱' : '風向變了！敵軍順風：兩回合內敵軍的火攻威力大增，我軍的減弱', 1500); }
+    if (ev === 'fog') { this.fog = this.round + 1; await this.say('起大霧了！兩回合內攻擊容易落空，策略也容易被識破', 1400); }
+    if (ev === 'relief') {
+      const L = side === 'party' ? P : F;
+      await this.say(side === 'party' ? '附近的義勇兵趕來助陣！（我軍兵力回復、士氣上升）' : '敵軍的援兵趕到了！（敵軍兵力回復、士氣上升）', 1400);
+      for (const u of L) { const n = Math.round(u.solMax * (side === 'party' ? 0.15 : 0.2)); u.sol = Math.min(u.solMax, u.sol + n); this.float(u, '+' + n, '#8aff8a'); this.drawBar(u); }
+      this.cheerUp(side, 10);
+    }
+    if (ev === 'strife') { const f = F.filter((x) => !x.boss)[Math.floor(Math.random() * F.filter((x) => !x.boss).length)]; f.status.confuse = 1; this.float(f, '內訌！', '#c8a0ff', true); this.drawBar(f); this.cheerUp('foe', -6); await this.say(`敵軍陣中起了內訌！${f.name}的部隊亂成一團`, 1300); }
+    if (ev === 'arrows') { const all = [...P, ...F], t = all[Math.floor(Math.random() * all.length)]; await this.say('一陣流矢從山邊射了過來！', 900); this.hit(t, Math.max(1, Math.round(t.solMax * 0.08)), null, false); }
+    if (ev === 'cart') { await this.say(side === 'party' ? '敵軍後方的糧車起火了！敵軍軍心動搖' : '我軍後方的糧車起火了！軍心有些動搖……', 1300); this.cheerUp(side === 'party' ? 'foe' : 'party', -15); }
+    this.formBar();
   }
   cost(u, k) { return Math.max(1, Math.round(TACTICS[k].sp * (u.isPlayer && hasT(this.game.H, 'xianyuan') ? 0.8 : 1) * (1 - (u.arms?.tacCost || 0)))); }
   side(u) { return u.side === 'party' ? this.party : this.foes; }
   other(u) { return u.side === 'party' ? this.foes : this.party; }
   async act(o) {
     const u = o.u;
+    if (o.changed) { this.float(u, '變卦！', '#ffb04a'); await wait(200); }
     if (o.kind === 'def') { u.sp = Math.min(u.spMax, u.sp + 4); this.float(u, '防禦', '#8ac8ff'); await wait(200); return; }
+    if (o.kind === 'cover') { this.float(u, `掩護${o.t?.name || ''}`, '#8ac8ff'); await wait(200); return; }
     if (o.kind === 'scout') return this.scout(u);
     if (o.kind === 'prep') return this.prep(u);
     if (o.kind === 'ult') return this.ult(u);
@@ -305,8 +396,9 @@ export class Battle {
     if (o.kind === 'wait') return;
     if (o.kind === 'atk') {
       let t = o.t; if (!t || t.sol <= 0) t = this.other(u).find((x) => x.sol > 0); if (!t) return;
+      t = this.covered(u, t);
       const dodge = !t.status.evade && t.arms?.dodge && Math.random() < t.arms.dodge;
-      const miss = (t.status.evade && Math.random() < 0.5) || dodge, d = miss ? 0 : this.physDmg(u, t), combo = !miss && Math.random() < (u.st.war >= 85 ? 0.12 : 0) + (u.arms?.combo || 0);
+      const miss = (t.status.evade && Math.random() < 0.5) || dodge || ((this.fog && this.fog >= this.round) && Math.random() < 0.15), d = miss ? 0 : this.physDmg(u, t), combo = !miss && Math.random() < (u.st.war >= 85 ? 0.12 : 0) + (u.arms?.combo || 0);
       // a great halberd sweeps through the line beside the target
       const side = u.arms?.sweep && !miss ? this.other(u).filter((x) => x !== t && x.sol > 0).sort((a, b) => Math.abs(a.home[1] - t.home[1]) - Math.abs(b.home[1] - t.home[1]))[0] : null;
       const after = () => { if (t.sol <= 0) return; if (u.arms?.stun && Math.random() < u.arms.stun && !t.arms?.noConfuse && !t.beast) { t.status.confuse = 1; this.float(t, '混亂！', '#c8a0ff'); this.drawBar(t); } if (u.arms?.breakdef) { t.status.broken = 2; t.brokenV = Math.max(t.brokenV || 0, u.arms.breakdef); this.float(t, '防禦↓', '#ff9a6a'); } };
@@ -320,26 +412,28 @@ export class Battle {
       const foes = this.other(u).filter((x) => x.sol > 0), mine = this.side(u).filter((x) => x.sol > 0);
       await this.cast(u, T, o.k, T.kind === 'dmg' || T.kind === 'confuse' ? (T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 && o.t.side !== u.side ? o.t : foes[0]].filter(Boolean)) : T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine[0]].filter(Boolean));
       if (T.kind === 'dmg') {
-        const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 && o.t.side !== u.side ? o.t : foes[0]].filter(Boolean);
+        const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 && o.t.side !== u.side ? o.t : foes[0]].filter(Boolean).map((t) => this.covered(u, t));
         for (const t of ts) {
-          const hitP = clamp(0.6 + (u.st.int - t.st.int) / 110 + (u.arms?.tacHit || 0), 0.18, 0.97);
+          const hitP = clamp(0.6 + (u.st.int - t.st.int) / 110 + (u.arms?.tacHit || 0) - ((this.fog && this.fog >= this.round) ? 0.1 : 0), 0.18, 0.97);
           if (Math.random() > hitP) { this.float(t, '識破！', '#c8e8ff'); continue; }
           const terr = this.o.terrain, bonus = (o.k === 'rock' && terr === 'hill') || (o.k === 'flood' && (terr === 'marsh' || terr === 'coast')) || ((o.k === 'fire' || o.k === 'blaze') && terr === 'forest') ? 1.35 : o.k === 'fire' && terr === 'snow' ? 0.7 : 1, wet = this.o.wx === 'rain' ? ((o.k === 'fire' || o.k === 'blaze') ? 0.4 : o.k === 'flood' ? 1.3 : 1) : this.o.wx === 'snow' && o.k === 'fire' ? 0.7 : 1;
           const fm = FORMS[this.form[u.side === 'party' ? 'party' : 'foe']]?.tac || 1, tm = u.side === 'party' && hasT(this.game.H, 'zhiduo') ? 1.1 : 1;
           const res = (1 - (t.arms?.tacRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * (1 + ((o.k === 'fire' || o.k === 'blaze' || o.k === 'feng') ? u.arms?.fire || 0 : 0)) * (o.k === 'lei' ? 1 + (u.arms?.thunder || 0) : 1) * (this.round === 1 ? 1 + (u.arms?.firstAtk || 0) : 1) * (this.o.siege && t.side === 'foe' ? 1 - (t.arms?.wall || 0) : 1);
           const sfU = 0.4 + 0.6 * Math.sqrt(Math.max(0, u.sol) / u.solMax), wits = clamp(1 + (u.st.int - t.st.int) / 120, 0.55, 1.5);   // wits against wits, carried out by the troops left
+          const windK = this.wind && this.round <= this.wind.until && (o.k === 'fire' || o.k === 'blaze' || o.k === 'feng') ? (this.wind.side === (u.side === 'party' ? 'party' : 'foe') ? 1.4 : 0.7) : 1;
           const em = elMul(t, EL[o.k]); if (em === 0) { this.float(t, '無效', '#c8e8ff'); t.seen = true; this.drawBar(t); continue; }
-          if (em > 1) { this.float(t, '弱點！', '#ffd84a', true); t.seen = true; } else if (em < 1) { this.float(t, '抵抗', '#c8e8ff'); t.seen = true; }
-          const d = Math.round(HIT * (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * wet * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * em * (t.guarding ? 0.6 : 1) * (0.9 + Math.random() * 0.2));
+          if (em > 1) { this.float(t, '弱點！', '#ffd84a', true); t.seen = true; this.cheerUp(u.side === 'party' ? 'party' : 'foe', 3); } else if (em < 1) { this.float(t, '抵抗', '#c8e8ff'); t.seen = true; }
+          const d = Math.round(HIT * (u.st.int * 1.05 + (u.lv || 1) * 3) * T.pow * sfU * wits * bonus * wet * fm * tm * (1 + (u.arms?.tacDmg || 0)) * res * em * (t.guarding ? 0.6 : 1) * (t.covering ? 0.7 : 1) * this.moraleMul(u) * windK * (0.9 + Math.random() * 0.2));
           if (u.side === 'party' && this.game.H) bump(this.game.H, 'tacs');
           this.hit(t, d, u, true);
         }
       }
       if (T.kind === 'heal') { const ts = T.tgt === 'allies' ? mine : [o.t && o.t.sol > 0 ? o.t : mine.sort((a, b) => a.sol / a.solMax - b.sol / b.solMax)[0]]; const n = Math.round(MEND * (u.st.int * 2 + 40) * T.pow * (1 + (u.arms?.healPow || 0))); for (const t of ts) { t.sol = Math.min(t.solMax, t.sol + n); this.float(t, '+' + n, '#8aff8a'); this.drawBar(t); }
         // the light of healing burns the dead who walk
-        for (const t of foes.filter((x) => x.undead && x.sol > 0)) { t.seen = true; setTimeout(() => this.float(t, '淨化！', '#ffffa0', true), 200); this.hit(t, n * (T.tgt === 'allies' ? 0.9 : 1.4), u, true); } }
+        for (const t of foes.filter((x) => x.undead && x.sol > 0)) { t.seen = true; setTimeout(() => this.float(t, '淨化！', '#ffffa0', true), 200); this.hit(t, n * (T.tgt === 'allies' ? 0.9 : 1.4), u, true); }
+        this.cheerUp(u.side === 'party' ? 'party' : 'foe', o.k === 'cheer' ? 6 : 4); }
       if (T.kind === 'confuse') { const ts = T.tgt === 'all' ? foes : [o.t && o.t.sol > 0 ? o.t : foes[0]]; for (const t of ts) { const em = elMul(t, 'mind'); if (t.arms?.noConfuse || em === 0) { this.float(t, '無效', '#c8e8ff'); if (em === 0) { t.seen = true; this.drawBar(t); } continue; } if (Math.random() < clamp((0.55 + (u.st.int - t.st.int) / 100) * (em > 1 ? 1.5 : em < 1 ? 0.5 : 1), 0.1, 0.95) * (T.tgt === 'all' ? 0.65 : 1)) { t.status.confuse = 2; this.float(t, em > 1 ? '弱點！混亂！' : '混亂！', '#c8a0ff'); if (t.charging) { t.charging = false; this.float(t, '蓄力中斷', '#8aff8a'); this.formBar(); } this.drawBar(t); } else this.float(t, '識破！', '#c8e8ff'); } }
-      if (T.kind === 'buff') for (const t of mine) { t.status.rouse = 3; this.float(t, '攻擊↑', '#ffb04a'); }
+      if (T.kind === 'buff') { for (const t of mine) { t.status.rouse = 3; this.float(t, '攻擊↑', '#ffb04a'); } this.cheerUp(u.side === 'party' ? 'party' : 'foe', 8); }
       if (T.kind === 'guard') for (const t of mine) { t.status.guard = 3; this.float(t, '防禦↑', '#8ac8ff'); }
       if (T.kind === 'evade') for (const t of mine) { t.status.evade = 3; this.float(t, '迴避↑', '#c8e8ff'); }
       await wait(450); return;
@@ -364,6 +458,7 @@ export class Battle {
     d *= troopMul(u.troop, t.troop, this.o.terrain) * (fu?.atk || 1) * (fu && kt && fu.beats === kt ? 1.15 : 1);
     if (u.troop === 'bow' && fu?.bow) d *= fu.bow; if (u.troop === 'cav') d *= u.arms?.cav || 1;
     if (this.mods) d *= u.side === 'party' ? this.mods.atk : this.mods.foeAtk;
+    d *= this.moraleMul(u) * (t.covering ? 0.7 : 1);
     if (this.fieldFx) d *= this.fieldFx.dmg(u, t, this.round);
     if (u.troop === 'bow') d *= 1 + (u.arms?.bowPow || 0); if (u.troop === 'navy') d *= 1 + (u.arms?.navyPow || 0);
     if (u.troop === 'inf') d *= 1 + (u.arms?.infPow || 0); if (u.troop === 'cav' && u.arms?.horse) d *= 1 + u.arms.horse / 2;
@@ -372,7 +467,7 @@ export class Battle {
     if (t.gid != null || t.boss) d *= 1 + (u.arms?.bossDmg || 0); if (t.beast) d *= 1 + (u.arms?.beastDmg || 0);
     d *= (1 - (t.arms?.physRes || 0)) * (t.side === 'party' ? this.partyDef || 1 : this.foeDef || 1) * elMul(t, 'phys') * (t.guarding ? 0.5 : 1);
     if (t.arms?.block && Math.random() < t.arms.block) { d *= 0.5; this.float(t, '格擋', '#c8e8ff'); }
-    if (Math.random() < 0.06 + u.st.war / 1500 + (u.arms?.crit || 0)) { d *= 1.6; this.float(u, '會心！', '#ffe04a'); }
+    if (Math.random() < 0.06 + u.st.war / 1500 + (u.arms?.crit || 0)) { d *= 1.6; this.float(u, '會心！', '#ffe04a'); this.cheerUp(u.side === 'party' ? 'party' : 'foe', 2); }
     return Math.max(1, Math.round(d * HIT));
   }
   hit(t, d, by, magic) {
@@ -380,7 +475,7 @@ export class Battle {
     // a companion who loves the player throws himself in front of the blow that would rout them (once a battle)
     if (t.isPlayer && by && t.sol - d <= 0 && !this.guarded && this.game.H) { const sh = this.party.find((x) => !x.isPlayer && x.sol > d * 0.5 && bondOf(this.game.H, x.g.id) >= 80); if (sh) { this.guarded = true; this.float(t, `${sh.name}挺身擋刀！`, '#ffd86a', true); t = sh; } }
     t.sol = Math.max(0, t.sol - d); this.float(t, d, magic ? '#ffb04a' : '#ffffff', d > t.solMax * 0.25);
-    if (t.charging && by && by.side !== t.side && (t.chargeHit = (t.chargeHit || 0) + d) >= t.solMax * 0.15 && t.sol > 0) { t.charging = false; t.status.confuse = 1; setTimeout(() => this.float(t, '打斷！', '#8aff8a', true), 250); this.formBar(); }
+    if (t.charging && by && by.side !== t.side && (t.chargeHit = (t.chargeHit || 0) + d) >= t.solMax * 0.15 && t.sol > 0) { t.charging = false; t.status.confuse = 1; setTimeout(() => this.float(t, '打斷！', '#8aff8a', true), 250); this.cheerUp(by.side === 'party' ? 'party' : 'foe', 8); this.cheerUp(t.side === 'party' ? 'party' : 'foe', -5); this.formBar(); }
     if (by && !magic && by.arms?.steal && by.sol > 0) { const n = Math.round(d * by.arms.steal); by.sol = Math.min(by.solMax, by.sol + n); this.drawBar(by); }
     if (t.sol <= 0 && t.arms?.revive && !t.revived) { t.revived = true; t.sol = Math.round(t.solMax * t.arms.revive); setTimeout(() => this.float(t, '重整旗鼓！', '#ffd86a', true), 300); }
     else if (t.sol > 0 && t.sol < t.solMax * 0.3 && t.arms?.lowHeal && !t.lowHealed) { t.lowHealed = true; const n = Math.round(t.solMax * t.arms.lowHeal); t.sol = Math.min(t.solMax, t.sol + n); setTimeout(() => this.float(t, '急救 +' + n, '#8aff8a'), 300); }
@@ -388,6 +483,7 @@ export class Battle {
     t.flashT = 0.18; t.shk = 0.25; this.drawBar(t);
     const back = t.side === 'party' ? 1 : -1; this.tween(0.25, (p) => { t.ox = back * 0.35 * Math.sin(p * Math.PI); });
     if (d > t.solMax * 0.25 || magic && d > t.solMax * 0.15) this.shake(0.3);
+    if (t.sol <= 0 && this.morale) { const n = this.side(t).length, k = Math.round(30 / Math.max(2, n)) + (t.boss || t.isPlayer || t.gid != null ? 8 : 0); this.cheerUp(t.side === 'party' ? 'foe' : 'party', k); this.cheerUp(t.side === 'party' ? 'party' : 'foe', -k); }   // a rout weighs more in a small army
     if (t.sol <= 0) { this.float(t, '潰敗', '#ff6a5a', true); t.routedBy = by; this.shake(0.35); t.flee = 0; this.tween(0.8, (p) => { t.flee = easeIn(p) * 3; }); }
   }
   ranged(u) { return ['bow', 'gun'].includes(u.look?.wpn); }
@@ -441,6 +537,7 @@ export class Battle {
     const T = { n: f.ult.n, kind: 'dmg' }, ts = this.party.filter((u) => u.sol > 0);
     await this.cast(f, T, f.ult.fx || 'lei', ts);
     for (const t of ts) { if (t.status.evade && Math.random() < 0.5) { this.float(t, '閃開了！', '#c8e8ff'); continue; } this.hit(t, t.solMax * (f.ult.pow || 0.4) * (t.guarding ? 0.4 : 1) * (t.status.guard ? 0.5 : 1) * (0.9 + Math.random() * 0.2), f, true); }
+    this.cheerUp('party', -8);
     await wait(500);
   }
   // the caster raises a hand (a hop and a ring of light), the name of the stratagem sweeps across, then the effect
@@ -586,7 +683,7 @@ export class Battle {
   menu(title, opts) { return this.game.ui.choose(opts, { title, host: this.ui, cls: 'b-menu' }); }
   async pick(list, title, ally) {
     const live = list.filter((u) => ally || u.sol > 0); if (live.length === 1 && !ally) return live[0];
-    const k = await this.game.ui.choose([...live.map((u, i) => ({ k: i, n: `${u.name}　兵 ${Math.round(u.sol)}`, d: u.side === 'foe' ? tagsText(u) : '' })), { k: null, n: '← 返回' }], { title, host: this.ui, cls: 'b-menu', hover: (i) => { for (const u of list) u.actor && (u.actor.sprite.material.color.set(live[i] === u ? '#ffe8a0' : '#ffffff')); } });
+    const k = await this.game.ui.choose([...live.map((u, i) => ({ k: i, n: `${u.name}　兵 ${Math.round(u.sol)}`, d: u.side === 'foe' ? [u.intent && this.intentText(u), tagsText(u)].filter(Boolean).join('　') : '' })), { k: null, n: '← 返回' }], { title, host: this.ui, cls: 'b-menu', hover: (i) => { for (const u of list) u.actor && (u.actor.sprite.material.color.set(live[i] === u ? '#ffe8a0' : '#ffffff')); } });
     for (const u of list) u.actor?.sprite.material.color.set('#ffffff');
     return k == null ? null : live[k];
   }
