@@ -7,6 +7,10 @@
 // 1 found, 2 done }, shards: { tian, di, ren }, log: [], ambush, lgz: the side story with 劉關張 (0 not yet, 1 their city,
 // 2 the impostors' camp, 3 done: they come to the last battle) }.
 // Every chief of the story has weaknesses and resistances (TRAIT, see weak.js) and a great move it gathers itself for.
+// 第二部「鏡影亂世」 (after choosing to stay): two months later the mirror cracks and four shadows of the family get out
+// (ch 'shadows': each one is met in a city, then fought at a banner outside it), 水鏡先生 in 襄陽 tells who 鏡翁 really is
+// (ch 'sage': the city, then 鏡湖 for the 照心燈), and the last battle is inside the mirror, back in 許昌 (ch 'mirror').
+// Part two state: H.saga.stay, p2, wait, sh: { name: 0 waiting, 1 met, 2 done }, sage (1 = visited), amb2; ch 'end' when over.
 import { LOOKS } from './sprites.js';
 import { CITY_POS, T, K } from './world.js';
 import { refresh } from './sim/engine.js';
@@ -39,7 +43,15 @@ const SHARD = {
   di: { n: '地', city: '武威', where: '涼州', boss: '赤炎童子', place: '涼州・赤炎谷', stat: 'war', terrain: 'desert' },
   ren: { n: '人', city: '建寧', where: '南中', boss: '萬蠱婆婆', place: '南中・萬蠱林', stat: 'int', terrain: 'forest' },
 };
-const STAT_N = { lead: '統率', war: '武力', int: '智力' };
+const STAT_N = { lead: '統率', war: '武力', int: '智力', pol: '政治', cha: '魅力' };
+// 第二部: where each shadow makes trouble, the banner outside, what its owner gains back
+const SHADOW = {
+  Jeff: { city: '鄴', place: '漳河大堤', stat: 'int', terrain: 'river', form: 'fangyuan', ch: '冷鏡軍師' },
+  Erin: { city: '長安', place: '藥王廟', stat: 'pol', terrain: 'forest', form: 'heyi', ch: '迷心藥師' },
+  Josh: { city: '陳留', place: '虎牢關・擂台', stat: 'war', terrain: 'hill', form: 'fengshi', ch: '無雙狂徒' },
+  Jasper: { city: '江陵', place: '長江・黑帆船', stat: 'cha', terrain: 'river', form: 'changshe', ch: '獨行影盜' },
+};
+const CH2 = { shadows: '第四章　四道鏡影', sage: '第五章　水鏡先生', mirror: '第六章　鏡中天下', end: '終章　鏡中之後' };
 
 // ---------------------------------------------------------------- the people of the story
 const V = (seed, o) => ({ ...LOOKS.villager(seed), lady: false, mark: null, ...o, key: 'saga-' + seed });
@@ -62,6 +74,13 @@ const LK = {
   xuanming: () => V('玄冥子', { hat: 'taoist', hatC: '#1a1a2a', body: '#1a1a2a', trim: '#8a5ad8', cape: '#3a1a5a', beard: 'long', beardC: '#d8d8e8', hair: '#d8d8e8', skin: '#d8d0d8', wpn: 'staff', robe: true }),
   ghost: () => ({ ...LOOKS.soldier('#3a3a4a'), skin: '#a8b8c8', key: 'saga-ghost' }),
   hufa: () => ({ ...LOOKS.bandit(), beard: 'long', beardC: '#d8d8e8', hat: 'helmet', hatC: '#3a1a5a', body: '#2a1a3a', trim: '#8a5ad8', cape: '#1a1a2a', key: 'saga-hufa' }),
+  // 第二部
+  shadow: (game, n) => ({ ...game.lookOf(game.G.byName[n]), body: '#1a1a24', trim: '#5a3a8a', cape: '#0a0a14', hatC: '#1a1a24', skin: '#8a8a9a', hair: '#0a0a0a', key: 'saga-shadow-' + n }),
+  mirrorOf: (look) => ({ ...look, body: '#c8d0e0', trim: '#8a9ab0', cape: '#a8b0c0', skin: '#d8e0f0', hatC: '#b8c0d0', key: (look.key || 'x') + '-mirror' }),
+  mirror: () => ({ ...LOOKS.soldier('#c8d0e0'), skin: '#d8e0f0', key: 'saga-mirror' }),
+  shuijing: () => V('水鏡', { hat: 'taoist', hatC: '#5a7a6a', body: '#d8e0d0', trim: '#5a7a6a', cape: '#8aa898', beard: 'long', beardC: '#f0f0f0', hair: '#e8e8e8', wpn: 'fan', robe: true }),
+  xiaoyan: () => V('小炎', { hat: 'band', hatC: '#e86a3a', body: '#e8a86a', trim: '#ffd86a', cape: null, hair: '#1a1410', wpn: null, beard: null }),
+  jingling: () => V('鏡靈', { hat: 'taoist', hatC: '#c8d0e0', body: '#1a1a2a', trim: '#c8d0e0', cape: '#5a6a8a', beard: 'long', beardC: '#c8d0e0', hair: '#c8d0e0', skin: '#b8c0d0', wpn: 'staff', robe: true }),
 };
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 // what each of the story's enemies fears and shrugs off, and the great moves of the chiefs (battle.js: prep / ult)
@@ -80,12 +99,21 @@ const TRAIT = {
   玄冥左護法: { weak: ['fire'], res: ['thunder'], ...U('陰雷', '口中念念有詞，雲層裡雷聲滾滾', 'lei', 0.3, 3, 3) }, 玄冥右護法: { weak: ['thunder'], res: ['fire'], ...U('陰火', '袖中飛出點點鬼火', 'blaze', 0.3, 3, 2) },
   玄冥子: { weak: ['thunder'], res: ['fire', 'water'], immune: ['mind'], ...U('玄冥滅世', '高舉鏡心，整座玄冥宮都暗了下來', 'lei', 0.42, 3, 2) },
   刺客首領: { res: ['mind'] },
+  // 第二部
+  鏡兵: { weak: ['earth'], immune: ['mind'] }, 鏡兵隊長: { weak: ['earth'], res: ['phys'], immune: ['mind'] }, 鏡中: { weak: ['earth'], res: ['mind'] },
+  Jeff之影: { weak: ['thunder'], res: ['mind'], ...U('決堤', '揮下令旗，漳河的大堤開始崩裂', 'flood', 0.4) },
+  Erin之影: { weak: ['fire'], res: ['water'], immune: ['mind'], ...U('迷心香', '點起一爐紫色的香，煙霧飄滿了整座廟', 'feng', 0.36) },
+  Josh之影: { weak: ['earth'], res: ['thunder'], ...U('無雙・影', '把赤霄劍的影子舉過頭頂，劍身爆出紅光', 'rock', 0.42) },
+  Jasper之影: { weak: ['thunder'], res: ['phys'], ...U('千影亂舞', '的身影一分為八', 'feng', 0.36) },
+  鏡湖龍王: { weak: ['earth'], res: ['water'], immune: ['mind'], ...U('鏡湖倒影', '沉進湖裡，湖面映出了你們每一個人的倒影', 'flood', 0.4) },
+  鏡靈: { weak: ['earth'], res: ['thunder', 'fire', 'water'], immune: ['mind'], ...U('天命倒轉', '舉起古鏡，鏡面裡映出了整個天下', 'lei', 0.45, 3, 2) },
 };
 
 export class Saga {
   constructor(game) { this.g = game; }
   get G() { return this.g.G; } get H() { return this.g.H; } get S() { return this.H?.saga; } get k() { return this.g.story.kit; }
-  on() { return !!this.S && this.S.ch !== 'done'; }
+  on() { return !!this.S && this.S.ch !== 'done' && this.S.ch !== 'end'; }
+  part2() { return ['shadows', 'sage', 'mirror', 'end'].includes(this.S?.ch); }
   gen(n) { return this.G.byName[n]; }
   lead() { return this.S.lead; }
   // ---------------------------------------------------------------- a new story game: the family scattered
@@ -145,16 +173,21 @@ export class Saga {
     if (S.ch === 'find') { const left = Object.entries(S.fam).filter(([, v]) => v < 2); return '尋找家人：' + left.map(([n, v]) => `${n}（${v ? this.H.missions.find((m) => m.saga === 'fam2:' + n)?.boss || HOME[n] : HOME[n]}）`).join('、'); }
     if (S.ch === 'shards') return '奪回鏡片：' + Object.entries(SHARD).filter(([id]) => !S.shards[id]).map(([, s]) => `「${s.n}」${s.where}`).join('、');
     if (S.ch === 'final') return '討伐玄冥子：泰山・玄冥宮';
+    if (S.ch === 'shadows') return '找回鏡影：' + FAMILY.filter((n) => S.sh[n] < 2).map((n) => `${n}之影（${S.sh[n] ? SHADOW[n].place : SHADOW[n].city}）`).join('、');
+    if (S.ch === 'sage') return S.sage ? '取得照心燈：鏡湖（襄陽城外）' : '拜訪水鏡先生：襄陽';
+    if (S.ch === 'mirror') return '走進鏡中天下：許昌';
     return '';
   }
   hudRow() { return this.on() ? `<div class="h-row h-saga">📜 ${this.goal()}</div>` : ''; }
   async screen() {
-    const S = this.S, ch = { find: '第一章　四散天涯', shards: '第二章　三片鏡片', final: '第三章　泰山玄冥宮', done: '終章' }[S.ch];
+    const S = this.S, ch = { find: '第一章　四散天涯', shards: '第二章　三片鏡片', final: '第三章　泰山玄冥宮', done: '終章', ...CH2 }[S.ch];
     const fam = FAMILY.map((n) => `<span style="color:${n === S.lead || S.fam[n] === 2 ? '#8aff8a' : S.fam[n] ? '#ffd86a' : '#9a9a9a'}">${n}${n === S.lead ? '（你）' : S.fam[n] === 2 ? '　✔' : S.fam[n] ? '　同行中' : `　${HOME[n]}`}</span>`).join('　');
     const sh = Object.entries(SHARD).map(([id, s]) => `<span style="color:${S.shards[id] ? '#8aff8a' : '#9a9a9a'}">「${s.n}」${s.where}・${s.boss}${S.shards[id] ? '　✔' : ''}</span>`).join('　');
-    const tip = { find: '建議等級 8 以上。', shards: '鏡片的守護者很強，建議等級 16 以上。', final: '玄冥宮是最後的決戰，建議等級 24 以上。', done: '' }[S.ch];
-    await this.g.ui.panel(`<h3>英傑傳奇　${ch}</h3>${S.ch !== 'done' ? `<p><b style="color:#ffd86a">目標：</b>${this.goal()}</p><p class="dim">${tip}黑旗標在大地圖和小地圖上。</p>` : '<p>故事已經完結。天下還在運轉，你們可以繼續闖蕩。</p>'}
-      <h4>家人</h4><p>${fam}</p>${S.ch !== 'find' ? `<h4>軒轅古鏡的碎片</h4><p>${sh}</p>` : ''}${S.lgz ? `<h4>支線</h4><p>桃園之約（劉備、關羽、張飛）：${{ 1: `到${this.G.cities[this.gen('劉備')?.city]?.name || ''}拜訪`, 2: '討伐冒名的匪徒', 3: '<span style="color:#8aff8a">完成・決戰時會來助陣</span>', 9: '錯過了' }[S.lgz] || ''}</p>` : ''}<h4>經過</h4>${S.log.map((t) => `<p>✦ ${t}</p>`).join('')}`, { title: '劇情', cls: 'wide' });
+    const tip = { find: '建議等級 8 以上。', shards: '鏡片的守護者很強，建議等級 16 以上。', final: '玄冥宮是最後的決戰，建議等級 24 以上。', done: '', shadows: '鏡影和你們一樣強，建議等級 28 以上。', sage: '鏡湖的守護者建議等級 32 以上。', mirror: '鏡中天下是第二部最後的決戰，建議等級 36 以上。', end: '' }[S.ch];
+    const over = S.ch === 'done' ? (S.stay && !S.p2 ? '<p>第一部完結。你們選擇留在亂世……過一陣子，古鏡好像有點不對勁。</p>' : '<p>故事已經完結。天下還在運轉，你們可以繼續闖蕩。</p>') : '<p>第二部「鏡影亂世」完結。天下還在運轉，你們可以繼續闖蕩。</p>';
+    const shd = S.sh ? `<h4>鏡影</h4><p>${FAMILY.map((n) => `<span style="color:${S.sh[n] === 2 ? '#8aff8a' : '#9a9a9a'}">${n}之影・${SHADOW[n].ch}${S.sh[n] === 2 ? '　✔' : `　${SHADOW[n].city}`}</span>`).join('　')}</p>` : '';
+    await this.g.ui.panel(`<h3>英傑傳奇　${ch}</h3>${this.on() ? `<p><b style="color:#ffd86a">目標：</b>${this.goal()}</p><p class="dim">${tip}黑旗標在大地圖和小地圖上。</p>` : over}${shd}
+      <h4>家人</h4><p>${fam}</p>${S.ch !== 'find' && !this.part2() ? `<h4>軒轅古鏡的碎片</h4><p>${sh}</p>` : ''}${S.lgz ? `<h4>支線</h4><p>桃園之約（劉備、關羽、張飛）：${{ 1: `到${this.G.cities[this.gen('劉備')?.city]?.name || ''}拜訪`, 2: '討伐冒名的匪徒', 3: '<span style="color:#8aff8a">完成・決戰時會來助陣</span>', 9: '錯過了' }[S.lgz] || ''}</p>` : ''}<h4>經過</h4>${S.log.map((t) => `<p>✦ ${t}</p>`).join('')}`, { title: '劇情', cls: 'wide' });
   }
   // ---------------------------------------------------------------- the levels of the story's enemies: set by the chapter and the years, never by the party
   lv(base) { return Math.max(base, this.g.act.foeLv(false) + Math.round(base / 6)); }
@@ -168,7 +201,7 @@ export class Saga {
     if (o.war) f.war = Math.max(f.war, o.war);
     if (o.sol) { f.solMax = Math.round(f.solMax * o.sol); f.sol = f.solMax; }
     const A = this.arms ?? 0; f.wpn += Math.round(A * lv / 3 * (o.boss ? 2 : 1)); f.arm += Math.round(A * lv / 4 * (o.boss ? 2 : 1));
-    const T = TRAIT[name]; if (T) { for (const k of ['weak', 'res', 'immune']) f[k] = (T[k] || []).slice(); if (T.ult) f.ult = { ...T.ult }; if (T.undead) f.undead = true; }
+    const T = TRAIT[name] || (name.startsWith('鏡中') ? TRAIT.鏡中 : null); if (T) { for (const k of ['weak', 'res', 'immune']) f[k] = (T[k] || []).slice(); if (T.ult) f.ult = { ...T.ult }; if (T.undead) f.undead = true; }
     return f;
   }
   // how well the story's enemies are armed: 0 in the first chapter, then more (set by the goal being fought)
@@ -178,6 +211,7 @@ export class Saga {
   async town() {
     if (!this.on() || !this.g.town) return false;
     if (await this.lgzTown()) return true;
+    if (await this.p2Town()) return true;
     if (this.S.ch !== 'find') return false;
     const C = this.g.town.C, n = Object.keys(this.S.fam).find((x) => this.S.fam[x] === 0 && HOME[x] === C.name);
     if (!n) return false;
@@ -257,7 +291,8 @@ export class Saga {
   // ---------------------------------------------------------------- stepping on a banner
   async banner(m) {
     this.g.locked = true;
-    try { const [kind, id] = m.saga.split(':'); this.armed({ fam: 0, fam2: 0, shard: 2, final: 1.8 }[kind] ?? 0); if (kind === 'fam') await this.k.say('', `${HOME[id]}就在附近。走進城裡看看吧。`); if (kind === 'fam2') await this['field' + id](); if (kind === 'shard') await this.shard(id); if (kind === 'final') await this.final(); if (kind === 'side') await this.lgzCamp(); }
+    try { const [kind, id] = m.saga.split(':'); this.armed({ fam: 0, fam2: 0, shard: 2, final: 1.8, sh2: 2.2, lake: 2.4 }[kind] ?? 0); if (kind === 'fam') await this.k.say('', `${HOME[id]}就在附近。走進城裡看看吧。`);
+      if (kind === 'sh' || kind === 'sage' || kind === 'mirror') await this.k.say('', '就在附近了。走進城裡看看吧。'); if (kind === 'sh2') await this.shadowFight(id); if (kind === 'lake') await this.lake(); if (kind === 'fam2') await this['field' + id](); if (kind === 'shard') await this.shard(id); if (kind === 'final') await this.final(); if (kind === 'side') await this.lgzCamp(); }
     catch (e) { console.error(e); } finally { this.g.locked = false; this.g.hud(); }
   }
   // the second half of each chapter
@@ -427,7 +462,8 @@ export class Saga {
       deed(this.g, '四劍歸鏡，選擇留在亂世', true); k.fame(300);
       await k.say('Jeff', '我們留下來。這個時代還有很多人需要幫忙。', 'Jeff');
       await k.say('鏡翁', '好。那麼這面鏡子，就留給你們吧。……天下的故事，才剛開始呢。', LK.jingweng());
-      this.S.log.push('終章：選擇留在亂世'); k.toast('英傑傳奇完結！天下還在運轉，你們可以繼續闖蕩。');
+      await k.say('', '鏡翁的身影散去之前，嘴角微微地揚了一下。\n那個笑容，Jasper 後來想了很久——好像和平常的鏡翁，有一點點不一樣。');
+      this.S.stay = true; this.S.log.push('終章：選擇留在亂世'); k.toast('英傑傳奇第一部完結！天下還在運轉……第二部「鏡影亂世」即將開始。');
     }
   }
   // ---------------------------------------------------------------- 支線　桃園之約: 劉備、關羽、張飛
@@ -487,8 +523,262 @@ export class Saga {
     S.log.push('支線　桃園之約：和劉備、關羽、張飛結為好友'); deed(this.g, '與劉關張桃園共飲');
     await k.say('', '支線「桃園之約」完成！金 +500、名聲 +200，四人的魅力 +2。\n最後的決戰時，劉關張會趕來助陣。');
   }
+  // ================================================================ 第二部　鏡影亂世
+  shadowLv() { return 26 + 2 * FAMILY.filter((n) => this.S.sh[n] === 2).length; }
+  says(n, text) { return this.k.say(n, text, n); }
+  shade(n, text) { return this.k.say(`${n}之影`, text, LK.shadow(this.g, n)); }
+  async sequel() {
+    const k = this.k, S = this.S, L = this.lead();
+    S.p2 = true; S.ch = 'shadows'; S.sh = Object.fromEntries(FAMILY.map((n) => [n, 0])); S.amb2 = 0;
+    await k.say('', '留在亂世的日子，一晃又是兩個月。\n一天夜裡，營火旁的軒轅古鏡忽然自己立了起來。鏡面上，「喀」地裂開了一道細細的縫。');
+    await this.says('Jasper', '……鏡子裡面，有人在看我們。');
+    await k.say('', '裂縫裡爬出了四道黑影。它們的身形、衣服、手上的劍，全都和一家四口一模一樣——只是顏色像墨一樣黑。');
+    await this.shade('Josh', '嘿，本尊。謝謝你們把鏡子拼回來，我們在裡面等好久了。');
+    await this.says('Jeff', '你們是什麼東西？');
+    await this.shade('Jeff', '我們就是你們。你們心裡不敢說出來的那一半。');
+    await this.shade('Erin', '你們做不到的事，就交給我們吧。');
+    await k.say('', '四道黑影往四個方向散去，眨眼就不見了。');
+    await this.says('Erin', '鏡翁！鏡翁，你在嗎？……鏡翁！');
+    await k.say('', '鏡子沒有回答。鏡面黑得像一口深井。');
+    await k.say(L, { Jeff: '鄴、長安、陳留、江陵……它們用的是我們的臉。不能讓它們用我們的名字去害人。', Erin: '那是我們自己的影子……我們自己去帶回來。', Josh: '冒牌貨！我要一個一個抓回來！', Jasper: '……它們跟我們長得一樣耶。好可怕。可是，我們四個人一起去。' }[L], L);
+    for (const n of FAMILY) this.mark('sh:' + n, SHADOW[n].city, `${n}之影（${SHADOW[n].city}）`);
+    S.log.push('第二部　序章　鏡子又裂了');
+    deed(this.g, '古鏡又裂了，四道鏡影逃進了天下', true); this.g.audio.sfx('level');
+    k.toast('英傑傳奇第二部「鏡影亂世」開始！黑旗標出了四道鏡影出沒的城市。');
+  }
+  async p2Town() {
+    const S = this.S; if (!this.part2() || !this.on()) return false;
+    const C = this.g.town.C.name;
+    let fn = null;
+    if (S.ch === 'shadows') { const n = FAMILY.find((x) => S.sh[x] === 0 && SHADOW[x].city === C); if (n) fn = () => this.shadowTown(n); }
+    if (S.ch === 'sage' && !S.sage && C === '襄陽') fn = () => this.sage();
+    if (S.ch === 'mirror' && C === '許昌') fn = () => this.mirrorWorld();
+    if (!fn) return false;
+    this.g.locked = true;
+    try { await fn(); } catch (e) { console.error(e); } finally { this.g.locked = false; this.g.hud(); }
+    return true;
+  }
+  // ---------------------------------------------------------------- 第四章　四道鏡影
+  async shadowTown(n) {
+    const k = this.k;
+    if (n === 'Jeff') {
+      await k.say('', '鄴城的城門口貼著一張告示，墨跡還沒乾：\n「奉軍師 Jeff 之令：三日後掘開漳河大堤，水淹敵軍。城南三村百姓，自行遷走。」');
+      await k.say('百姓', '三個村子幾千口人，能遷到哪裡去？\n聽說那個 Jeff 軍師在大帳裡打算盤：淹死幾千人，可以少打三年仗——划算。', '百姓');
+      await this.says('Jeff', '……我從來沒有說過這種話。');
+      await this.says('Erin', '可是……這聽起來，有一點像你在算帳的樣子。');
+      await this.says('Jeff', '……走，去大堤。');
+    } else if (n === 'Erin') {
+      await k.say('', '長安城裡的人排成長長的隊伍，等著喝一碗「Erin 娘娘的仙藥」。\n喝過的人臉上都掛著笑，不吵、不哭，也不說話。');
+      await k.say('百姓', '喝了娘娘的藥，就不會痛、也不會怕了……\n娘娘說，只要大家都乖乖的，就再也不會有人受傷。', '百姓');
+      await this.says('Erin', '這不是藥，是迷心散。他們不是不痛了，是什麼都感覺不到了。');
+      await this.says('Josh', '媽，那個人用你的名字……');
+      await this.says('Erin', '我知道。我去跟「她」談。');
+    } else if (n === 'Josh') {
+      await k.say('', '陳留城外搭起了一座擂台，台下躺滿了受傷的武人。\n擂台上插著一面大旗：「天下第一 Josh——不服的上來！」');
+      await k.say('百姓', '聽說他把來比武的人全都打斷了手，還說要打到呂布跪下來叫他大哥……', '百姓');
+      await this.says('Josh', '那不是我！……好啦，我是說過想打贏呂布，可是我才不會把人打成那樣！');
+      await this.says('Jasper', '哥，你看擂台上那個人笑的樣子……跟你打遊戲贏的時候一模一樣。');
+      await this.says('Josh', '……少囉嗦，走啦！');
+    } else {
+      await k.say('', '江陵的碼頭上停著一艘掛黑帆的船。蒙面的人把一箱一箱的金子搬上船——都是從城裡人家偷來的。');
+      await k.say('商人', '雙劍俠盜？呸！什麼劫富濟貧，他連窮人家的米缸都偷！\n他還說：這世上誰都靠不住，只有握在手上的東西才是真的。', '商人');
+      await this.says('Jasper', '……我、我從來沒有偷過窮人的東西。');
+      await this.says('Erin', '我們知道。');
+      await this.says('Jasper', '可是……一個人在吳郡的時候，我真的這樣想過。誰都不認識，誰都靠不住……');
+    }
+    this.S.sh[n] = 1; this.unmark('sh:' + n);
+    this.field('sh2:' + n, SHADOW[n].city, `${SHADOW[n].place}（${n}之影）`, 6, 11);
+    k.toast(`黑旗標出了${n}之影的所在：${SHADOW[n].place}`);
+  }
+  async shadowFight(n) {
+    const k = this.k, s = SHADOW[n], lv = this.lv(this.shadowLv()), x = this.gen(n);
+    const pre = {
+      Jeff: [['Jeff之影', '你來了。你也算過的，對吧？一座城換十座城，幾千人換幾萬人。你只是不敢下令。'], ['Jeff', '算得出來的東西，不一定就是對的。']],
+      Erin: [['Erin之影', '你不是也想過嗎？要是大家都乖乖聽話，就不會有人生病、不會有人打架，孩子們也不會亂跑。\n我只是把你想做的事做完而已。'], ['Erin', '我想要孩子們平安，不是要他們變成木頭人。\n會跌倒、會吵架、會不聽話——那才是活著。']],
+      Josh: [['Josh之影', '本尊來了？太好了。你一直想當天下第一，對吧？\n贏了才有人看你，輸了就什麼都不是。'], ['Josh', '我是想變強……可是我想變強，是為了保護爸媽和 Jasper，不是為了讓別人跪下來！']],
+      Jasper: [['Jasper之影', '你幹嘛要回去？他們以前還不是把你一個人丟在吳郡。\n靠自己就好了。東西要握在手上，才不會不見。'], ['Jasper', '我沒有被丟下。我們是被沖散的——而且他們每一個人都來找我了。']],
+    }[n];
+    await k.say('', { Jeff: '漳河大堤上插滿了令旗。一個和 Jeff 一模一樣的黑影站在堤頂，手上拿著一把算盤。', Erin: '藥王廟裡煙霧瀰漫。一個和 Erin 一模一樣的黑影，正溫柔地把藥碗遞給一個小孩。', Josh: '虎牢關下的擂台上，一個和 Josh 一模一樣的黑影扛著劍，腳下踩著一面打破的盾。', Jasper: '黑帆船的桅杆上，一個和 Jasper 一模一樣的黑影蹲在橫桿上，數著手上的金子。' }[n]);
+    for (const [who, t] of pre) await (who === n ? this.says(n, t) : this.shade(n, t));
+    const st = { Jeff: { spells: ['zhen', 'lei'], int: 99, war: 82 }, Erin: { spells: ['zhi', 'yao'], int: 96, war: 78 }, Josh: { war: 100 }, Jasper: { spells: ['huan'], war: 96, int: 80 } }[n];
+    const minions = { Jeff: () => this.many(3, '鏡兵', 'soldier', lv + 1, LK.mirror()), Erin: () => this.many(3, '鏡兵', 'soldier', lv + 1, LK.mirror()), Josh: () => this.many(2, '鏡兵', 'soldier', lv + 2, LK.mirror()), Jasper: () => this.many(3, '黑帆盜', 'pirate', lv + 1) }[n];
+    const r = await k.battle([this.foe(`${n}之影`, 'bandit', lv + 5, LK.shadow(this.g, n), { boss: true, sol: 4.5, ...st }), ...minions()], { terrain: s.terrain, title: `${n}之影！`, foeForm: s.form, night: n === 'Erin' });
+    if (r !== 'win') return this.lost();
+    const post = {
+      Jeff: [['Jeff之影', '……那你告訴我，什麼才是對的？'], ['Jeff', '我不知道。所以我才要一直問、一直想——不能讓算盤替我做決定。'], ['', '黑影笑了一下，化成一縷黑煙，鑽回了 Jeff 的影子裡。\n大堤保住了。城南三個村子的人站在堤上，看著漳河平平靜靜地流過去。']],
+      Erin: [['Erin之影', '……可是放手，好可怕。'], ['Erin', '我知道。我也很怕。……我們一起怕吧。'], ['', '黑影輕輕靠在 Erin 的肩上，慢慢淡去。廟裡的香熄了。\n長安城裡的人一個一個哭了出來——那是醒過來的哭聲。']],
+      Josh: [['Josh之影', '……輸了也沒關係嗎？'], ['Josh', '輸了就再練啊！反正我有家人陪我練。'], ['', '黑影把劍插在擂台上，轉身走進了 Josh 的影子裡。\n受傷的武人們互相攙扶著站起來。有人對 Josh 抱拳：「小兄弟，你才是真正的天下第一。」']],
+      Jasper: [['Jasper之影', '……那如果下次又走散了呢？'], ['Jasper', '那我就去找他們。就像他們來找我一樣。'], ['', '黑影把船上的金子一箱一箱推回岸上，然後縮成小小的一團，躲回了 Jasper 的影子裡。\n那天晚上，Jasper 把金子一戶一戶地還了回去——這次，他是敲門從大門走進去的。']],
+    }[n];
+    for (const [who, t] of post) await (who === '' ? k.say('', t) : who === n ? this.says(n, t) : this.shade(n, t));
+    this.S.sh[n] = 2; this.unmark('sh2:' + n);
+    if (x && x.status !== 'dead') { x.base[s.stat] = Math.min(110, x.base[s.stat] + 4); refresh(this.G, x); }
+    k.gold(600); k.fame(150);
+    this.S.log.push(`${s.ch}：${n}找回了自己的影子`); deed(this.g, `${n}找回了自己的影子`);
+    await k.say('', `「${s.ch}」完結！${n}的${STAT_N[s.stat]} +4、金 +600、名聲 +150。`);
+    if (FAMILY.every((m) => this.S.sh[m] === 2)) await this.toSage();
+  }
+  async toSage() {
+    const k = this.k, S = this.S;
+    await k.say('', '四道黑影都回到了主人的影子裡。那天晚上，古鏡上的裂縫沒有再變大，可是鏡面還是一片漆黑。');
+    await this.says('Jeff', '鏡子裂開、影子跑出來，鏡翁卻一句話都沒說。……這不對勁。');
+    await this.says('Jasper', '鏡翁會不會也被關在鏡子裡了？');
+    await this.says('Erin', '有一個人，也許知道鏡子的事。聽說襄陽城外住著一位「水鏡先生」，天下的事他都知道。');
+    S.ch = 'sage'; S.log.push('第四章完：四道鏡影都回來了');
+    this.mark('sage', '襄陽', '拜訪水鏡先生（襄陽）');
+    this.g.audio.sfx('level'); k.toast('第五章「水鏡先生」開始！');
+  }
+  // ---------------------------------------------------------------- 第五章　水鏡先生
+  async sage() {
+    const k = this.k, S = this.S, sm = k.alive('司馬徽') && !this.gen('司馬徽').isPlayer ? '司馬徽' : '水鏡先生', sl = sm === '司馬徽' ? '司馬徽' : LK.shuijing();
+    const sy = (t) => k.say(sm, t, sl);
+    await k.say('', '襄陽城外的山坳裡，有一座竹籬茅舍。院子裡，一位老先生一邊餵鶴，一邊念著：「好，好，好。」');
+    await sy('好，好。持四劍的人，終於來了。老夫等你們很久了。');
+    await sy('你們心裡的那四道影子，不是自己從鏡子裡跑出來的——是被人「照」出來的。\n照的那個人，你們也認識。');
+    await this.says('Jeff', '……鏡翁。');
+    await sy('鏡中之靈，自稱鏡翁。軒轅鏡能照見天命，那鏡靈看了幾千年的天下興亡，看得太久，就想自己當那個「天」。');
+    await sy('玄冥子當年，只是一個不忍心看百姓受苦的道士。是鏡靈在他耳邊說：「打碎鏡子，你就能改寫天命。」\n鏡子碎了，鏡靈出不來。你們把鏡子拼好了，牠才有了出來的門——現在牠只差一步。');
+    await this.says('Erin', '所以牠要我們去找鏡片……全都是在利用我們？');
+    await this.says('Josh', '可惡！那個老頭還一臉慈祥的樣子！');
+    await sy('那四道影子，是牠拿來試你們的。人若輸給了自己的影子，鏡靈就能借那個人的身體走出來。\n你們四個都贏了，牠只好親自動手。');
+    await sy('要打倒鏡靈，就得走進鏡子裡。鏡中一片漆黑，要有「照心燈」才看得見路。\n那盞燈沉在城外的鏡湖底，有東西守著。');
+    if (k.alive('諸葛亮') && !this.gen('諸葛亮').isPlayer && !k.inParty(this.gen('諸葛亮'))) {
+      await k.say('', '籬笆邊上，一個拿著破蒲扇的少年一直在偷聽。');
+      await k.say('諸葛亮', '老師，鏡湖的守護者是水裡的東西。水再深，也淹不過一座山——用落石，一定有用。', '諸葛亮');
+      await this.says('Josh', '……等一下，你叫什麼名字？');
+      await k.say('諸葛亮', '在下諸葛亮，字孔明。', '諸葛亮');
+      await this.says('Josh', '諸、諸葛亮？！爸！是諸葛亮耶！活的！');
+      await this.says('Jeff', '……小聲一點。');
+      addBond(this.g, this.gen('諸葛亮').id, 30);
+    }
+    await sy('好，好。去吧。');
+    S.sage = 1; this.unmark('sage'); this.field('lake', '襄陽', '鏡湖・照心燈', 6, 11);
+    S.log.push('水鏡先生說出了鏡翁的真面目'); deed(this.g, '從水鏡先生口中得知鏡翁的真面目');
+    k.toast('黑旗標出了鏡湖。湖底的守護者怕「石」。');
+  }
+  async lake() {
+    const k = this.k, S = this.S, lv = this.lv(32);
+    await k.say('', '鏡湖的水平得像一面鏡子，連一絲波紋都沒有。\n湖面上映著四個人的倒影——可是那些倒影，沒有跟著他們動。');
+    const yan = !!S.shards?.di;
+    if (yan) {
+      await k.say('', '岸邊忽然冒出一團小小的火光，一個黑頭髮的孩子跑了過來——是赤炎童子！');
+      await k.say('小炎', '阿姨！我聽說你們要去打壞人，我也要幫忙！\n我現在只會點小小的火……可是可以幫你們照路！', LK.xiaoyan());
+      await this.says('Erin', '小炎！你怎麼一個人跑來了……好，跟緊我，不准亂跑。');
+    }
+    const ok = await k.waves([() => this.many(4, '鏡兵', 'soldier', lv, LK.mirror()), () => [this.foe('鏡湖龍王', 'snake', lv + 5, null, { boss: true, sol: 5 }), ...this.many(2, '鏡兵', 'soldier', lv + 2, LK.mirror())]],
+      { terrain: 'river', foeForm: 'changshe', titles: ['湖面的倒影站起來了！', '鏡湖龍王！'] });
+    if (!ok) return this.lost();
+    await k.say('', '龍王沉回了湖底，湖水慢慢地往兩邊退開。湖心的石台上，一盞青銅小燈靜靜地擺著，燈芯是冷的。');
+    if (yan) { await k.say('小炎', '我來點！我來點！', LK.xiaoyan()); await k.say('', '小炎伸出手指，一朵小小的火苗跳上燈芯。\n燈亮起來的那一瞬間，湖面上所有的倒影都散了。'); }
+    else await k.say('', 'Jeff 用火摺子點亮了燈芯。燈亮起來的那一瞬間，湖面上所有的倒影都散了。');
+    this.unmark('lake');
+    for (const n of FAMILY) { const x = this.gen(n); if (x && x.status !== 'dead') { x.base.lead = Math.min(110, x.base.lead + 2); refresh(this.G, x); } }
+    const relic = k.relic(4, 10); k.gold(1000); k.fame(200);
+    S.log.push(`在鏡湖取得照心燈${yan ? '（小炎來幫忙）' : ''}`); deed(this.g, '在鏡湖取得照心燈');
+    await k.say('', `得到了「照心燈」！燈光照在四人身上，四人的統率 +2。\n金 +1000、名聲 +200、得到寶物「${relic}」。`);
+    await this.says('Jeff', '鏡靈最想要的，是這面鏡子和四把劍……那我們就帶著它們，回到一切開始的地方。');
+    await this.says('Erin', '許昌。');
+    S.ch = 'mirror'; S.log.push('第五章完：照心燈亮了');
+    this.mark('mirror', '許昌', '許昌・鏡中天下');
+    this.g.audio.sfx('level'); k.toast('第六章「鏡中天下」開始！');
+  }
+  // ---------------------------------------------------------------- 第六章　鏡中天下
+  helpers2() {
+    const ok = (x) => x && (x.status === 'serving' || x.status === 'free') && !x.isPlayer && !x.saga && !this.H.party.includes(x.id);
+    const lgz = this.S.lgz === 3 ? ['劉備', '關羽', '張飛'].map((n) => this.gen(n)).filter(ok) : [];
+    if (lgz.length) return lgz;
+    return ['趙雲', '馬超', '孫策'].map((n) => this.gen(n)).filter(ok);
+  }
+  async mirrorWorld() {
+    const k = this.k, S = this.S, L = this.lead(), lv = this.lv(34), jl = LK.jingling();
+    this.armed(2.6);
+    await k.say('', '許昌。一年多以前，他們就是在這裡醒過來的。\n四個人在城裡那間破廟點亮照心燈，把古鏡立在供桌上。燈光照進鏡子——鏡面像水一樣漾開了。');
+    await k.say('', '鏡子裡是另一個天下：山河、城池、軍隊，全都是銀色的，一點聲音都沒有。');
+    await k.say('鏡靈', '……你們果然來了。我還在想，要等到什麼時候呢。', jl);
+    await this.says('Jasper', '鏡翁……你為什麼要騙我們？');
+    await k.say('鏡靈', '騙？我說的每一句話都是真的。四劍齊聚，鏡子才會回應——只是它回應的，是我。', jl);
+    await k.say('鏡靈', '我看了三千年的天下。戰亂、饑荒、背叛，一次又一次，人永遠學不會。\n所以，由我來當這個「天」。從此天下只有一個人說了算，再也不會亂。', jl);
+    await this.says('Jeff', '玄冥子也說過一模一樣的話。');
+    await k.say('鏡靈', '玄冥子是個好孩子。可惜，他的心太軟了。', jl);
+    await this.says('Erin', '是你害死了他。');
+    await k.say('鏡靈', '殺他的，是你們。……來吧。讓我看看，你們打不打得過這整個天下的倒影。', jl);
+    const helpers = this.helpers2();
+    if (helpers.length) {
+      await k.say('', '鏡子外面，傳來一陣熟悉的聲音——');
+      const ns = helpers.map((x) => x.name);
+      if (ns.includes('劉備')) { await k.say('劉備', '桃園之約，備不敢忘！雲長、翼德，隨我進去！', '劉備'); if (ns.includes('張飛')) await k.say('張飛', '鏡子裡也有妖怪？正好，俺老張還沒砸過鏡子！', '張飛'); }
+      else await k.say(ns[0], `${ns[0]}在此！諸位的恩情，今天來還了！`, ns[0]);
+      this.guests(helpers);
+    }
+    const famous = ['呂布', '關羽', '張飛', '趙雲', '馬超', '典韋', '許褚', '黃忠', '夏侯惇', '甘寧', '張遼', '太史慈'].filter((n) => this.gen(n) && !helpers.some((x) => x.name === n)).slice(0, 4);
+    let ok;
+    try {
+      ok = await k.waves([() => famous.map((n) => this.foe(`鏡中${n}`, 'soldier', lv + 2, LK.mirrorOf(k.look(n)), { war: Math.min(99, this.gen(n).war), sol: 1.4 }))], { terrain: 'plain', noFlee: true, foeForm: 'fengshi', titles: ['鏡中的千軍萬馬！'] });
+      if (ok) {
+        await k.say('', '銀色的大軍散開了。地上升起一面巨大的鏡子，鏡子裡走出一個人——\n那是你自己。');
+        const me = this.gen(L), r0 = this.H.rec[this.H.pid];
+        await k.say(`鏡中${L}`, '我就是你。你會的每一招我都會，你怕的每一件事我都知道。', LK.mirrorOf(this.g.lookOf(me)));
+        await k.say(L, { Jeff: '那你也該知道——我最不怕的，就是輸給自己。', Erin: '那你一定也知道，我現在一點都不怕。因為他們都在我身後。', Josh: '那你一定知道——我最討厭輸了！', Jasper: '那你知道嗎？我現在不是一個人了。' }[L], L);
+        const r = await k.duelWith(`鏡中${L}`, LK.mirrorOf(this.g.lookOf(me)), r0.lv + 2, Math.min(99, me.war), me.lead, me.int);
+        if (r === 'win') await k.say('', `${L}的劍穿過了鏡子裡的自己。鏡中人笑了笑，碎成千萬片銀光。`);
+        else { const o = FAMILY.filter((n) => n !== L); await k.say('', `${L}被逼到了角落。鏡子裡的自己舉起了劍——\n一隻手從後面抓住了${L}的肩膀。是${o[0]}。接著是${o[1]}、${o[2]}。\n「你不是一個人。」\n四個人站在一起，鏡中人晃了一下，碎了。`); }
+        ok = await k.waves([() => [this.foe('鏡靈', 'bandit', lv + 8, jl, { boss: true, spells: ['lei', 'feng', 'yao', 'huan', 'zhen'], int: 99, war: 96, sol: 3.6 }), ...this.many(3, '鏡兵隊長', 'soldier', lv + 3, LK.mirror())]],
+          { terrain: 'hill', noFlee: true, foeForm: 'heyi', titles: ['決戰鏡靈！'] });
+      }
+    } finally { this.H.guests = []; }
+    if (!ok) return k.say('', '照心燈的火一暗，四個人被推出了鏡子，跌坐在破廟的地上。\n鏡子還在供桌上。練強一點，再進城來吧。');
+    await k.say('鏡靈', '……為什麼……我明明看過那麼多次……人總是會輸給自己心裡的影子……', jl);
+    await this.says('Jeff', '你看了三千年，只看到人輸的那一次。\n你沒有看到，他們又站起來的那一次。');
+    await k.say('', '鏡靈的身影像冰一樣裂開，裂縫裡透出溫暖的光。\n一個很老、很老的聲音輕輕地說：「……原來，是這樣啊。」');
+    await k.say('', '銀色的天下慢慢有了顏色。鏡子外面，許昌的晨鐘響了。');
+    this.H.st.kills.push('鏡靈'); this.unmark('mirror'); k.gold(5000); k.fame(800);
+    const relic = k.relic(4, 12);
+    S.log.push('第六章完：在鏡中天下打倒了鏡靈');
+    await k.say('', `金 +5000、名聲 +800、得到寶物「${relic}」。`);
+    await this.says('Jeff', '現在，這面鏡子真的只是一面鏡子了。……它還能送我們回家，最後一次。');
+    await this.says('Josh', '回家的話，就再也見不到劉備、趙雲、小炎他們了耶……');
+    await this.says('Jasper', '可是我好想念我們家的床，還有學校的同學……');
+    await this.says('Erin', '不管選哪一邊，我們一家人都在一起。');
+    const go = await k.ask('要怎麼做？', [{ k: 'home', n: '回到千年後的家（故事結束，結算一生）' }, { k: 'stay', n: '打碎古鏡，永遠留在這個時代（繼續闖蕩）' }]);
+    S.ch = 'end';
+    if (go === 'home') {
+      deed(this.g, '斬除鏡靈，回到了千年之後的家', true);
+      await k.say('', '鏡面最後一次漾開——\n\n……\n\n「各位遊客，本館即將閉館。」\n一家四口站在展櫃前。古鏡完整無缺，四把古劍靜靜地擺在旁邊。');
+      await k.say('', '展櫃旁的說明牌上寫著：\n「相傳東漢末年，有四位來歷不明的英雄，持干將、莫邪、赤霄、太阿四劍，平定玄冥之亂，又入鏡中斬除鏡妖，然後不知所終。」');
+      if (S.shards?.di) { await this.says('Erin', '……你們看，展櫃的角落。'); await k.say('', '古鏡旁邊，多了一盞小小的青銅燈。燈座上刻著兩個歪歪扭扭的字：「小炎」。'); }
+      await this.says('Josh', '……我好想再跟呂布打一次喔。');
+      await this.says('Jasper', '我想先回家睡覺。');
+      S.log.push('終章：斬除鏡靈，回到了千年後的家');
+      this.g.screens.ending();
+    } else {
+      deed(this.g, '打碎古鏡，永遠留在了這個時代', true); k.fame(500);
+      await this.says('Erin', '這裡，也是我們的家了。');
+      await k.say('', '四把劍同時落下。古鏡碎成了滿天的星光，再也拼不回去了。\n星光落在許昌的屋頂上、落在田裡、落在每一個被他們救過的人身上。');
+      for (const n of FAMILY) { const x = this.gen(n); if (x && x.status !== 'dead') { for (const st of ['lead', 'war', 'int', 'pol', 'cha']) x.base[st] = Math.min(110, x.base[st] + 1); refresh(this.G, x); } }
+      await k.say('', '四人的所有能力 +1。');
+      S.log.push('終章：打碎古鏡，永遠留在這個時代');
+      k.toast('英傑傳奇第二部「鏡影亂世」完結！天下還在運轉，你們可以繼續闖蕩。');
+    }
+  }
+  // the mirror's men on the road in part two
+  async ambush2() {
+    const S = this.S; S.amb2 = (S.amb2 || 0) + 1; this.g.locked = true; this.armed(1);
+    try {
+      const k = this.k, lv = this.lv(S.ch === 'mirror' ? 32 : 26);
+      await k.say('', pick(['路邊的水窪裡，倒影一個一個站了起來——', '河面上映出了一整隊銀色的士兵。下一刻，他們走上了岸。', '客棧的銅鏡忽然亮了，鏡子裡伸出了一隻銀色的手——']));
+      const r = await k.battle([this.foe('鏡兵隊長', 'soldier', lv + 2, LK.mirror(), { boss: true }), ...this.many(3, '鏡兵', 'soldier', lv, LK.mirror())], { terrain: this.g.act.terrainAt(), title: '鏡兵！' });
+      if (r === 'win') { k.gold(300); await k.say('', '鏡兵碎成一地銀片，又化成水，滲進了泥土裡。'); }
+    } catch (e) { console.error(e); } finally { this.g.locked = false; this.g.hud(); }
+    return true;
+  }
   // ---------------------------------------------------------------- the month: 玄冥子's men on the road
   async month() {
+    const S0 = this.S;
+    if (S0 && S0.ch === 'done' && !S0.p2 && (S0.stay || S0.log.includes('終章：選擇留在亂世')) && this.g.mode === 'world') {
+      S0.wait = (S0.wait || 0) + 1;
+      if (S0.wait >= 2) { this.g.locked = true; try { await this.sequel(); } catch (e) { console.error(e); } finally { this.g.locked = false; this.g.hud(); } return true; }
+    }
+    if (this.on() && this.part2() && this.g.mode === 'world' && (S0.amb2 || 0) < 3 && Math.random() < 0.3) return this.ambush2();
     this.lgzOpen();
     const S = this.S; if (!this.on() || (S.ch !== 'shards' && S.ch !== 'final') || S.ambush >= 4 || this.g.mode !== 'world' || Math.random() > 0.35) return false;
     S.ambush++; this.g.locked = true; this.armed(0.6);
