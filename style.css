@@ -18,6 +18,8 @@ table.rank { width: 100%; border-collapse: collapse; font-size: 13px; } table.ra
 /* ---------------------------------------------------------------- the HUD */
 #hud { position: fixed; left: 10px; top: 10px; z-index: 5; display: none; background: var(--panel); border: 2px solid var(--edge); border-radius: 6px; padding: 6px 10px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5); font-size: 13px; min-width: 210px; }
 body.playing #hud, body.playing #minimap { display: block; }
+/* a panel covers the middle of the screen: the HUD and minimap only peeked out half-covered round its corners; a menu on the right ran over the minimap */
+body:has(#ui .panel) #hud, body:has(#ui .panel) #minimap, body:has(#ui .menu) #minimap { visibility: hidden; }
 .h-name b { font-size: 17px; color: var(--gold); margin-right: 8px; } .h-name span { font-size: 12px; font-weight: 700; }
 .h-row { display: flex; gap: 12px; color: var(--dim); margin-top: 2px; } .h-row span:first-child { color: var(--ink); }
 #minimap { position: fixed; right: 10px; top: 10px; z-index: 5; display: none; width: 140px; height: 140px; border: 2px solid var(--edge); border-radius: 6px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5); image-rendering: pixelated; }
@@ -85,6 +87,7 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 .b-msg { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); background: var(--panel); border: 2px solid var(--edge); border-radius: 5px; padding: 6px 20px; font-size: 16px; opacity: 0; transition: opacity 0.2s; white-space: nowrap; }
 .b-msg.on { opacity: 1; }
 .menu.b-menu { right: 16px; top: auto; bottom: 16px; transform: none; }
+.menu.b-menu { max-width: min(92vw, 320px); } /* long command notes wrap instead of widening the box over the troops */
 .lbl.u-bar { font-size: 11px; } .lbl.u-bar b { display: block; color: #fff; font-size: 12px; }
 .lbl.u-bar i { display: block; width: 64px; height: 6px; margin: 2px auto; background: #2a1a12; border: 1px solid #000; position: relative; }
 .lbl.u-bar i::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: var(--p); background: var(--c); }
@@ -100,6 +103,7 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
 /* ---------------------------------------------------------------- touch */
 #tpad { display: none; position: fixed; inset: auto 0 0 0; height: 0; z-index: 26; }
 @media (pointer: coarse) { body.playing #tpad { display: block; } }
+body:has(.menu) #tpad, body:has(.talk) #tpad, body:has(#ui .panel) #tpad { display: none !important; } /* menus and panels are tapped directly; the pad covered their rows */
 .dpad { position: fixed; left: 18px; bottom: 22px; width: 138px; height: 138px; }
 .dpad b, .btns b { position: absolute; display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 50%; background: rgba(28, 18, 12, 0.6); border: 2px solid rgba(200, 160, 96, 0.7); color: var(--gold); font-size: 18px; }
 .dpad [data-d=up] { left: 46px; top: 0; } .dpad [data-d=down] { left: 46px; bottom: 0; } .dpad [data-d=left] { left: 0; top: 46px; } .dpad [data-d=right] { right: 0; top: 46px; }
@@ -112,7 +116,11 @@ table.score { width: 100%; border-collapse: collapse; font-size: 14px; } table.s
   .menu.yn { left: 30%; right: 30%; bottom: 150px; transform: none; }
   .talk { bottom: 8px; padding: 8px 10px; } .t-port { width: 64px; height: 86px; } .t-text { font-size: 14px; }
   .duel-hud { flex-direction: column; gap: 4px; } .dh { width: 170px; }
+  .menu.b-menu { max-width: none; max-height: 40vh; }
+  .b-msg { top: 66px; white-space: normal; max-width: 92vw; text-align: center; font-size: 14px; } /* under the morale and formation tags */
 }
+/* an upright phone: the field takes the top, the command menu the bottom, so the menu never covers the troops */
+@media (max-width: 640px) and (orientation: portrait) { #battle .b-stage { bottom: 40vh; } #battle { background: #120c08; } }
 /* the name of a stratagem sweeping across the battle */
 .b-cut { position: absolute; left: 0; right: 0; top: 34%; height: 86px; display: flex; flex-direction: column; justify-content: center; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(10, 6, 4, 0.78) 20%, rgba(10, 6, 4, 0.78) 80%, transparent); border-top: 2px solid rgba(232, 200, 96, 0.6); border-bottom: 2px solid rgba(232, 200, 96, 0.6); animation: cutin 0.3s ease-out; transition: opacity 0.35s, transform 0.35s; }
 .b-cut.r { align-items: flex-end; padding-right: 14%; } .b-cut.l { align-items: flex-start; padding-left: 14%; }

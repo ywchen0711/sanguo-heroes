@@ -49,11 +49,13 @@ export class Battle {
   ensureView() {
     if (this.view) return;
     this.view = new View(this.root.querySelector('.b-stage'));
-    this.view.camOff.set(0, 16.1, 16.1); this.view.camera.fov = 37; this.view.camera.updateProjectionMatrix();
+    this.view.camera.fov = 37; this.view.camera.updateProjectionMatrix(); this.fitCam();
     this.view.tsH.uniforms.band.value = this.view.tsV.uniforms.band.value = 0.24;
     this.fx = new FX(this.view.scene); this.tw = [];
     this.view.sun.shadow.mapSize.set(1024, 1024); // the small stage does not need the land's big shadow map
   }
+  // an upright phone sees a narrow slice of the field: pull the camera back so both lines (and their name tags) stay on screen
+  fitCam() { this.view.resize(); const a = this.view.W / Math.max(1, this.view.H), k = Math.min(1.45, Math.max(1, 1.1 / a)); this.view.camOff.set(0, 16.1 * k, 16.1 * k); this.view.zoom = k; } // zoom: the map load pushes the fog back by as much
   // a tween: fn(p) every frame for dur seconds, p from 0 to 1; resolves when done
   tween(dur, fn) { return new Promise((res) => this.tw.push({ t: 0, dur: dur / PACE, fn, res })); }
   shake(k = 0.25) { this.shakeT = Math.max(this.shakeT || 0, k); }
@@ -98,7 +100,7 @@ export class Battle {
   // ---------------------------------------------------------------- run a battle
   // party: [{ g, rec }], foes: [{ name, look|beast, lv, war, lead, int, sol, solMax, sp, gid?, spells? }], o: { terrain, siege, noFlee, title }
   async run(party, foes, o = {}) {
-    this.ensureView(); this.root.classList.add('on'); this.partyColor = o.color || '#3a6ad8';
+    this.ensureView(); this.root.classList.add('on'); this.fitCam(); this.partyColor = o.color || '#3a6ad8';
     this.stage(o.terrain, o.siege); this.o = o; this.round = 0; this.log = [];
     if (o.night || o.wx) this.view.mood(o.night ? 0.45 : 1, o.wx);
     const G = this.game.G, H = this.game.H, wounded = H?.wound > G?.t;
@@ -674,7 +676,7 @@ export class Battle {
   }
   // a duel on its own (in a town, or a challenge): sets up a stage with just the two
   async soloDuel(a, b, o = {}) {
-    this.ensureView(); this.root.classList.add('on'); this.stage(o.terrain || 'city', null); this.o = o;
+    this.ensureView(); this.root.classList.add('on'); this.fitCam(); this.stage(o.terrain || 'city', null); this.o = o;
     this.party = [a]; this.foes = [b];
     a.side = 'party'; b.side = 'foe'; a.status = {}; b.status = {}; a.sol = a.solMax = 1; b.sol = b.solMax = 1;
     this.unitActor(a, OX + 9.4, OZ + 6.2, 1, true); this.unitActor(b, OX + 5.8, OZ + 6.2, 2, true); for (const u of [a, b]) { this.view.removeLabel(u.bar); u.bar = { el: document.createElement('div') }; }
