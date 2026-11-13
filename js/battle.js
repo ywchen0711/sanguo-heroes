@@ -32,6 +32,10 @@ import { bondOf } from './bonds.js';
 import { setupField } from './field.js';
 import { defaults, elMul, EL, EL_N, loreKey, tagsHTML, tagsText } from './weak.js';
 
+// every active status as a short coloured tag under the troop bar, so you can see who is confused, roused, guarded...
+const ST_TAG = { confuse: ['混亂', '#9a4ac8'], rouse: ['攻↑', '#c8641a'], guard: ['防↑', '#2a6ab0'], evade: ['避↑', '#3a8a8a'], broken: ['防↓', '#a02a2a'] };
+const stTags = (u, tag = 'em') => { const t = Object.keys(u.status || {}).filter((k) => u.status[k] > 0 && ST_TAG[k]); return t.length ? `<${tag} class="sts">${t.map((k) => `<i style="background:${ST_TAG[k][1]}">${ST_TAG[k][0]}</i>`).join('')}</${tag}>` : ''; };
+
 const PACE = 2, HIT = 1.8, MEND = 1.5;   // the pace of a battle: animations quicker, blows harder, so a fight takes fewer rounds
 const wait = (ms) => new Promise((r) => setTimeout(r, ms / PACE));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -81,7 +85,7 @@ export class Battle {
   setFrame(a, f) { if (a.beast) { a.bframe = f === 2 ? 1 : 0; this.view.placeActor(a); return; } a.frame = f; a.dir = a.face; this.view.placeActor(a); }
   drawBar(u) {
     const p = Math.max(0, u.sol / u.solMax);
-    u.bar.el.innerHTML = `<b>${u.troop ? `<small class="tr ${u.troop}">${TROOPS[u.troop].n[0]}</small>` : ''}${u.name}</b><i style="--p:${p * 100}%;--c:${p > 0.5 ? '#6ae06a' : p > 0.25 ? '#e8c84a' : '#e85a4a'}"></i><span>${Math.max(0, Math.round(u.sol))}</span>${u.status.confuse ? '<em>混亂</em>' : ''}${u.charging ? '<em class="chg">蓄力</em>' : ''}${u.guarding ? '<em class="gd">防禦</em>' : ''}${u.coveredBy && u.coveredBy.sol > 0 ? `<em class="gd">受${u.coveredBy.name}掩護</em>` : ''}${u.side === 'foe' && u.sol > 0 && !u.charging && !u.status.confuse && u.intent ? `<em class="it">${this.intentText(u)}</em>` : ''}${u.side === 'foe' ? tagsHTML(u) : ''}`;
+    u.bar.el.innerHTML = `<b>${u.troop ? `<small class="tr ${u.troop}">${TROOPS[u.troop].n[0]}</small>` : ''}${u.name}</b><i style="--p:${p * 100}%;--c:${p > 0.5 ? '#6ae06a' : p > 0.25 ? '#e8c84a' : '#e85a4a'}"></i><span>${Math.max(0, Math.round(u.sol))}</span>${stTags(u)}${u.charging ? '<em class="chg">蓄力</em>' : ''}${u.guarding ? '<em class="gd">防禦</em>' : ''}${u.coveredBy && u.coveredBy.sol > 0 ? `<em class="gd">受${u.coveredBy.name}掩護</em>` : ''}${u.side === 'foe' && u.sol > 0 && !u.charging && !u.status.confuse && u.intent ? `<em class="it">${this.intentText(u)}</em>` : ''}${u.side === 'foe' ? tagsHTML(u) : ''}`;
     const n = u.sol > 0 ? Math.ceil((u.squad?.length || 0) * p) : 0;
     u.squad?.forEach((s, k) => { if (k < n) { s.down = 0; s.sprite.visible = s.shadow.visible = true; s.sprite.rotation.z = 0; s.sprite.material.opacity = 1; } else if (s.sprite.visible && !s.down) s.down = 0.001; });
     if (u.sol <= 0 && u.actor && !u.routT) u.routT = 0.001;
@@ -222,7 +226,7 @@ export class Battle {
       const u = this.party[i]; if (u.sol <= 0) continue;
       if (u.status.confuse) { list.push({ u, kind: 'confused' }); continue; }
       if (this.auto || u.guest) { list.push(this.autoOrder(u, list)); continue; }
-      const c = await this.menu(`${u.name}　兵 ${Math.round(u.sol)}／策 ${Math.round(u.sp)}`, [
+      const c = await this.menu(`${u.name}　兵 ${Math.round(u.sol)}／策 ${Math.round(u.sp)}${stTags(u, 'span')}`, [
         { k: 'atk', n: '攻擊' }, { k: 'tac', n: '策略', off: !u.tactics.length }, { k: 'def', n: '防禦', d: '這一回合受到的傷害減半，敵將的大招減少六成；回復一些策略點' }, ...(this.party.filter((x) => x.sol > 0).length > 1 ? [{ k: 'cover', n: '掩護', d: '擋在一位同伴前面：這一回合敵人打他的攻擊和單體策略都改打你（傷害減三成）。看敵人頭上的意圖決定掩護誰' }] : []), { k: 'scout', n: '看破', off: this.foes.every((f) => f.seen || f.sol <= 0), d: '看穿敵軍的弱點與抗性（看智力）。看過一次的敵人以後都會記得' }, { k: 'item', n: '道具', off: !this.game.H.items || !Object.keys(this.game.H.items).some((k) => this.game.H.items[k] > 0 && usable(k)) },
         ...(u.isPlayer && this.foes.some((f) => f.sol > 0 && f.gid != null) ? [{ k: 'duel', n: '一騎討' }] : []), ...(list.length === 0 && !this.o.drill ? [{ k: 'form', n: `陣型（${FORMS[this.form.party].n}）` }] : []), { k: 'auto', n: '全軍突擊' }, ...(this.o.noFlee ? [] : [{ k: 'flee', n: '撤退' }]), ...(i > 0 ? [{ k: 'back', n: '← 返回' }] : [])]);
       if (c == null) { i--; continue; }
@@ -683,7 +687,7 @@ export class Battle {
   menu(title, opts) { return this.game.ui.choose(opts, { title, host: this.ui, cls: 'b-menu' }); }
   async pick(list, title, ally) {
     const live = list.filter((u) => ally || u.sol > 0); if (live.length === 1 && !ally) return live[0];
-    const k = await this.game.ui.choose([...live.map((u, i) => ({ k: i, n: `${u.name}　兵 ${Math.round(u.sol)}`, d: u.side === 'foe' ? [u.intent && this.intentText(u), tagsText(u)].filter(Boolean).join('　') : '' })), { k: null, n: '← 返回' }], { title, host: this.ui, cls: 'b-menu', hover: (i) => { for (const u of list) u.actor && (u.actor.sprite.material.color.set(live[i] === u ? '#ffe8a0' : '#ffffff')); } });
+    const k = await this.game.ui.choose([...live.map((u, i) => ({ k: i, n: `${u.name}　兵 ${Math.round(u.sol)}${stTags(u, 'span')}`, d: u.side === 'foe' ? [u.intent && this.intentText(u), tagsText(u)].filter(Boolean).join('　') : '' })), { k: null, n: '← 返回' }], { title, host: this.ui, cls: 'b-menu', hover: (i) => { for (const u of list) u.actor && (u.actor.sprite.material.color.set(live[i] === u ? '#ffe8a0' : '#ffffff')); } });
     for (const u of list) u.actor?.sprite.material.color.set('#ffffff');
     return k == null ? null : live[k];
   }
